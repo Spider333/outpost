@@ -58,6 +58,14 @@ expiring app key and keeps no copy.
 
 The command-line client has the same features: `./kit cli --help`.
 
+Settings, as environment variables:
+
+- `KIT_HOST=<ip>`: use a server you already have instead of the one `provision` made.
+- `KIT_SSH_KEY=<path>`: the SSH key for that server.
+- `KIT_TUNNEL_PORT` (default 13381): the local end of the SSH tunnel to the node.
+  Change it if something on your machine already uses that port.
+- `KIT_PORT` (default 8381): where the web client is served.
+
 To use the client from a phone, `./kit client --phone` serves it from your server over HTTPS
 (a certificate for `<ip>.sslip.io`, no domain needed) behind a password, and opens 443/tcp.
 `./kit client --phone off` closes it again.

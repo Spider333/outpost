@@ -100,8 +100,8 @@ node_ssh() {
   mkdir -p "$STATE_DIR"
   chmod 700 "$STATE_DIR"
   local key host
-  key="$(ssh_key_path)"
   host="$(node_host)"
+  key="$(ssh_key_path)"
   ssh -i "$key" "${SSH_OPTS[@]}" "root@$host" "$@"
 }
 
@@ -112,7 +112,11 @@ pick_provider() {
   if [ -z "$p" ]; then
     if command -v doctl >/dev/null 2>&1; then p="do"
     elif command -v hcloud >/dev/null 2>&1; then p=hetzner
-    else die "install doctl (DigitalOcean) or hcloud (Hetzner), log in, then run again. Or pass --provider."
+    elif [ "$DRY_RUN" -eq 1 ]; then p="do"; warn "neither doctl nor hcloud is installed; showing DigitalOcean (use --provider hetzner for Hetzner)"
+    else die "neither doctl (DigitalOcean) nor hcloud (Hetzner) is installed. Install one and log in:
+  DigitalOcean: https://docs.digitalocean.com/reference/doctl/how-to/install/ then doctl auth init
+  Hetzner:      https://github.com/hetznercloud/cli then hcloud context create kit
+Or use a server you already have (Ubuntu 24.04, root SSH, 2 TB disk): KIT_HOST=<ip> ./kit node"
     fi
   fi
   case "$p" in "do"|digitalocean) echo "do" ;; hetzner|hcloud) echo hetzner ;; *) die "unknown provider: $p (use do or hetzner)" ;; esac
@@ -137,12 +141,16 @@ plist() {
   [ -z "$out" ] || printf '%s\n' "$out"
 }
 
-md5_fingerprint() { ssh-keygen -E md5 -lf "$1" | awk '{print $2}' | sed 's/^MD5://'; }
+# On a dry run the SSH key may not exist yet (it is only "created" on paper): use placeholders.
+md5_fingerprint() {
+  if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$1" ]; then echo "<md5 fingerprint of $1>"; return 0; fi
+  ssh-keygen -E md5 -lf "$1" | awk '{print $2}' | sed 's/^MD5://'
+}
 
 render_cloud_init() {
   local pub="$1" out="$2"
   local key
-  key="$(cat "$pub")"
+  if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$pub" ]; then key="<contents of $pub>"; else key="$(cat "$pub")"; fi
   sed "s#__SSH_PUBLIC_KEY__#${key}#" "$KIT_DIR/infra/cloud-init.yml" >"$out"
   if [ "$DRY_RUN" -eq 1 ]; then
     say "--- user data that would be sent ($out):"
@@ -346,8 +354,8 @@ tunnel_up() {
   chmod 700 "$STATE_DIR"
   local sock key host
   sock="$(tunnel_socket)"
-  key="$(ssh_key_path)"
   host="$(node_host)"
+  key="$(ssh_key_path)"
   if ssh -S "$sock" -O check "root@$host" >/dev/null 2>&1; then
     return 0
   fi
@@ -449,6 +457,8 @@ cmd_client() {
 
 cmd_cli() {
   ensure_build
+  # Help needs no server.
+  case "${1:-}" in ""|-h|--help|help) node "$KIT_DIR/dist/cli.js" --help; return ;; esac
   tunnel_up
   KIT_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$KIT_DIR/dist/cli.js" "$@"
 }
