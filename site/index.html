@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>kit: your own node and client for Farcaster</title>
+<meta name="description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
+<style>
+:root {
+  --bg: #0e1013; --surface: #161a1f; --line: #2a2f37; --text: #e7e9ec; --muted: #9aa3ad;
+  --accent: #7cc4ff; --bad: #ff8a80; --bad-bg: #2a1517; --ok: #6fd39b; --focus: #ffd166;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 30px; line-height: 1.2; margin: 8px 0 8px; }
+h2 { font-size: 23px; margin: 48px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 18px; margin: 28px 0 6px; }
+p, li { max-width: 68ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.45; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
+pre.cmd { border-left: 3px solid var(--accent); }
+pre.out { color: #c9d1d9; }
+pre.out::before { content: "output"; display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+pre.pending { border-style: dashed; color: var(--muted); }
+.lede { font-size: 19px; color: var(--muted); margin-top: 0; }
+.danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 14px 16px; margin: 20px 0; }
+.danger h2, .danger h3 { border: 0; margin: 0 0 6px; padding: 0; color: var(--bad); font-size: 19px; }
+.concept { border-left: 3px solid var(--ok); padding: 2px 0 2px 14px; margin: 18px 0; }
+.concept strong:first-child { color: var(--ok); }
+.muted { color: var(--muted); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 10px 0; display: block; overflow-x: auto; }
+th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px 10px 6px 0; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+nav ol { padding-left: 20px; }
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 48px; padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>kit: your own node and client for Farcaster</h1>
+<p class="lede">Three commands take you from nothing to a Snapchain read node you control and a client that reads from it and posts through it. No API keys from anyone.</p>
+
+<h2 id="quickstart">Quickstart</h2>
+<p>You need a DigitalOcean or Hetzner account with its command line tool logged in, Node.js 20 or newer, and a <strong>test</strong> account for Farcaster that already has storage.</p>
+<pre class="cmd">git clone https://github.com/Spider333/fc-prize kit
+cd kit
+# rent a server with a 2 TB disk, billed by the hour
+./kit provision
+# start a read node; the first sync takes 2 to 6 hours
+./kit node
+# then open http://127.0.0.1:8080
+./kit client</pre>
+<p>When you are done:</p>
+<pre class="cmd"># revoke the app key; no recovery phrase needed
+./kit uninstall
+# delete the server and stop paying
+./kit destroy</pre>
+<p class="muted">Every command is safe to run twice. <code>./kit provision --dry-run</code> prints the exact provider commands without running them.</p>
+
+<section class="danger" aria-labelledby="warn-h">
+  <h2 id="warn-h">Before you paste a recovery phrase</h2>
+  <p>A recovery phrase is the custody key of an account. Whoever has it can transfer the account, add or remove every app key, and change the username. Pasting it into the wrong program is like running <code>rm -rf /</code> as root: there is no undo.</p>
+  <ul>
+    <li>Use a <strong>test account</strong>. Never your main account.</li>
+    <li>Only paste a phrase into software whose code you have read, or whose author you trust. That includes this one.</li>
+    <li>Prefer the wallet button. With it, the phrase never leaves your wallet.</li>
+    <li>Revoke the app key when you are done: <code>./kit uninstall</code>, or "Revoke this key" in the client.</li>
+  </ul>
+  <p>What kit does with a phrase: it derives the custody address in memory, signs one authorization for an app key that can only cast, react and follow and that expires 30 days after last use, then drops it. It never writes the phrase to disk and never sends it over the network. You can check this in <code>src/core/account.ts</code> and <code>src/cli/main.ts</code>.</p>
+</section>
+
+<nav aria-label="Tutorial">
+  <h2 id="tutorial">Tutorial</h2>
+  <ol>
+    <li><a href="#t-provision">Rent a server</a></li>
+    <li><a href="#t-node">Start a read node</a> (read nodes and validators)</li>
+    <li><a href="#t-login">Connect an account</a> (FIDs, custody, storage, app keys)</li>
+    <li><a href="#t-post">Read and post</a> (messages)</li>
+    <li><a href="#t-apps">Filter by app</a></li>
+    <li><a href="#t-limits">What a keyless node cannot do</a></li>
+    <li><a href="#t-cleanup">Clean up</a></li>
+  </ol>
+</nav>
+
+<h3 id="t-provision">1. Rent a server</h3>
+<p>A node keeps a full copy of the network's data. Today that is a snapshot of about 400 GB compressed, and the node needs about 1.5 TB of free disk while it unpacks it, so kit asks for a 2 TB volume. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<pre class="cmd">./kit provision --provider do
+# or: ./kit provision --provider hetzner</pre>
+<p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
+<pre class="out">DigitalOcean: droplet kit-node (s-8vcpu-32gb-amd) in fra1 with a 2 TiB volume.
+Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list prices; check yours).
++ doctl compute ssh-key import kit-node-key --public-key-file /home/you/.ssh/id_ed25519.pub
++ doctl compute volume create kit-node-data --region fra1 --size 2048GiB --fs-type ext4 --desc kit\ snapchain\ data
++ doctl compute firewall create --name kit-node-fw --tag-names kit-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
++ doctl compute droplet create kit-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.zxbLVebFF6 --volumes &lt;volume-id&gt; --tag-name kit-node --wait</pre>
+<p>The firewall opens two ports: 22 for SSH and 3382/udp for gossip, which is how your node talks to the rest of the network. The node's API ports stay closed. Your client reaches them through an SSH tunnel. This matters: by default, a node with an open API port lets anyone on the internet send messages through it.</p>
+<p>Already have a server? Skip this step and run <code>KIT_HOST=&lt;ip&gt; ./kit node</code>. It needs Ubuntu 24.04, root SSH and the disk above.</p>
+
+<h3 id="t-node">2. Start a read node</h3>
+<pre class="cmd">./kit node</pre>
+<pre class="out">setting up the read node on 142.93.168.228
+[node-setup] data directory: /mnt/snap (1807 GB free)
+[node-setup] starting snapchain 0.14.3 (read node)
+ Container snapchain-statsd-1  Running
+ Container snapchain-snapchain-1  Running
+[node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.</pre>
+<p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. kit does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
+<p>The first sync downloads the snapshot, unpacks it, then catches up on the blocks since. <code>./kit status</code> shows where it is:</p>
+<pre class="out">node: downloading snapshot: Progress: 1312/5689 chunks (23%) (ETA: 2h35m)</pre>
+<pre class="out pending" data-pending="node-synced">PENDING: ./kit status output once synced (catch-up line, then "synced").</pre>
+
+<div class="concept">
+<p><strong>Read nodes and validators.</strong> Snapchain has two roles, run by the same program. Validators propose and vote on blocks; there is a fixed set of them. A read node, which is what you just started, follows the chain, keeps the full state and answers queries. It never votes. Anyone can run one, and it needs no key or paid service: account and key events from the Optimism chain arrive inside the blocks validators produce.</p>
+<p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so kit reads every message back from your node before it says "confirmed".</p>
+</div>
+
+<h3 id="t-login">3. Connect an account</h3>
+<pre class="cmd">./kit client</pre>
+<pre class="out pending" data-pending="client-start">PENDING: ./kit client output (tunnel line, URL).</pre>
+<p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./kit cli login</code>.</p>
+
+<div class="concept">
+<p><strong>FID.</strong> Your account is a number, the Farcaster ID, registered on the Optimism chain. Usernames point to it; posts are signed for it.</p>
+<p><strong>Custody.</strong> One Ethereum address owns each FID: the custody address. Your recovery phrase is the private key for that address, at the standard path <code>m/44'/60'/0'/0/0</code>. kit derives the address, asks your node which FID belongs to it, and checks that the address is still that FID's custody before it signs anything. No Optimism RPC is needed for this; your node has the registry events.</p>
+<p><strong>Storage.</strong> The network only keeps messages for accounts that rent storage. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; when you go over, the oldest are pruned. Storage is bought onchain. kit does not buy it; it stops if the account has none.</p>
+</div>
+
+<pre class="out pending" data-pending="login">PENDING: ./kit cli login output with the test account (custody address, FID, storage units, key added).</pre>
+
+<div class="concept">
+<p><strong>App keys.</strong> You do not sign every post with the custody key. Instead the custody key authorizes an <em>app key</em>, an Ed25519 key the client holds. Since May 2026 this is a plain message to the network, <code>KEY_ADD</code>, with no Optimism transaction and no gas. Each key has:</p>
+<ul>
+  <li><strong>scopes</strong>: the message types it may sign. kit asks for casts, reactions and follows only, so it cannot change your profile or verified addresses;</li>
+  <li><strong>a TTL</strong>: it expires after 30 days without use (the maximum is 90);</li>
+  <li><strong>a requesting app</strong>: the FID of the app that asked for it, signed by that app's custody key. That is how anyone can tell which app posted a cast.</li>
+</ul>
+<p>Two details trip people up. The signature uses its own EIP-712 domain, <code>Farcaster KeyAdd</code> with chain ID 1, not the onchain key gateway's domain, so the older helper functions produce signatures the network rejects. And the deadline is in Farcaster time, seconds since 1 January 2021, not Unix time.</p>
+</div>
+
+<p>Before any account is involved, you can check the signing code against your own node. This builds every message type kit uses with throwaway keys, asks the node to validate each one, and checks that two tampered messages are rejected. It sends nothing.</p>
+<pre class="cmd">./kit cli selftest</pre>
+<pre class="out">PASS  KEY_ADD (gasless, scoped, 30-day TTL): node says valid=true, expected true
+PASS  CAST_ADD: node says valid=true, expected true
+PASS  CAST_REMOVE: node says valid=true, expected true
+PASS  LINK_ADD follow: node says valid=true, expected true
+PASS  LINK_REMOVE follow: node says valid=true, expected true
+PASS  REACTION_ADD like: node says valid=true, expected true
+PASS  REACTION_ADD recast: node says valid=true, expected true
+PASS  REACTION_REMOVE like: node says valid=true, expected true
+PASS  KEY_REMOVE (self-revoke): node says valid=true, expected true
+PASS  CAST_ADD with text changed after signing: node says valid=false, expected false
+PASS  KEY_ADD with TTL widened after signing: node says valid=false, expected false
+
+all 11 checks passed against http://127.0.0.1:13381</pre>
+<p class="muted">This run was against a local Snapchain 0.14.3 container. The node's validator checks signatures and message rules, not account state, so it cannot tell you whether a custody signature matches a real account. The unit tests (<code>npm test</code>) cover that with known test vectors.</p>
+
+<h3 id="t-post">4. Read and post</h3>
+<p>Snapchain has no home timeline endpoint. A following feed is the list of accounts you follow (<code>/v1/linksByFid</code>), the latest casts of each (<code>/v1/castsByFid</code>), merged by time. That is one request per account you follow, which is fine on your own node.</p>
+<pre class="out pending" data-pending="feed">PENDING: ./kit cli feed --fid 37 output with timing.</pre>
+<pre class="out pending" data-pending="cast">PENDING: ./kit cli cast, follow, like, recast output with the test account.</pre>
+
+<div class="concept">
+<p><strong>Messages.</strong> Every action is a message: a small protobuf with your FID, a timestamp, the action, a BLAKE3 hash of those bytes and an Ed25519 signature from the app key. A cast, a follow, a like and a recast are four message types. Nodes check the signature and that the key is allowed to sign that type, then store the message. Deleting a cast is another message that removes it.</p>
+</div>
+
+<h3 id="t-apps">5. Filter by app</h3>
+<p>A cast does not say which app posted it. But it is signed by an app key, and every app key records the FID of the app that requested it. kit looks this up on your node for every author (<code>/v1/signersByFid</code>) and labels each cast. In the client, tap an app to show only its casts, again to hide them, again to reset. In the command line:</p>
+<pre class="cmd">./kit cli feed --fid 37 --exclude 9152</pre>
+<pre class="out pending" data-pending="filter">PENDING: feed output with --include / --exclude and the app mix summary.</pre>
+<p>What this can and cannot tell you:</p>
+<ul>
+  <li>A key a user signed for themselves carries their own FID as the app. Tools that do this, including kit by default, all look the same: "own key".</li>
+  <li>A service that signs for many apps under one FID shows up as one app.</li>
+  <li>An app key copied into another program cannot be told apart.</li>
+  <li>The requesting app cannot be faked: the network checks the app's custody signature. But one developer can register several FIDs.</li>
+</ul>
+
+<h3 id="t-limits">6. What a keyless node cannot do</h3>
+<p>Your node runs without an Ethereum RPC endpoint. That is what makes it keyless, and it costs three things. It rejects, and so you cannot submit through it:</p>
+<ul>
+  <li><code>.eth</code> usernames and other ENS names,</li>
+  <li>ENS username proofs,</li>
+  <li>address verifications for smart-contract wallets.</li>
+</ul>
+<p>Casts, reactions, follows, profile fields, plain usernames, normal wallet verifications and app keys all work. To get the three back, add <code>l1_rpc_url</code> with any Ethereum mainnet RPC to the node's config.</p>
+
+<h3 id="t-cleanup">7. Clean up</h3>
+<pre class="cmd">./kit uninstall</pre>
+<pre class="out pending" data-pending="uninstall">PENDING: ./kit uninstall output with the test account.</pre>
+<p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
+<pre class="cmd">./kit destroy</pre>
+<p>This deletes the server, the volume and the firewall after you type the server's name. Your account, follows and casts are not affected; they live on the network.</p>
+
+<h2 id="about">About this project</h2>
+<p>Code: <a href="https://github.com/Spider333/fc-prize">github.com/Spider333/fc-prize</a>, MIT licence. Snapchain is GPL-3.0; kit only runs its official Docker image and contains none of its code.</p>
+<p>How it was made: an AI coding assistant helped write the code and this page. People ran it and tested it: <span class="pending" data-pending="testers">PENDING: names of the human testers</span>. Every output on this page comes from a real run; where it was run somewhere other than a fresh node, the page says so.</p>
+
+<footer>
+<p>Not affiliated with Farcaster, Snapchain or their maintainers.</p>
+</footer>
+</main>
+</body>
+</html>
