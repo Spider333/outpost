@@ -22,9 +22,12 @@ Seen on mainnet, already being handled upstream, so no draft from us:
   tokens loops forever. A shard that runs out before the others restarts too, which repeats its
   casts. Open PR #720 fixes the first part. kit treats an all-null token as the end
   (`liveToken` in src/core/hub.ts). Checked 2026-10-18.
-- A read node replays shard 0 (block shard, no messages) from height 0; the snapshot does not
-  include it, so its `blockDelay` stays in the tens of millions for months. Issue #510 is about
-  a sync model that does not need full block history. kit's "synced" counts data shards only.
+- Corrected 2026-10-18: the snapshot does include shard 0, loaded last. Our node's shard 0
+  was empty because we restarted the container mid-load, and snapchain skips the snapshot
+  once `.rocks` has data. With shard 0 behind, `KEY_ADD` is rejected as "unknown fid" (keys
+  are routed to and checked on shard 0), and the data shards fail to replay shard 0's key
+  events into their replicas (90 failed on our node). Possible upstream issue: a partial load
+  is not detected on restart. kit now guards against the restart and counts shard 0 in "synced".
 
 ## PR text
 

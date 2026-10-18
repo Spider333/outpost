@@ -1,0 +1,30 @@
+{
+  "charter": 1,
+  "name": "kit live test",
+  "description": "Used once to test Join on mainnet with a test account. Not a real society.",
+  "codeOfConduct": "https://github.com/Spider333/fc-prize/blob/main/examples/test-society-conduct.md",
+  "issuer": {
+    "fid": 3355358
+  },
+  "members": [
+    3355358,
+    1
+  ],
+  "moderators": [
+    3355358
+  ],
+  "clients": {
+    "exclude": []
+  },
+  "feed": {
+    "excludeKeywords": [
+      "airdrop"
+    ]
+  },
+  "issuedAt": "2026-10-18T19:05:22.172Z",
+  "signature": {
+    "type": "eip712",
+    "signer": "0x15020a39b36cF852CDBD1aC036DF1f45ea4ccafa",
+    "value": "0x55946c8ffdddbfb5a826630c6ea95839d3ffdd19542c48a093669225d7ae9bb44170f2e3ce6c58d946e0742e6873cda1f675be80f930797b7a345d27863a27a41c"
+  }
+}

@@ -183,11 +183,12 @@ test("a multi-shard page token of all nulls means no more pages", async () => {
   assert.equal(n, 1);
 });
 
-test("sync state counts data shards only, not the block shard", async () => {
+test("sync state needs every shard, including the block shard", async () => {
   const { syncState } = await import("../src/core/index.js");
   const shard = (shardId: number, blockDelay: number) => ({ shardId, blockDelay, maxHeight: 1, numMessages: 0, numFidRegistrations: 0, approxSize: 0 });
-  // Mainnet read node after loading the snapshot: shard 0 replays from zero.
-  assert.deepEqual(syncState({ shardInfos: [shard(0, 49_725_542), shard(1, 3), shard(2, 4)] } as any), { synced: true, maxDelay: 4 });
+  // Mainnet read node whose shard 0 snapshot did not load: feeds work, KEY_ADD fails "unknown fid".
+  assert.deepEqual(syncState({ shardInfos: [shard(0, 49_725_542), shard(1, 3), shard(2, 4)] } as any), { synced: false, maxDelay: 49_725_542 });
+  assert.deepEqual(syncState({ shardInfos: [shard(0, 2), shard(1, 3), shard(2, 4)] } as any), { synced: true, maxDelay: 4 });
   assert.deepEqual(syncState({ shardInfos: [shard(0, 0), shard(1, 78_016), shard(2, 2)] } as any), { synced: false, maxDelay: 78_016 });
   assert.equal(syncState({ shardInfos: [shard(0, 0)] } as any).synced, false);
 });

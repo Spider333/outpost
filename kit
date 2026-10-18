@@ -331,10 +331,12 @@ node_progress() {
   node_ssh 'set -o pipefail
     info=$(curl -s -m 5 http://127.0.0.1:3381/v1/info || true)
     if [ -n "$info" ]; then
-      # Data shards only. Shard 0 (blocks, no messages) replays from zero and takes months.
-      max=$(echo "$info" | jq "[.shardInfos[] | select(.shardId != 0) | .blockDelay] | max // 1000000000")
-      if [ "$max" -lt 10 ]; then echo "synced: every data shard is within $max blocks of the tip"
-      else echo "catching up: furthest data shard is $max blocks behind"; fi
+      # All shards. Shard 0 has no casts, but app keys are checked there.
+      max=$(echo "$info" | jq "[.shardInfos[].blockDelay] | max // 1000000000")
+      s0=$(echo "$info" | jq "[.shardInfos[] | select(.shardId == 0) | .blockDelay] | max // 0")
+      if [ "$max" -lt 10 ]; then echo "synced: every shard is within $max blocks of the tip"
+      elif [ "$s0" -ge 1000000 ]; then echo "shard 0 is $s0 blocks behind: feeds work, adding app keys fails. Its snapshot did not load; see \"Shard 0 did not load\" in the README"
+      else echo "catching up: furthest shard is $max blocks behind"; fi
     else
       c=$(docker ps -qf name=snapchain-snapchain || true)
       [ -n "$c" ] || { echo "node container is not running"; exit 0; }

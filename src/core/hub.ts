@@ -298,11 +298,11 @@ export class Hub {
   }
 }
 
-// A node is usable when every data shard (1 and up) is within a few blocks of the tip.
-// Shard 0 is the block shard: it holds no messages, the snapshot does not include it, and a
-// read node replays it from height 0, which takes months. Reads and writes do not wait on it.
+// A node is usable when every shard is within a few blocks of the tip. Shard 0, the block
+// shard, holds no casts, but app keys (KEY_ADD, KEY_REMOVE) and storage are checked there:
+// a node whose shard 0 is behind serves feeds but rejects new keys as "unknown fid".
 export function syncState(info: HubInfo): { synced: boolean; maxDelay: number } {
-  const shards = info.shardInfos.filter((s) => s.shardId !== 0);
+  const shards = info.shardInfos;
   const maxDelay = Math.max(0, ...shards.map((s) => s.blockDelay));
-  return { synced: shards.length > 0 && maxDelay < 10, maxDelay };
+  return { synced: shards.some((s) => s.shardId !== 0) && maxDelay < 10, maxDelay };
 }

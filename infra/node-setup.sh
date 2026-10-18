@@ -109,6 +109,18 @@ if ! compose_ok; then
   done
   mv docker-compose.yml.new docker-compose.yml
 fi
+# Snapchain loads the snapshot one shard after another, shard 0 last, and deletes
+# .rocks.snapshot when it is done (Docker recreates the empty mount folder). On a restart it
+# skips the snapshot as soon as .rocks has any data, so restarting it mid-load leaves the
+# remaining shards empty for good. A leftover metadata.json means a load has not finished.
+if [ -f .rocks.snapshot/metadata.json ] && [ -n "$(ls -A .rocks 2>/dev/null)" ]; then
+  if [ -n "$(docker compose ps -q snapchain 2>/dev/null)" ] && ! curl -fsm 5 http://127.0.0.1:3381/v1/info >/dev/null 2>&1; then
+    compose_ok || log "warning: until it finishes, this node's API ports are open as its old compose file says."
+    log "the node is still loading its snapshot; not restarting it. Run this again when ./kit status shows synced or catching up."
+    exit 0
+  fi
+  die "an earlier snapshot load on this server was interrupted, so some shards are missing. See \"Shard 0 did not load\" in the README."
+fi
 mkdir -p .rocks .rocks.snapshot .onchain-config
 
 log "starting snapchain ${SNAPCHAIN_VERSION} (read node)"
