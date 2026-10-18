@@ -1,4 +1,4 @@
-# kit-client feed --fid 37 --limit 20 --exclude 9152 (2026-10-18T16:40:18Z, node http://127.0.0.1:13391)
+# kit-client feed --fid 37 --limit 20 --exclude 9152 (2026-10-18T16:44:30Z, node http://127.0.0.1:13391)
 2026-10-18 00:36  @monteluna  via own key
   You have to be mentally ill to still be chucking Coinbase mafia at this point.
   240932:0x70c81cee68e8ae7bf744e553ff08125b6c3c4a3d
@@ -12,7 +12,7 @@
   Now why would rish do such a thing  [1 embed]
   240932:0xe2cca4d4e7031f267b4d04670b4989949873515f
 2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
-  Big congratulations to the airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to security. To   [1 embed]
+  Big congratulations to the @zksync airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to secur  [1 embed]
   5650:0x2939942b565704c087d33fd818fac745551776e6
 2026-10-12 13:31  @vitalik.eth  via fireflyapp (app fid 16823)
   For anyone who is either a fan of vaccines, or a critic of vaccines but open-minded to the idea that vaccines *could* be great if they were made with a more open-source open-science and public-spirite  [3 embed]
@@ -24,6 +24,6 @@
   Nethermind continues doing excellent work and making Ethereum more efficient and faster. https://firefly.social/post/x/2107387115537338756  [1 embed]
   5650:0x19a7d263e54029e809c46b0a29968ff7687a90e2
 
-8 casts in 0.79 s from http://127.0.0.1:13391
+8 casts in 0.56 s from http://127.0.0.1:13391
     5  via fireflyapp (app fid 16823)
     3  via own key

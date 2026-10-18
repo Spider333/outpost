@@ -1,6 +1,6 @@
-# kit-client feed --fid 37 --limit 20 (2026-10-18T16:40:17Z, node http://127.0.0.1:13391)
+# kit-client feed --fid 37 --limit 20 (2026-10-18T16:44:29Z, node http://127.0.0.1:13391)
 2026-10-18 12:27  @vibhu  via warpcast (app fid 9152)
-  Excited to collaborate with and the new team to make a first-class citizen of the underlying platform More to come 👀
+  Excited to collaborate with @balajis.eth and the new team to make @solana a first-class citizen of the underlying platform More to come 👀
   3355261:0xf1531e6857776884025a907e9bd803d94661638b
 2026-10-18 10:38  @vrn.eth  via warpcast (app fid 9152)
   ‘tis the season of gelatinous bone broth  [2 embed]
@@ -33,7 +33,7 @@
   logged back in for first time in a while to vote to stay, along for the experiment! was off all social media for a few months, wonder if this new direction will draw me back here
   368:0x529078699f312ef65f1cbed763811d98315640d9
 2026-10-16 12:18  @jesse.base.eth  via warpcast (app fid 9152)
-  heck yeah excited for the next chapter and grateful we have a new steward of the decentralized social network vision
+  heck yeah @balajis.eth excited for the next chapter and grateful we have a new steward of the decentralized social network vision
   99:0x5af7eadb18c2feb978780ef0a05aaf96e0b69ce3
 2026-10-16 12:17  @jesse.base.eth  via warpcast (app fid 9152)
   I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [2 embed]
@@ -60,7 +60,7 @@
   Snapchain node wishlist 1. I want to sync only a subset of the network. 2. I don’t want to keep more than 7 days worth of content.
   3:0x35f104e944de03c93cc4eb513e8b84cef58d9b77
 
-20 casts in 0.68 s from http://127.0.0.1:13391
+20 casts in 0.42 s from http://127.0.0.1:13391
    16  via warpcast (app fid 9152)
     3  via own key
     1  via fireflyapp (app fid 16823)

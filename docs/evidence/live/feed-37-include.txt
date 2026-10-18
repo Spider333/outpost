@@ -1,6 +1,6 @@
-# kit-client feed --fid 37 --limit 20 --include 9152 (2026-10-18T16:40:19Z, node http://127.0.0.1:13391)
+# kit-client feed --fid 37 --limit 20 --include 9152 (2026-10-18T16:44:31Z, node http://127.0.0.1:13391)
 2026-10-18 12:27  @vibhu  via warpcast (app fid 9152)
-  Excited to collaborate with and the new team to make a first-class citizen of the underlying platform More to come 👀
+  Excited to collaborate with @balajis.eth and the new team to make @solana a first-class citizen of the underlying platform More to come 👀
   3355261:0xf1531e6857776884025a907e9bd803d94661638b
 2026-10-18 10:38  @vrn.eth  via warpcast (app fid 9152)
   ‘tis the season of gelatinous bone broth  [2 embed]
@@ -27,7 +27,7 @@
   logged back in for first time in a while to vote to stay, along for the experiment! was off all social media for a few months, wonder if this new direction will draw me back here
   368:0x529078699f312ef65f1cbed763811d98315640d9
 2026-10-16 12:18  @jesse.base.eth  via warpcast (app fid 9152)
-  heck yeah excited for the next chapter and grateful we have a new steward of the decentralized social network vision
+  heck yeah @balajis.eth excited for the next chapter and grateful we have a new steward of the decentralized social network vision
   99:0x5af7eadb18c2feb978780ef0a05aaf96e0b69ce3
 2026-10-16 12:17  @jesse.base.eth  via warpcast (app fid 9152)
   I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [2 embed]
@@ -51,7 +51,7 @@
   I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [1 embed]
   191213:0xbb48e0e1448dddc1f266e789f95a5100d5adcd92
 2026-10-15 20:19  @fredwilson.eth  via warpcast (app fid 9152)
-  If you know , you know he will be a great steward of this protocol, app, and community.
+  If you know @balaji, you know he will be a great steward of this protocol, app, and community.
   169:0xaef0b7c2b58cf87c443690c4ce1c9b48182a9f44
 2026-10-15 19:50  @phil  via warpcast (app fid 9152)
     [1 embed]
@@ -60,5 +60,5 @@
   I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [1 embed]
   426:0x6c1602dd2749411c121f03fbeb33317606693a54
 
-20 casts in 0.54 s from http://127.0.0.1:13391
+20 casts in 0.39 s from http://127.0.0.1:13391
    20  via warpcast (app fid 9152)
