@@ -181,7 +181,21 @@ all 11 checks passed against http://127.0.0.1:13381</pre>
 
 <h3 id="t-post">4. Read and post</h3>
 <p>Snapchain has no home timeline endpoint. A following feed is the list of accounts you follow (<code>/v1/linksByFid</code>), the latest casts of each (<code>/v1/castsByFid</code>), merged by time. That is one request per account you follow, which is fine on your own node.</p>
-<pre class="out pending" data-pending="feed">PENDING: ./kit cli feed --fid 37 output with timing.</pre>
+<pre class="cmd">./kit cli feed --fid 37 --limit 3</pre>
+<pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+2026-10-17 02:30  @dwr  via warpcast (app fid 9152)
+    [1 embed]
+  3:0x0256ae66308d546514fa666cda44052abbfea066
+2026-10-17 02:23  @dwr  via warpcast (app fid 9152)
+  Neat
+  3:0xec0c8a227d7f34ad3e2243ae098b46459b7d1847
+
+3 casts in 0.28 s from http://127.0.0.1:13392
+    2  via warpcast (app fid 9152)
+    1  via fireflyapp (app fid 16823)</pre>
+<p class="muted">Run on 2026-10-18 against our mainnet node while it was still catching up, so the newest day was partly missing.</p>
 <pre class="cmd">./kit cli cast "hello from the kit CLI on a devnet"
 ./kit cli follow 422268
 ./kit cli like 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79
@@ -198,8 +212,23 @@ recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns
 
 <h3 id="t-apps">5. Filter by app</h3>
 <p>A cast does not say which app posted it. But it is signed by an app key, and every app key records the FID of the app that requested it. kit looks this up on your node for every author (<code>/v1/signersByFid</code>) and labels each cast. In the client, tap an app to show only its casts, again to hide them, again to reset. In the command line:</p>
-<pre class="cmd">./kit cli feed --fid 37 --exclude 9152</pre>
-<pre class="out pending" data-pending="filter">PENDING: feed output with --include / --exclude and the app mix summary.</pre>
+<pre class="cmd">./kit cli feed --fid 37 --limit 1 --exclude 9152</pre>
+<pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+
+1 cast in 0.38 s from http://127.0.0.1:13392
+    1  via fireflyapp (app fid 16823)</pre>
+<pre class="cmd">./kit cli feed --fid 37 --limit 2 --include 16823</pre>
+<pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
+  Big congratulations to the airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to security. To   [1 embed]
+  5650:0x2939942b565704c087d33fd818fac745551776e6
+
+2 casts in 0.45 s from http://127.0.0.1:13392
+    2  via fireflyapp (app fid 16823)</pre>
 <p>What this can and cannot tell you:</p>
 <ul>
   <li>A key a user signed for themselves carries their own FID as the app. Tools that do this, including kit by default, all look the same: "own key".</li>
@@ -219,15 +248,33 @@ recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns
 
 <h3 id="t-society">7. Societies: a charter file</h3>
 <p>Filtering by app is one rule. A society is a set of them, written down and signed: who the members are, which apps' posts count, which channels and keywords, and a link to the society's code of conduct. kit calls this a charter. It is one JSON file.</p>
-<pre class="cmd">./kit cli charter verify examples/test-society.charter.json</pre>
-<pre class="out pending" data-pending="charter-verify">PENDING: verify output for the test society.</pre>
+<p>The repository has an example built from public data: the 24 accounts that posted most in the /network-states channel in the last 90 days. It is unofficial and names no issuer, because nobody from that channel signed it.</p>
+<pre class="cmd">./kit cli charter verify examples/network-states.charter.json</pre>
+<pre class="out">OK: "network-states channel (example)", 24 members, signed by 0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4. It names no issuer FID, so only the address vouches for it</pre>
 <p>The signature covers every field. Change one member and the file is rejected:</p>
-<pre class="out pending" data-pending="charter-tamper">PENDING: verify output for a tampered copy.</pre>
+<pre class="cmd">jq '.members += [3]' examples/network-states.charter.json &gt; tampered.charter.json
+./kit cli charter verify tampered.charter.json</pre>
+<pre class="out">REJECTED: the file was changed after it was signed (signature does not match its content)</pre>
 <p>If the charter names an issuer FID, kit also checks on your node that the signer is that account's custody address. Nobody else can sign for the society.</p>
 <p>In the client, load a charter in the Society panel. The feed then shows the society's members and channels, through its rules. <strong>Join</strong> follows its members with your app key. <strong>Leave</strong> drops the lens. Your keys, follows and posts do not change, because they were never the society's to begin with. Leaving is one tap.</p>
 <p>The census counts members, members who posted in the last 7 days, casts per day, and the apps members post from. It reads only your own node, so anyone with a node and the same file gets the same numbers.</p>
-<pre class="cmd">./kit cli charter census examples/test-society.charter.json</pre>
-<pre class="out pending" data-pending="census">PENDING: census output, and the hand count it was checked against.</pre>
+<pre class="cmd">./kit cli charter census examples/network-states.charter.json</pre>
+<pre class="out">"network-states channel (example)"
+census 2026-10-11 to 2026-10-18 (7 days), from your node
+  members            24
+  active (posted)    22
+  casts              818  (116.9 per day)
+  apps members posted from:
+      785  warpcast (app fid 9152)
+       22  own key
+       11  fireflyapp (app fid 16823)
+computed in 0.5 s</pre>
+<p>To check it, <code>scripts/manual-census.sh</code> counts the same thing with only <code>curl</code> and <code>jq</code>, none of kit's code. Run a few seconds later, it agreed:</p>
+<pre class="cmd">scripts/manual-census.sh examples/network-states.charter.json 7</pre>
+<pre class="out">members 24
+active 22
+casts 818
+casts_per_day 116.9</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
 
 <h3 id="t-cleanup">8. Clean up</h3>

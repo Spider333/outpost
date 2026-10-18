@@ -206,7 +206,7 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   }
   const mix = new Map<string, number>();
   for (const it of items) mix.set(label(it), (mix.get(label(it)) ?? 0) + 1);
-  console.log(`\n${items.length} casts in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
+  console.log(`\n${items.length} cast${items.length === 1 ? "" : "s"} in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
   for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${k}`);
 }
 
