@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kit: from zero to your own read node and client, in three commands.
 #
-#   ./kit provision   rent a server (DigitalOcean or Hetzner) with a 2 TB disk
+#   ./kit provision   rent a server (DigitalOcean or Hetzner) with a 1.2 TB disk
 #   ./kit node        start a Snapchain read node on it; no API keys
 #   ./kit client      run the web client on your machine, talking to your node
 #
@@ -116,7 +116,7 @@ pick_provider() {
     else die "neither doctl (DigitalOcean) nor hcloud (Hetzner) is installed. Install one and log in:
   DigitalOcean: https://docs.digitalocean.com/reference/doctl/how-to/install/ then doctl auth init
   Hetzner:      https://github.com/hetznercloud/cli then hcloud context create kit
-Or use a server you already have (Ubuntu 24.04, root SSH, 2 TB disk): KIT_HOST=<ip> ./kit node"
+Or use a server you already have (Ubuntu 24.04, root SSH, 1.2 TB disk): KIT_HOST=<ip> ./kit node"
     fi
   fi
   case "$p" in "do"|digitalocean) echo "do" ;; hetzner|hcloud) echo hetzner ;; *) die "unknown provider: $p (use do or hetzner)" ;; esac
@@ -164,7 +164,7 @@ do_server_ip() {
 }
 
 provision_do() {
-  local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4"
+  local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4" disk="$5"
   require_cli doctl "See https://docs.digitalocean.com/reference/doctl/how-to/install/ then run: doctl auth init"
   local ip=""
   [ "$DRY_RUN" -eq 0 ] && ip="$(do_server_ip "$name")"
@@ -173,8 +173,9 @@ provision_do() {
     state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
     return 0
   fi
-  say "DigitalOcean: droplet $name ($size) in $region with a 2 TiB volume."
-  say "Billed by the hour while it exists: about \$0.53/h (droplet + volume, 2025 list prices; check yours)."
+  say "DigitalOcean: droplet $name ($size) in $region with a $disk GB volume."
+  say "Billed by the hour while it exists: the volume about \$$(awk -v g="$disk" 'BEGIN { printf "%.2f", g * 0.10 / 730 }')/h, plus the droplet"
+  say "(s-8vcpu-32gb-amd is \$0.25/h). October 2026 list prices; check yours."
   confirm "Create it now?" || die "cancelled"
 
   local fp ud
@@ -187,7 +188,7 @@ provision_do() {
     vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
-    run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "kit snapchain data"
+    run doctl compute volume create "$name-data" --region "$region" --size "${disk}GiB" --fs-type ext4 --desc "kit snapchain data"
     [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   # DigitalOcean rejects a firewall that names a tag which does not exist yet (HTTP 422).
@@ -211,7 +212,7 @@ provision_do() {
 }
 
 provision_hetzner() {
-  local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4"
+  local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4" disk="$5"
   require_cli hcloud "See https://github.com/hetznercloud/cli then run: hcloud context create kit"
   local ip=""
   [ "$DRY_RUN" -eq 0 ] && ip="$(hcloud server ip "$name" 2>/dev/null || true)"
@@ -220,9 +221,9 @@ provision_hetzner() {
     state_set PROVIDER hetzner; state_set NAME "$name"; state_set IP "$ip"
     return 0
   fi
-  say "Hetzner: server $name ($type) in $location with a 2 TB volume."
+  say "Hetzner: server $name ($type) in $location with a $disk GB volume."
   say "Billed by the hour while it exists. Check current prices for $type and volumes before you go on."
-  say "Note: new Hetzner accounts can have a volume size limit below 2 TB. Ask support to raise it if create fails."
+  say "Note: new Hetzner accounts can have a volume size limit below $disk GB. Ask support to raise it if create fails."
   confirm "Create it now?" || die "cancelled"
 
   local fp keyname ud
@@ -246,7 +247,7 @@ JSON
     rm -f "$rules"
   fi
   if [ "$DRY_RUN" -eq 1 ] || ! hcloud volume describe "$name-data" >/dev/null 2>&1; then
-    run hcloud volume create --name "$name-data" --size 2048 --location "$location" --format ext4
+    run hcloud volume create --name "$name-data" --size "$disk" --location "$location" --format ext4
   fi
   ud="$(mktemp)"
   render_cloud_init "$key.pub" "$ud"
@@ -272,13 +273,14 @@ wait_for_ssh() {
 }
 
 cmd_provision() {
-  local provider="" name="${KIT_NAME:-kit-node}" region="" size="" wait=1
+  local provider="" name="${KIT_NAME:-kit-node}" region="" size="" disk="${KIT_DISK_GB:-1200}" wait=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --provider) provider="$2"; shift 2 ;;
       --name) name="$2"; shift 2 ;;
       --region|--location) region="$2"; shift 2 ;;
       --size|--type) size="$2"; shift 2 ;;
+      --disk) disk="$2"; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       --no-wait) wait=0; shift ;;
@@ -286,13 +288,17 @@ cmd_provision() {
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || die "server name must be lowercase letters, digits and dashes"
+  # The chain data was 557 GB on 2026-10-18 and grows; below 1 TB leaves no room.
+  if ! [[ "$disk" =~ ^[0-9]+$ ]] || [ "$disk" -lt 1000 ]; then
+    die "--disk is the volume size in GB, at least 1000 (default 1200)"
+  fi
   provider="$(pick_provider "$provider")"
   local key
   key="$(ssh_key_path)"
   state_set SSH_KEY "$key"
   case "$provider" in
-    "do") provision_do "$name" "$region" "$size" "$key" ;;
-    hetzner) provision_hetzner "$name" "$region" "$size" "$key" ;;
+    "do") provision_do "$name" "$region" "$size" "$key" "$disk" ;;
+    hetzner) provision_hetzner "$name" "$region" "$size" "$key" "$disk" ;;
   esac
   [ "$wait" -eq 1 ] && wait_for_ssh
   [ "$DRY_RUN" -eq 1 ] || say "next: ./kit node"
@@ -311,7 +317,9 @@ cmd_node() {
   local host
   host="$(node_host)"
   say "setting up the read node on $host"
-  node_ssh 'bash -s' <"$KIT_DIR/infra/node-setup.sh"
+  node_ssh 'mkdir -p /usr/local/lib/kit && cat >/usr/local/lib/kit/node-setup.sh' <"$KIT_DIR/infra/node-setup.sh"
+  node_ssh 'cat >/usr/local/lib/kit/snapshot-restore.sh' <"$KIT_DIR/infra/snapshot-restore.sh"
+  node_ssh 'bash /usr/local/lib/kit/node-setup.sh'
   [ "$wait" -eq 1 ] || { say "started. Check progress with ./kit status"; return 0; }
   say ""
   say "The node downloads a snapshot of the network (about 560 GB), loads it, then catches up"
@@ -342,6 +350,8 @@ node_progress() {
       elif [ "$s0" -ge 1000000 ]; then echo "shard 0 is $s0 blocks behind: feeds work, adding app keys fails. Its snapshot did not load; see \"Shard 0 did not load\" in the README"
       else echo "catching up: furthest shard is $max blocks behind"; fi
     else
+      if systemctl is-active --quiet kit-restore 2>/dev/null; then echo "loading snapshot: $(cat /var/lib/kit/restore.progress 2>/dev/null)"; exit 0; fi
+      if grep -qs "^failed" /var/lib/kit/restore.progress; then echo "snapshot load stopped: $(cat /var/lib/kit/restore.progress). Run ./kit node again to resume"; exit 0; fi
       c=$(docker ps -qf name=snapchain-snapchain || true)
       [ -n "$c" ] || { echo "node container is not running"; exit 0; }
       p=$(docker logs --tail 200 "$c" 2>&1 | sed "s/\x1b\[[0-9;]*m//g" | grep -oE "Progress: [0-9]+/[0-9]+ chunks \([0-9]+%\) \(ETA: [^)]*\)" | tail -1)
@@ -499,7 +509,7 @@ cmd_destroy() {
   provider="$(pick_provider "${KIT_PROVIDER:-}")"
   name="${KIT_NAME:-$(state_get NAME)}"
   name="${name:-kit-node}"
-  say "This deletes server $name, its 2 TB volume (all chain data) and its firewall on $provider."
+  say "This deletes server $name, its volume (all chain data) and its firewall on $provider."
   say "Your account, follows and casts are not affected; they live on the network, not on this server."
   if [ "$DRY_RUN" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ]; then
     local typed
