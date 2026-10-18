@@ -66,6 +66,22 @@
       </div>
     </section>
 
+    <section class="card" aria-labelledby="feed-h">
+      <div class="row wrap">
+        <h2 id="feed-h">Feed</h2>
+        <form id="view-form" class="inline">
+          <label for="view" class="sr-only">Show the feed of an FID or username</label>
+          <input id="view" placeholder="FID or username" inputmode="text" autocomplete="off">
+          <button type="submit">Show</button>
+        </form>
+      </div>
+      <p id="feed-title" class="muted"></p>
+      <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
+      <p class="muted small">Tap an app once to show only it, again to hide it, again to reset. Apps are read from each post's key, so tools that use the poster's own key appear as "own key".</p>
+      <ol id="feed" class="feed"></ol>
+      <button id="more" type="button" hidden>Load more</button>
+    </section>
+
     <section id="charter" class="card" aria-labelledby="charter-h">
       <h2 id="charter-h">Society</h2>
       <p class="muted small">A society is a signed charter file: its members, its rules for the feed, and a link to its code of conduct. Load one to see the feed through its lens. Leaving drops the lens; your keys, follows and posts stay yours.</p>
@@ -103,22 +119,6 @@
         </div>
         </div>
       </div>
-    </section>
-
-    <section class="card" aria-labelledby="feed-h">
-      <div class="row wrap">
-        <h2 id="feed-h">Feed</h2>
-        <form id="view-form" class="inline">
-          <label for="view" class="sr-only">Show the feed of an FID or username</label>
-          <input id="view" placeholder="FID or username" inputmode="text" autocomplete="off">
-          <button type="submit">Show</button>
-        </form>
-      </div>
-      <p id="feed-title" class="muted"></p>
-      <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
-      <p class="muted small">Tap an app once to show only it, again to hide it, again to reset. Apps are read from each post's key, so tools that use the poster's own key appear as "own key".</p>
-      <ol id="feed" class="feed"></ol>
-      <button id="more" type="button" hidden>Load more</button>
     </section>
 
     <section id="key" class="card" hidden aria-labelledby="key-h">

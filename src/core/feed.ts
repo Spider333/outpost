@@ -160,6 +160,7 @@ export class FeedBuilder {
   async appNames(items: FeedItem[]): Promise<Map<number, string>> {
     const fids = [...new Set(items.flatMap((i) => (i.app.kind === "app" ? [i.app.requestFid!] : [])))];
     const profiles = await mapLimit(fids, 8, (f) => this.profile(f).catch(() => ({ fid: f }) as Profile));
-    return new Map(profiles.map((p) => [p.fid, p.username ?? p.displayName ?? `fid:${p.fid}`]));
+    // Only apps with a name; callers fall back to showing the app's FID.
+    return new Map(profiles.flatMap((p) => (p.username || p.displayName ? [[p.fid, (p.username ?? p.displayName)!] as const] : [])));
   }
 }

@@ -128,6 +128,7 @@ test("following feed merges newest first, skips replies, labels apps and authors
   assert.deepEqual(byText["from app 9152"]!.embeds, ["https://example.org"]);
   const names = await feed.appNames(items);
   assert.equal(names.get(9152), "user9152");
+  assert.equal(names.has(777), true);
 });
 
 test("filter changes which casts show", async () => {
