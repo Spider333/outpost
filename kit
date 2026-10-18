@@ -163,6 +163,19 @@ do_server_ip() {
   plist doctl compute droplet list --format Name,PublicIPv4 --no-header | awk -v n="$1" '$1==n {print $2; exit}'
 }
 
+# DigitalOcean sometimes creates the droplet without attaching the volume named in --volumes
+# (seen 2026-10-18). Check, and attach it if needed. Safe to run again.
+do_ensure_attached() {
+  local name="$1" vol_id did
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+  did="$(plist doctl compute droplet list --format ID,Name --no-header | awk -v n="$name" '$2==n {print $1; exit}')"
+  [ -n "$vol_id" ] && [ -n "$did" ] || return 0
+  doctl compute volume get "$vol_id" --format DropletIDs --no-header | grep -qw "$did" && return 0
+  say "volume $name-data is not attached to $name; attaching it"
+  run doctl compute volume-action attach "$vol_id" "$did" --wait
+}
+
 provision_do() {
   local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4" disk="$5"
   require_cli doctl "See https://docs.digitalocean.com/reference/doctl/how-to/install/ then run: doctl auth init"
@@ -170,6 +183,7 @@ provision_do() {
   [ "$DRY_RUN" -eq 0 ] && ip="$(do_server_ip "$name")"
   if [ -n "$ip" ]; then
     say "droplet $name already exists at $ip"
+    do_ensure_attached "$name"
     state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
     return 0
   fi
@@ -206,6 +220,7 @@ provision_do() {
     --ssh-keys "$fp" --user-data-file "$ud" --volumes "$vol_id" --tag-name "$name" --wait
   rm -f "$ud"
   [ "$DRY_RUN" -eq 1 ] && return 0
+  do_ensure_attached "$name"
   ip="$(do_server_ip "$name")"
   [ -n "$ip" ] || die "droplet created but has no public IP yet; run ./kit provision again in a minute"
   state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
