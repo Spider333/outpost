@@ -1,0 +1,21 @@
+# Web client Society panel against our mainnet node (2026-10-18 ~11:20 UTC, headless Chromium, 400 px)
+# Values read from the page with document.querySelector after each action.
+
+open examples/network-states.charter.json
+  verdict: Signature OK, signed by 0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4. It names no issuer account.
+  rules:   channels: https://thenetworkstate.com
+  feed:    Society feed of "network-states channel (example)" through its lens: 100 of 100 casts shown
+
+Run census
+  Members 24 | Active 22 posted in the last 7 days | Casts per day 120.3 (842 casts)
+  Apps used: warpcast: 807, own key: 22, fireflyapp: 13
+  kit-client charter census, same file, right after: 24 members, 22 active, 842 casts (120.3 per day)
+
+Leave
+  lens and society view gone (feed title empty, panel hidden)
+
+open a copy with one member added (jq '.members += [3]')
+  verdict: Rejected (tampered.charter.json): the file was changed after it was signed (signature does not match its content)
+  details hidden, no lens applied
+
+Join not run: it would post follows, and there is no test account yet.
