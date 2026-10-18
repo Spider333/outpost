@@ -1,0 +1,2 @@
+$ ./outpost cli unfollow 1
+unfollow: 0x6411b12ecb7cfc51c1b0dd9937df00f6848cb274 (confirmed: your node returns it)

@@ -1,0 +1,11 @@
+$ ./outpost cli charter census examples/network-states.charter.json
+"network-states channel (example)"
+census 2026-10-11 to 2026-10-18 (7 days), from your node
+  members            24
+  active (posted)    23
+  casts              1071  (153 per day)
+  apps members posted from:
+     1023  warpcast (app fid 9152)
+       32  own key
+       16  fireflyapp (app fid 16823)
+computed in 0.5 s

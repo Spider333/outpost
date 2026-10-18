@@ -1,0 +1,14 @@
+$ ./outpost cli selftest
+PASS  KEY_ADD (gasless, scoped, 30-day TTL): node says valid=true, expected true
+PASS  CAST_ADD: node says valid=true, expected true
+PASS  CAST_REMOVE: node says valid=true, expected true
+PASS  LINK_ADD follow: node says valid=true, expected true
+PASS  LINK_REMOVE follow: node says valid=true, expected true
+PASS  REACTION_ADD like: node says valid=true, expected true
+PASS  REACTION_ADD recast: node says valid=true, expected true
+PASS  REACTION_REMOVE like: node says valid=true, expected true
+PASS  KEY_REMOVE (self-revoke): node says valid=true, expected true
+PASS  CAST_ADD with text changed after signing: node says valid=false, expected false
+PASS  KEY_ADD with TTL widened after signing: node says valid=false, expected false
+
+all 11 checks passed against http://127.0.0.1:13392

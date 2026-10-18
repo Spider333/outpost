@@ -1,0 +1,2 @@
+$ ./outpost cli recast 3355358 0x0fe046f163063a3200260f1fbec8338d871d2ef0
+recast: 0x06fcb40fa0fbd70a3caa344afd4704b7bd5a046f (confirmed: your node returns it)

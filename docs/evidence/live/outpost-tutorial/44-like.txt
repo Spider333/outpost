@@ -1,0 +1,2 @@
+$ ./outpost cli like 3355358 0x0fe046f163063a3200260f1fbec8338d871d2ef0
+like: 0x7a0cf348a93aa9c6e56955e3d7f776830c80b0d0 (confirmed: your node returns it)

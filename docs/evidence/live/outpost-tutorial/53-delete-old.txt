@@ -1,0 +1,2 @@
+$ ./outpost cli delete 0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+delete: 0x42a7e23dc32346d857dc1897df19529535426198 (confirmed: your node returns it)

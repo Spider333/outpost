@@ -1,0 +1,3 @@
+$ ./outpost status
+server: 142.93.168.228 (OUTPOST_HOST)
+node: synced: every shard is within 1 blocks of the tip

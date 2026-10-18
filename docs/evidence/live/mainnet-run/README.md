@@ -25,3 +25,5 @@ userdata: [{"t":"USER_DATA_TYPE_DISPLAY","v":""}]
 
 Cast 1 is kept for the tutorial. Every app key added in the run (four) is revoked.
 Before this was committed, every file here was checked for each word of the recovery phrase. None appear.
+
+Recorded before the rename to Outpost: `./kit` is now `./outpost` and `kit-client` is `./outpost cli`.

@@ -1,0 +1,2 @@
+$ ./outpost cli follow 1
+follow: 0x43e3c752147f247248d92577bdba8272ac2be313 (confirmed: your node returns it)

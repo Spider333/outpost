@@ -1,0 +1,2 @@
+$ ./outpost cli unlike 3355358 0x0fe046f163063a3200260f1fbec8338d871d2ef0
+unlike: 0xcb925cae62a540001e36d62a27f2660ed8fa052e (confirmed: your node returns it)

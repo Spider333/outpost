@@ -1,0 +1,31 @@
+$ ./outpost cli login
+
+  STOP. Read this before you paste a recovery phrase.
+
+  A recovery phrase is the custody key of an account. Whoever has it can
+  transfer the account, add or remove every app key, and change the username.
+  Pasting it into the wrong program is like running rm -rf / as root: there
+  is no undo.
+
+  - Use a TEST account only. Never your main account.
+  - Only paste it into software whose code you have read, or whose author
+    you trust.
+  - Prefer the web client's "sign with wallet" button. The phrase then never
+    leaves your wallet.
+
+  What this program does with it: derives the custody address in memory,
+  signs ONE authorization for a scoped, expiring app key, and then drops it.
+  It never writes the phrase to disk and never sends it over the network.
+  Only the app key is saved, to /home/david/.config/outpost/appkey.json (mode 600).
+
+Is this a test account, and do you accept the above? [y/N] y
+Recovery phrase (input hidden): 
+
+custody address  0x15020a39b36cF852CDBD1aC036DF1f45ea4ccafa
+FID              3355358
+storage units    1
+app key          can cast, react and follow; expires 30 days after last use
+Sign the app key authorization for this FID? [y/N] y
+
+app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde is live. Saved to /home/david/.config/outpost/appkey.json.
+Your recovery phrase was not saved anywhere. Revoke this key any time with: ./outpost cli uninstall

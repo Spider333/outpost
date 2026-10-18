@@ -1,0 +1,17 @@
+$ ./outpost node
+setting up the read node on 142.93.168.228
+[node-setup] data directory: /mnt/snap (1357 GB free)
+[node-setup] starting snapchain 0.14.3 (read node)
+ Container snapchain-statsd-1  Running
+ Container snapchain-snapchain-1  Running
+snapchain-snapchain-1 Up 4 hours
+snapchain-statsd-1 Up 19 hours (healthy)
+[node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.
+
+The node downloads a snapshot of the network (about 560 GB), loads it, then catches up
+on the blocks since. On our test server loading took about 7 hours and catching up
+about 6.5 more. The client works once loading is done; the newest casts appear as it
+catches up. You can press Ctrl-C at any time; the node keeps going.
+Check later with ./outpost status.
+22:50 synced: every shard is within 3 blocks of the tip
+next: ./outpost client

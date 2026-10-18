@@ -1,0 +1,14 @@
+$ ./outpost cli feed --fid 99 --limit 3
+2026-10-18 22:46  @catra.eth  via warpcast (app fid 9152)
+  @higherathletics proof  [1 embed]
+  9318:0xbe6ca325398da8036c64f40605447a4b965f4231
+2026-10-18 22:43  @trish  via own key
+  My cat just dragged 32 oz of perfectly cooked medium rare flank steak off a hot pan and into the bathroom. Any suggestions for dinner? 162g of protein gone 😭
+  4877:0x00eb1eece902ca6cf186c0aedb4bce2dc5c829d6
+2026-10-18 22:39  @pichi  via warpcast (app fid 9152)
+  As always, @kenjiquest crushed this one as well. I will never tire of this use of AI as a creative outlet.
+  234616:0xf873c07770c4758afd0e0ec9da5a7c876c602586
+
+3 casts in 4.51 s from http://127.0.0.1:13392
+    2  via warpcast (app fid 9152)
+    1  via own key

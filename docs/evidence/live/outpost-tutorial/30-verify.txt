@@ -1,0 +1,2 @@
+$ ./outpost cli charter verify examples/network-states.charter.json
+OK: "network-states channel (example)", 24 members, signed by 0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4. It names no issuer FID, so only the address vouches for it

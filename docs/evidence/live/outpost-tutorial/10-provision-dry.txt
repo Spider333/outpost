@@ -1,0 +1,28 @@
+$ env -u OUTPOST_HOST ./outpost provision --provider do --dry-run
+warning: doctl is not installed (dry run continues)
+DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 2 TiB volume.
+Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list prices; check yours).
++ doctl compute ssh-key import outpost-node-key --public-key-file /home/david/.ssh/id_ed25519_fcnode.pub
++ doctl compute volume create outpost-node-data --region fra1 --size 2048GiB --fs-type ext4 --desc outpost\ snapchain\ data
++ doctl compute tag create outpost-node
++ doctl compute firewall create --name outpost-node-fw --tag-names outpost-node --inbound-rules protocol:tcp\,ports:22\,address:0.0.0.0/0\,address:::/0\ protocol:udp\,ports:3382\,address:0.0.0.0/0\,address:::/0 --outbound-rules protocol:tcp\,ports:all\,address:0.0.0.0/0\,address:::/0\ protocol:udp\,ports:all\,address:0.0.0.0/0\,address:::/0\ protocol:icmp\,address:0.0.0.0/0\,address:::/0
+--- user data that would be sent (/tmp/tmp.6oiXwl8gsl):
+#cloud-config
+# Minimal first-boot setup for an Outpost node server. `./outpost provision` fills in the SSH key.
+# The node itself is installed by `./outpost node` (infra/node-setup.sh), so the same steps
+# also work on a server you rented by hand.
+ssh_pwauth: false
+disable_root: false
+ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqtzle18zAV3OeHJhhoLEnV30pY2HVTYSJueSArNxdG devbox-fcprize
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - jq
+  - curl
+runcmd:
+  - [systemctl, enable, --now, docker]
+  - [sh, -c, "echo outpost-cloud-init-done > /var/lib/outpost-ready"]
+---
++ doctl compute droplet create outpost-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:a4:3c:12:ca:0b:e4:bb:d7:65:b8:21:30:5e:0a --user-data-file /tmp/tmp.6oiXwl8gsl --volumes \<volume-id\> --tag-name outpost-node --wait

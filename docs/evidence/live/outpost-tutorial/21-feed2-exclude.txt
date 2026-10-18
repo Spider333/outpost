@@ -1,0 +1,11 @@
+$ ./outpost cli feed --fid 2 --limit 2 --exclude 9152
+2026-10-18 22:06  @baseddesigner.eth  via puffinapp (app fid 3355363)
+  testing
+  196957:0x1fcb5aedc4a0a8ea2372b7f8a6e021400f67b29f
+2026-10-18 21:16  @b05  via own key
+  Amazon Discounts New Mac Mini by Up to $149, Mac Studio by $200 https://www.macrumors.com/2026/10/18/new-mac-mini-149/ via /feedme app by @b05
+  196142:0x018d27bf1bff4e8e8cf6386b6c7e64cfd4c1bc59
+
+2 casts in 4.04 s from http://127.0.0.1:13392
+    1  via puffinapp (app fid 3355363)
+    1  via own key

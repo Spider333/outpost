@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>kit: your own node and client for Farcaster</title>
+<title>Outpost: your own node and client for Farcaster</title>
 <meta name="description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
 <style>
 :root {
@@ -44,25 +44,25 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <body>
 <main>
 
-<h1>kit: your own node and client for Farcaster</h1>
+<h1>Outpost: your own node and client for Farcaster</h1>
 <p class="lede">Three commands take you from nothing to a Snapchain read node you control and a client that reads from it and posts through it. No API keys from anyone.</p>
 
 <h2 id="quickstart">Quickstart</h2>
 <p>You need a DigitalOcean or Hetzner account with its command line tool logged in, Node.js 20 or newer, and a <strong>test</strong> account for Farcaster that already has storage.</p>
-<pre class="cmd">git clone https://github.com/Spider333/fc-prize kit
-cd kit
+<pre class="cmd">git clone https://github.com/Spider333/outpost
+cd outpost
 # rent a server with a 2 TB disk, billed by the hour
-./kit provision
+./outpost provision
 # start a read node; the first sync took about 13 hours on our test server
-./kit node
+./outpost node
 # then open http://127.0.0.1:8381
-./kit client</pre>
+./outpost client</pre>
 <p>When you are done:</p>
 <pre class="cmd"># revoke the app key; no recovery phrase needed
-./kit uninstall
+./outpost uninstall
 # delete the server and stop paying
-./kit destroy</pre>
-<p class="muted">Every command is safe to run twice. <code>./kit provision --dry-run</code> prints the exact provider commands without running them.</p>
+./outpost destroy</pre>
+<p class="muted">Every command is safe to run twice. <code>./outpost provision --dry-run</code> prints the exact provider commands without running them.</p>
 
 <section class="danger" aria-labelledby="warn-h">
   <h2 id="warn-h">Before you paste a recovery phrase</h2>
@@ -71,9 +71,9 @@ cd kit
     <li>Use a <strong>test account</strong>. Never your main account.</li>
     <li>Only paste a phrase into software whose code you have read, or whose author you trust. That includes this one.</li>
     <li>Prefer the wallet button. With it, the phrase never leaves your wallet.</li>
-    <li>Revoke the app key when you are done: <code>./kit uninstall</code>, or "Revoke this key" in the client.</li>
+    <li>Revoke the app key when you are done: <code>./outpost uninstall</code>, or "Revoke this key" in the client.</li>
   </ul>
-  <p>What kit does with a phrase: it derives the custody address in memory, signs one authorization for an app key that can only cast, react and follow and that expires 30 days after last use, then drops it. It never writes the phrase to disk and never sends it over the network. You can check this in <code>src/core/account.ts</code> and <code>src/cli/main.ts</code>.</p>
+  <p>What Outpost does with a phrase: it derives the custody address in memory, signs one authorization for an app key that can only cast, react and follow and that expires 30 days after last use, then drops it. It never writes the phrase to disk and never sends it over the network. You can check this in <code>src/core/account.ts</code> and <code>src/cli/main.ts</code>.</p>
 </section>
 
 <nav aria-label="Tutorial">
@@ -91,87 +91,100 @@ cd kit
 </nav>
 
 <h3 id="t-provision">1. Rent a server</h3>
-<p>A node keeps a full copy of the network's data. Today that is a snapshot of about 400 GB compressed, and the node needs about 1.5 TB of free disk while it unpacks it, so kit asks for a 2 TB volume. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
-<pre class="cmd">./kit provision --provider do
-# or: ./kit provision --provider hetzner</pre>
+<p>A node keeps a full copy of the network's data. Today that is a snapshot of about 400 GB compressed, and the node needs about 1.5 TB of free disk while it unpacks it, so Outpost asks for a 2 TB volume. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<pre class="cmd">./outpost provision --provider do
+# or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
-<pre class="out">DigitalOcean: droplet kit-node (s-8vcpu-32gb-amd) in fra1 with a 2 TiB volume.
+<pre class="out">DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 2 TiB volume.
 Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list prices; check yours).
-+ doctl compute ssh-key import kit-node-key --public-key-file /home/you/.ssh/id_ed25519.pub
-+ doctl compute volume create kit-node-data --region fra1 --size 2048GiB --fs-type ext4 --desc kit\ snapchain\ data
-+ doctl compute firewall create --name kit-node-fw --tag-names kit-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
-+ doctl compute droplet create kit-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.zxbLVebFF6 --volumes &lt;volume-id&gt; --tag-name kit-node --wait</pre>
++ doctl compute ssh-key import outpost-node-key --public-key-file /home/you/.ssh/id_ed25519.pub
++ doctl compute volume create outpost-node-data --region fra1 --size 2048GiB --fs-type ext4 --desc outpost\ snapchain\ data
++ doctl compute tag create outpost-node
++ doctl compute firewall create --name outpost-node-fw --tag-names outpost-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
++ doctl compute droplet create outpost-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.6oiXwl8gsl --volumes \&lt;volume-id\&gt; --tag-name outpost-node --wait</pre>
 <p>The firewall opens two ports: 22 for SSH and 3382/udp for gossip, which is how your node talks to the rest of the network. The node's API ports stay closed. Your client reaches them through an SSH tunnel. This matters: by default, a node with an open API port lets anyone on the internet send messages through it.</p>
-<p>Already have a server? Skip this step and run <code>KIT_HOST=&lt;ip&gt; ./kit node</code>. It needs Ubuntu 24.04, root SSH and the disk above.</p>
+<p>Already have a server? Skip this step and run <code>OUTPOST_HOST=&lt;ip&gt; ./outpost node</code>. It needs Ubuntu 24.04, root SSH and the disk above.</p>
 
 <h3 id="t-node">2. Start a read node</h3>
-<pre class="cmd">./kit node</pre>
+<pre class="cmd">./outpost node</pre>
 <pre class="out">setting up the read node on 142.93.168.228
-[node-setup] data directory: /mnt/snap (1807 GB free)
+[node-setup] data directory: /mnt/snap (1357 GB free)
 [node-setup] starting snapchain 0.14.3 (read node)
  Container snapchain-statsd-1  Running
  Container snapchain-snapchain-1  Running
-[node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.</pre>
-<p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. kit does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
-<p>The first sync downloads the snapshot (about 560 GB), unpacks it, then catches up on the blocks since. On our test server (DigitalOcean, 8 vCPU, 32 GB RAM, 2 TB volume) download and unpacking took 6 hours 40 minutes, and catching up took another 6 hours 27 minutes: about 13 hours in all. The node answers reads as soon as unpacking is done; the newest casts appear as it catches up. <code>./kit status</code> shows where it is:</p>
+snapchain-snapchain-1 Up 4 hours
+snapchain-statsd-1 Up 19 hours (healthy)
+[node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.
+
+The node downloads a snapshot of the network (about 560 GB), loads it, then catches up
+on the blocks since. On our test server loading took about 7 hours and catching up
+about 6.5 more. The client works once loading is done; the newest casts appear as it
+catches up. You can press Ctrl-C at any time; the node keeps going.
+Check later with ./outpost status.
+22:50 synced: every shard is within 3 blocks of the tip
+next: ./outpost client</pre>
+<p class="muted">This is a second run on our already synced node, so it found the node running and returned at once. On a new server the last lines show download and loading progress until the node is synced.</p>
+<p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
+<p>The first sync downloads the snapshot (about 560 GB), unpacks it, then catches up on the blocks since. On our test server (DigitalOcean, 8 vCPU, 32 GB RAM, 2 TB volume) download and unpacking took 6 hours 40 minutes, and catching up took another 6 hours 27 minutes: about 13 hours in all. The node answers reads as soon as unpacking is done; the newest casts appear as it catches up. <code>./outpost status</code> shows where it is:</p>
 <pre class="out">node: downloading snapshot: Progress: 1312/5689 chunks (23%) (ETA: 2h35m)</pre>
 <p>Once it has caught up:</p>
-<pre class="cmd">./kit status</pre>
-<pre class="out">server: 142.93.168.228 (KIT_HOST)
-node: synced: every data shard is within 3 blocks of the tip</pre>
-<p class="muted">Our node was set up before <code>./kit provision</code> existed, so we pointed kit at it with <code>KIT_HOST</code>. A server made by <code>./kit provision</code> shows its provider and name on the first line instead.</p>
+<pre class="cmd">./outpost status</pre>
+<pre class="out">server: 142.93.168.228 (OUTPOST_HOST)
+node: synced: every shard is within 1 blocks of the tip</pre>
+<p class="muted">Our node was set up before <code>./outpost provision</code> existed, so we pointed Outpost at it with <code>OUTPOST_HOST</code>. A server made by <code>./outpost provision</code> shows its provider and name on the first line instead.</p>
 
 <div class="concept">
 <p><strong>Read nodes and validators.</strong> Snapchain has two roles, run by the same program. Validators propose and vote on blocks; there is a fixed set of them. A read node, which is what you just started, follows the chain, keeps the full state and answers queries. It never votes. Anyone can run one, and it needs no key or paid service: account and key events from the Optimism chain arrive inside the blocks validators produce.</p>
-<p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so kit reads every message back from your node before it says "confirmed".</p>
+<p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so Outpost reads every message back from your node before it says "confirmed".</p>
 </div>
 
 <h3 id="t-login">3. Connect an account</h3>
-<pre class="cmd">./kit client</pre>
+<pre class="cmd">./outpost client</pre>
 <pre class="out">your node is reachable through an SSH tunnel on 127.0.0.1:13394 (no port opened on the server)
 open http://127.0.0.1:8381 in your browser. Ctrl-C stops the client.
 client: http://127.0.0.1:8381
 node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)</pre>
-<p class="muted">We ran it as <code>KIT_TUNNEL_PORT=13394 ./kit client</code>, because the default local port, 13381, was already in use on our machine. Yours will say 13381 unless you change it.</p>
-<p>On a phone, run <code>./kit client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
-<pre class="out pending" data-pending="phone">PENDING: ./kit client --phone output (needs a provider token to open 443).</pre>
-<p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./kit cli login</code>.</p>
+<p class="muted">We ran it as <code>OUTPOST_TUNNEL_PORT=13394 ./outpost client</code>, because the default local port, 13381, was already in use on our machine. Yours will say 13381 unless you change it.</p>
+<p>On a phone, run <code>./outpost client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
+<pre class="out pending" data-pending="phone">PENDING: ./outpost client --phone output (needs a provider token to open 443).</pre>
+<p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./outpost cli login</code>.</p>
 
 <div class="concept">
 <p><strong>FID.</strong> Your account is a number, the Farcaster ID, registered on the Optimism chain. Usernames point to it; posts are signed for it.</p>
-<p><strong>Custody.</strong> One Ethereum address owns each FID: the custody address. Your recovery phrase is the private key for that address, at the standard path <code>m/44'/60'/0'/0/0</code>. kit derives the address, asks your node which FID belongs to it, and checks that the address is still that FID's custody before it signs anything. No Optimism RPC is needed for this; your node has the registry events.</p>
-<p><strong>Storage.</strong> The network only keeps messages for accounts that rent storage. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; when you go over, the oldest are pruned. Storage is bought onchain. kit does not buy it; it stops if the account has none.</p>
+<p><strong>Custody.</strong> One Ethereum address owns each FID: the custody address. Your recovery phrase is the private key for that address, at the standard path <code>m/44'/60'/0'/0/0</code>. Outpost derives the address, asks your node which FID belongs to it, and checks that the address is still that FID's custody before it signs anything. No Optimism RPC is needed for this; your node has the registry events.</p>
+<p><strong>Storage.</strong> The network only keeps messages for accounts that rent storage. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; when you go over, the oldest are pruned. Storage is bought onchain. Outpost does not buy it; it stops if the account has none.</p>
 </div>
 
-<p class="muted">The outputs in this step and the next come from a run against a local Snapchain test network (a devnet) with throwaway accounts, because they were recorded before a mainnet test account was ready. <span class="pending" data-pending="mainnet-swap">PENDING: replace with the mainnet run.</span></p>
+<p class="muted">The outputs in this step and the next are from mainnet, with our test account (FID 3355358), on 18 October 2026. The warning printed before the first question is left out here, and the home path is shortened.</p>
+<pre class="cmd">./outpost cli login</pre>
 <pre class="out">Is this a test account, and do you accept the above? [y/N] y
 Recovery phrase (input hidden):
 
-custody address  0x60f5Ea6C58F61871133C04AD8b9aabC729F8AFbd
-FID              422267
+custody address  0x15020a39b36cF852CDBD1aC036DF1f45ea4ccafa
+FID              3355358
 storage units    1
 app key          can cast, react and follow; expires 30 days after last use
 Sign the app key authorization for this FID? [y/N] y
 
-app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 is live. Saved to ~/.config/kit/appkey.json.
-Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall</pre>
-<pre class="cmd">./kit cli whoami</pre>
-<pre class="out">FID 422267, app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4
+app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde is live. Saved to ~/.config/outpost/appkey.json.
+Your recovery phrase was not saved anywhere. Revoke this key any time with: ./outpost cli uninstall</pre>
+<pre class="cmd">./outpost cli whoami</pre>
+<pre class="out">FID 3355358, app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde
 scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
-expires: 2026-11-17T04:53:11.000Z unless used before then</pre>
+expires: 2026-11-17T22:50:31.000Z unless used before then</pre>
 
 <div class="concept">
 <p><strong>App keys.</strong> You do not sign every post with the custody key. Instead the custody key authorizes an <em>app key</em>, an Ed25519 key the client holds. Since May 2026 this is a plain message to the network, <code>KEY_ADD</code>, with no Optimism transaction and no gas. Each key has:</p>
 <ul>
-  <li><strong>scopes</strong>: the message types it may sign. kit asks for casts, reactions and follows only, so it cannot change your profile or verified addresses;</li>
+  <li><strong>scopes</strong>: the message types it may sign. Outpost asks for casts, reactions and follows only, so it cannot change your profile or verified addresses;</li>
   <li><strong>a TTL</strong>: it expires after 30 days without use (the maximum is 90);</li>
   <li><strong>a requesting app</strong>: the FID of the app that asked for it, signed by that app's custody key. That is how anyone can tell which app posted a cast.</li>
 </ul>
 <p>Two details trip people up. The signature uses its own EIP-712 domain, <code>Farcaster KeyAdd</code> with chain ID 1, not the onchain key gateway's domain, so the older helper functions produce signatures the network rejects. And the deadline is in Farcaster time, seconds since 1 January 2021, not Unix time.</p>
 </div>
 
-<p>Before any account is involved, you can check the signing code against your own node. This builds every message type kit uses with throwaway keys, asks the node to validate each one, and checks that two tampered messages are rejected. It sends nothing.</p>
-<pre class="cmd">./kit cli selftest</pre>
+<p>Before any account is involved, you can check the signing code against your own node. This builds every message type Outpost uses with throwaway keys, asks the node to validate each one, and checks that two tampered messages are rejected. It sends nothing.</p>
+<pre class="cmd">./outpost cli selftest</pre>
 <pre class="out">PASS  KEY_ADD (gasless, scoped, 30-day TTL): node says valid=true, expected true
 PASS  CAST_ADD: node says valid=true, expected true
 PASS  CAST_REMOVE: node says valid=true, expected true
@@ -184,62 +197,66 @@ PASS  KEY_REMOVE (self-revoke): node says valid=true, expected true
 PASS  CAST_ADD with text changed after signing: node says valid=false, expected false
 PASS  KEY_ADD with TTL widened after signing: node says valid=false, expected false
 
-all 11 checks passed against http://127.0.0.1:13381</pre>
-<p class="muted">This run was against a local Snapchain 0.14.3 container. The node's validator checks signatures and message rules, not account state, so it cannot tell you whether a custody signature matches a real account. The unit tests (<code>npm test</code>) cover that with known test vectors.</p>
+all 11 checks passed against http://127.0.0.1:13392</pre>
+<p class="muted">This run was against our mainnet node, through the tunnel on port 13392. The node's validator checks signatures and message rules, not account state, so it cannot tell you whether a custody signature matches a real account. The unit tests (<code>npm test</code>) cover that with known test vectors.</p>
 
 <h3 id="t-post">4. Read and post</h3>
 <p>Snapchain has no home timeline endpoint. A following feed is the list of accounts you follow (<code>/v1/linksByFid</code>), the latest casts of each (<code>/v1/castsByFid</code>), merged by time. That is one request per account you follow, which is fine on your own node.</p>
-<pre class="cmd">./kit cli feed --fid 37 --limit 3</pre>
-<pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
-  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
-  5650:0x9252885364ac7db01ac427e97dd246b7af619949
-2026-10-17 02:30  @dwr  via warpcast (app fid 9152)
-    [1 embed]
-  3:0x0256ae66308d546514fa666cda44052abbfea066
-2026-10-17 02:23  @dwr  via warpcast (app fid 9152)
-  Neat
-  3:0xec0c8a227d7f34ad3e2243ae098b46459b7d1847
+<pre class="cmd">./outpost cli feed --fid 99 --limit 3</pre>
+<pre class="out">2026-10-18 22:46  @catra.eth  via warpcast (app fid 9152)
+  @higherathletics proof  [1 embed]
+  9318:0xbe6ca325398da8036c64f40605447a4b965f4231
+2026-10-18 22:43  @trish  via own key
+  My cat just dragged 32 oz of perfectly cooked medium rare flank steak off a hot pan and into the bathroom. Any suggestions for dinner? 162g of protein gone 😭
+  4877:0x00eb1eece902ca6cf186c0aedb4bce2dc5c829d6
+2026-10-18 22:39  @pichi  via warpcast (app fid 9152)
+  As always, @kenjiquest crushed this one as well. I will never tire of this use of AI as a creative outlet.
+  234616:0xf873c07770c4758afd0e0ec9da5a7c876c602586
 
-3 casts in 0.28 s from http://127.0.0.1:13392
+3 casts in 4.51 s from http://127.0.0.1:13392
     2  via warpcast (app fid 9152)
-    1  via fireflyapp (app fid 16823)</pre>
-<p class="muted">Run on 2026-10-18 against our mainnet node while it was still catching up, so the newest day was partly missing.</p>
-<pre class="cmd">./kit cli cast "hello from the kit CLI on a devnet"
-./kit cli follow 422268
-./kit cli like 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79
-./kit cli recast 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79</pre>
-<pre class="out">cast: 0x77759e8047fd3f44c3754703f7ac5e28072fae79 (confirmed: your node returns it)
-follow: 0x6fbfe1236ddad27cfe6acc4dea8cd19456124ca8 (confirmed: your node returns it)
-like: 0x63511037a5d405e939a04fff8283cc793a2cb7f5 (confirmed: your node returns it)
-recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns it)</pre>
-<p>Each line is a message hash. "Confirmed" means kit read that exact message back from your node.</p>
+    1  via own key</pre>
+<p class="muted">This is the following feed of FID 99, read from our mainnet node on 18 October 2026. Any account's following feed is public, so you can read one without logging in.</p>
+<pre class="cmd">./outpost cli cast "Outpost test cast 1: testing a self-hosted client"
+./outpost cli follow 1
+./outpost cli like 3355358 0x0fe046f163063a3200260f1fbec8338d871d2ef0
+./outpost cli recast 3355358 0x0fe046f163063a3200260f1fbec8338d871d2ef0</pre>
+<pre class="out">cast: 0x0fe046f163063a3200260f1fbec8338d871d2ef0 (confirmed: your node returns it)
+follow: 0x43e3c752147f247248d92577bdba8272ac2be313 (confirmed: your node returns it)
+like: 0x7a0cf348a93aa9c6e56955e3d7f776830c80b0d0 (confirmed: your node returns it)
+recast: 0x06fcb40fa0fbd70a3caa344afd4704b7bd5a046f (confirmed: your node returns it)</pre>
+<p>Each line is a message hash. "Confirmed" means Outpost read that exact message back from your node. We liked and recast our own test cast, and undid all three afterwards with <code>unlike</code>, <code>unrecast</code> and <code>unfollow</code>.</p>
 
 <div class="concept">
 <p><strong>Messages.</strong> Every action is a message: a small protobuf with your FID, a timestamp, the action, a BLAKE3 hash of those bytes and an Ed25519 signature from the app key. A cast, a follow, a like and a recast are four message types. Nodes check the signature and that the key is allowed to sign that type, then store the message. Deleting a cast is another message that removes it.</p>
 </div>
 
 <h3 id="t-apps">5. Filter by app</h3>
-<p>A cast does not say which app posted it. But it is signed by an app key, and every app key records the FID of the app that requested it. kit looks this up on your node for every author (<code>/v1/signersByFid</code>) and labels each cast. In the client, tap an app to show only its casts, again to hide them, again to reset. In the command line:</p>
-<pre class="cmd">./kit cli feed --fid 37 --limit 1 --exclude 9152</pre>
-<pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
-  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
-  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+<p>A cast does not say which app posted it. But it is signed by an app key, and every app key records the FID of the app that requested it. Outpost looks this up on your node for every author (<code>/v1/signersByFid</code>) and labels each cast. In the client, tap an app to show only its casts, again to hide them, again to reset. In the command line:</p>
+<pre class="cmd">./outpost cli feed --fid 2 --limit 2 --exclude 9152</pre>
+<pre class="out">2026-10-18 22:06  @baseddesigner.eth  via puffinapp (app fid 3355363)
+  testing
+  196957:0x1fcb5aedc4a0a8ea2372b7f8a6e021400f67b29f
+2026-10-18 21:16  @b05  via own key
+  Amazon Discounts New Mac Mini by Up to $149, Mac Studio by $200 https://www.macrumors.com/2026/10/18/new-mac-mini-149/ via /feedme app by @b05
+  196142:0x018d27bf1bff4e8e8cf6386b6c7e64cfd4c1bc59
 
-1 cast in 0.38 s from http://127.0.0.1:13392
-    1  via fireflyapp (app fid 16823)</pre>
-<pre class="cmd">./kit cli feed --fid 37 --limit 2 --include 16823</pre>
+2 casts in 4.04 s from http://127.0.0.1:13392
+    1  via puffinapp (app fid 3355363)
+    1  via own key</pre>
+<pre class="cmd">./outpost cli feed --fid 37 --limit 2 --include 16823</pre>
 <pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
   Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
   5650:0x9252885364ac7db01ac427e97dd246b7af619949
 2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
-  Big congratulations to the airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to security. To   [1 embed]
+  Big congratulations to the @zksync airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to secur  [1 embed]
   5650:0x2939942b565704c087d33fd818fac745551776e6
 
-2 casts in 0.45 s from http://127.0.0.1:13392
+2 casts in 0.58 s from http://127.0.0.1:13392
     2  via fireflyapp (app fid 16823)</pre>
 <p>What this can and cannot tell you:</p>
 <ul>
-  <li>A key a user signed for themselves carries their own FID as the app. Tools that do this, including kit by default, all look the same: "own key".</li>
+  <li>A key a user signed for themselves carries their own FID as the app. Tools that do this, including Outpost by default, all look the same: "own key".</li>
   <li>A service that signs for many apps under one FID shows up as one app.</li>
   <li>An app key copied into another program cannot be told apart.</li>
   <li>The requesting app cannot be faked: the network checks the app's custody signature. But one developer can register several FIDs.</li>
@@ -255,47 +272,49 @@ recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns
 <p>Casts, reactions, follows, profile fields, plain usernames, normal wallet verifications and app keys all work. To get the three back, add <code>l1_rpc_url</code> with any Ethereum mainnet RPC to the node's config.</p>
 
 <h3 id="t-society">7. Societies: a charter file</h3>
-<p>Filtering by app is one rule. A society is a set of them, written down and signed: who the members are, which apps' posts count, which channels and keywords, and a link to the society's code of conduct. kit calls this a charter. It is one JSON file.</p>
+<p>Filtering by app is one rule. A society is a set of them, written down and signed: who the members are, which apps' posts count, which channels and keywords, and a link to the society's code of conduct. Outpost calls this a charter. It is one JSON file.</p>
 <p>The repository has an example built from public data: the 24 accounts that posted most in the /network-states channel in the last 90 days. It is unofficial and names no issuer, because nobody from that channel signed it.</p>
-<pre class="cmd">./kit cli charter verify examples/network-states.charter.json</pre>
+<pre class="cmd">./outpost cli charter verify examples/network-states.charter.json</pre>
 <pre class="out">OK: "network-states channel (example)", 24 members, signed by 0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4. It names no issuer FID, so only the address vouches for it</pre>
 <p>The signature covers every field. Change one member and the file is rejected:</p>
 <pre class="cmd">jq '.members += [3]' examples/network-states.charter.json &gt; tampered.charter.json
-./kit cli charter verify tampered.charter.json</pre>
+./outpost cli charter verify tampered.charter.json</pre>
 <pre class="out">REJECTED: the file was changed after it was signed (signature does not match its content)</pre>
-<p>If the charter names an issuer FID, kit also checks on your node that the signer is that account's custody address. Nobody else can sign for the society.</p>
+<p>If the charter names an issuer FID, Outpost also checks on your node that the signer is that account's custody address. Nobody else can sign for the society.</p>
 <p>In the client, load a charter in the Society panel. The feed then shows the society's members and channels, through its rules. <strong>Join</strong> follows its members with your app key. <strong>Leave</strong> drops the lens. Your keys, follows and posts do not change, because they were never the society's to begin with. Leaving is one tap.</p>
 <p>The census counts members, members who posted in the last 7 days, casts per day, and the apps members post from. It reads only your own node, so anyone with a node and the same file gets the same numbers.</p>
-<pre class="cmd">./kit cli charter census examples/network-states.charter.json</pre>
+<pre class="cmd">./outpost cli charter census examples/network-states.charter.json</pre>
 <pre class="out">"network-states channel (example)"
 census 2026-10-11 to 2026-10-18 (7 days), from your node
   members            24
   active (posted)    23
-  casts              985  (140.7 per day)
+  casts              1071  (153 per day)
   apps members posted from:
-      940  warpcast (app fid 9152)
-       30  own key
-       15  fireflyapp (app fid 16823)
-computed in 0.6 s</pre>
-<p>To check it, <code>scripts/manual-census.sh</code> counts the same thing with only <code>curl</code> and <code>jq</code>, none of kit's code. Run a few seconds later, it agreed:</p>
+     1023  warpcast (app fid 9152)
+       32  own key
+       16  fireflyapp (app fid 16823)
+computed in 0.5 s</pre>
+<p>To check it, <code>scripts/manual-census.sh</code> counts the same thing with only <code>curl</code> and <code>jq</code>, none of Outpost's code. Run a few seconds later, it agreed:</p>
 <pre class="cmd">scripts/manual-census.sh examples/network-states.charter.json 7</pre>
 <pre class="out">members 24
 active 23
-casts 985
-casts_per_day 140.7</pre>
+casts 1071
+casts_per_day 153.0</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
 
 <h3 id="t-cleanup">8. Clean up</h3>
-<pre class="cmd">./kit uninstall</pre>
-<pre class="out">revoked app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 for FID 422267. No recovery phrase was needed.
-deleted ~/.config/kit/appkey.json</pre>
-<p>Casts the key signed stay on the network after it is revoked. (Checked on Snapchain 0.14.3: the cast above is still there after the key is gone.) Delete them first with <code>./kit cli delete &lt;hash&gt;</code> if you want them gone.</p>
+<pre class="cmd">./outpost uninstall</pre>
+<pre class="out">revoking the CLI's app key with the key itself (no recovery phrase needed)
+revoked app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde for FID 3355358. No recovery phrase was needed.
+deleted ~/.config/outpost/appkey.json
+keys added in the web client are revoked from its 'Your app key' panel.</pre>
+<p>Casts the key signed stay on the network after it is revoked. (Checked on mainnet with Snapchain 0.14.3: our test cast is still there after its key is revoked.) Delete them first with <code>./outpost cli delete &lt;hash&gt;</code> if you want them gone.</p>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
-<pre class="cmd">./kit destroy</pre>
+<pre class="cmd">./outpost destroy</pre>
 <p>This deletes the server, the volume and the firewall after you type the server's name. Your account, follows and casts are not affected; they live on the network.</p>
 
 <h2 id="about">About this project</h2>
-<p>Code: <a href="https://github.com/Spider333/fc-prize">github.com/Spider333/fc-prize</a>, MIT licence. Snapchain is GPL-3.0; kit only runs its official Docker image and contains none of its code.</p>
+<p>Code: <a href="https://github.com/Spider333/outpost">github.com/Spider333/outpost</a>, MIT licence. Snapchain is GPL-3.0; Outpost only runs its official Docker image and contains none of its code.</p>
 <p>How it was made: an AI coding assistant helped write the code and this page. People ran it and tested it: <span class="pending" data-pending="testers">PENDING: names of the human testers</span>. Every output on this page comes from a real run; where it was run somewhere other than a fresh node, the page says so.</p>
 
 <footer>

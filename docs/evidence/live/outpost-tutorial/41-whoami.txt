@@ -1,0 +1,4 @@
+$ ./outpost cli whoami
+FID 3355358, app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde
+scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
+expires: 2026-11-17T22:50:31.000Z unless used before then

@@ -1,0 +1,5 @@
+$ ./outpost uninstall
+revoking the CLI's app key with the key itself (no recovery phrase needed)
+revoked app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde for FID 3355358. No recovery phrase was needed.
+deleted /home/david/.config/outpost/appkey.json
+keys added in the web client are revoked from its 'Your app key' panel.

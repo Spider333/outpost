@@ -1,0 +1,5 @@
+$ env OUTPOST_NODE_URL=http://127.0.0.1:13391 scripts/manual-census.sh examples/network-states.charter.json 7
+members 24
+active 23
+casts 1071
+casts_per_day 153.0

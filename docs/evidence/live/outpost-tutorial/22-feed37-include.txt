@@ -1,0 +1,10 @@
+$ ./outpost cli feed --fid 37 --limit 2 --include 16823
+2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
+  Big congratulations to the @zksync airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to secur  [1 embed]
+  5650:0x2939942b565704c087d33fd818fac745551776e6
+
+2 casts in 0.58 s from http://127.0.0.1:13392
+    2  via fireflyapp (app fid 16823)

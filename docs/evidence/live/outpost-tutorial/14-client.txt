@@ -1,0 +1,6 @@
+$ ./outpost client
+your node is reachable through an SSH tunnel on 127.0.0.1:13394 (no port opened on the server)
+open http://127.0.0.1:8381 in your browser. Ctrl-C stops the client.
+client: http://127.0.0.1:8381
+node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)
+Terminated

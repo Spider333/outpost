@@ -1,0 +1,2 @@
+$ ./outpost cli cast Outpost test cast 1: testing a self-hosted client
+cast: 0x0fe046f163063a3200260f1fbec8338d871d2ef0 (confirmed: your node returns it)
