@@ -1,0 +1,12 @@
+# scripts/e2e-devnet.ts against a local 4-validator snapchain 0.14.3 devnet (published image), 2026-10-18T04:46:49Z
+devnet http://127.0.0.1:23381  user 755822  app 755823  friend 755824
+ 1. registered FIDs; resolveAccount(custody) -> FID 755822, 1 storage unit(s)
+ 2. gasless KEY_ADD merged: source SIGNER_SOURCE_OFFCHAIN, requestFid 755823, scopes CAST_ADD,CAST_REMOVE,REACTION_ADD,REACTION_REMOVE,LINK_ADD,LINK_REMOVE, ttl 2592000s, nonce 0 -> 1
+ 3. cast 0xbc4b299ddce9d7f15efffd443acf944e9ae22f12 merged (read back by hash)
+ 4. follow 755824 merged
+ 5. like and recast of 0xb67cb1effc992139b2933508b7e80d2ab48a38cc merged
+ 6. feed: 2 casts in 38 ms; include 755823 -> 1, exclude 755823 -> 1
+ 7. charter verified (issuer custody), tampered copy rejected, census 2 members / 2 active / 2 casts = hand count
+ 8. self-revoke merged; key removed; posting now fails ("Failed to submit message: status: InvalidArgument, message: "bad_reque"); earlier cast still present: true
+
+all 8 steps passed in 6.6 s

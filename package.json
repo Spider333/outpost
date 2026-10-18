@@ -12,6 +12,7 @@
     "viem": "2.57.1"
   },
   "devDependencies": {
+    "@farcaster/hub-nodejs": "0.17.0",
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
     "@types/node": "24.19.0",

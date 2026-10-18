@@ -1,0 +1,27 @@
+# Local 4-validator devnet from the published image, for end-to-end tests only.
+# Only node1's HTTP and gRPC are published, on 127.0.0.1.
+x-common: &common
+  image: farcasterxyz/snapchain:0.14.3
+  init: true
+services:
+  node1:
+    <<: *common
+    command: ["./snapchain", "--config-path", "./nodes/1/snapchain.toml"]
+    ports: ["127.0.0.1:23381:3381/tcp", "127.0.0.1:23383:3383/tcp"]
+    networks: { snapchain-subnet: { ipv4_address: 172.100.0.11 } }
+  node2:
+    <<: *common
+    command: ["./snapchain", "--config-path", "./nodes/2/snapchain.toml"]
+    networks: { snapchain-subnet: { ipv4_address: 172.100.0.12 } }
+  node3:
+    <<: *common
+    command: ["./snapchain", "--config-path", "./nodes/3/snapchain.toml"]
+    networks: { snapchain-subnet: { ipv4_address: 172.100.0.13 } }
+  node4:
+    <<: *common
+    command: ["./snapchain", "--config-path", "./nodes/4/snapchain.toml"]
+    networks: { snapchain-subnet: { ipv4_address: 172.100.0.14 } }
+networks:
+  snapchain-subnet:
+    driver: bridge
+    ipam: { config: [{ subnet: 172.100.0.0/24 }] }
