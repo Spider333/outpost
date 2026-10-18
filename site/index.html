@@ -85,6 +85,7 @@ cd kit
     <li><a href="#t-post">Read and post</a> (messages)</li>
     <li><a href="#t-apps">Filter by app</a></li>
     <li><a href="#t-limits">What a keyless node cannot do</a></li>
+    <li><a href="#t-society">Societies: a charter file</a></li>
     <li><a href="#t-cleanup">Clean up</a></li>
   </ol>
 </nav>
@@ -191,7 +192,20 @@ all 11 checks passed against http://127.0.0.1:13381</pre>
 </ul>
 <p>Casts, reactions, follows, profile fields, plain usernames, normal wallet verifications and app keys all work. To get the three back, add <code>l1_rpc_url</code> with any Ethereum mainnet RPC to the node's config.</p>
 
-<h3 id="t-cleanup">7. Clean up</h3>
+<h3 id="t-society">7. Societies: a charter file</h3>
+<p>Filtering by app is one rule. A society is a set of them, written down and signed: who the members are, which apps' posts count, which channels and keywords, and a link to the society's code of conduct. kit calls this a charter. It is one JSON file.</p>
+<pre class="cmd">./kit cli charter verify examples/test-society.charter.json</pre>
+<pre class="out pending" data-pending="charter-verify">PENDING: verify output for the test society.</pre>
+<p>The signature covers every field. Change one member and the file is rejected:</p>
+<pre class="out pending" data-pending="charter-tamper">PENDING: verify output for a tampered copy.</pre>
+<p>If the charter names an issuer FID, kit also checks on your node that the signer is that account's custody address. Nobody else can sign for the society.</p>
+<p>In the client, load a charter in the Society panel. The feed then shows the society's members and channels, through its rules. <strong>Join</strong> follows its members with your app key. <strong>Leave</strong> drops the lens. Your keys, follows and posts do not change, because they were never the society's to begin with. Leaving is one tap.</p>
+<p>The census counts members, members who posted in the last 7 days, casts per day, and the apps members post from. It reads only your own node, so anyone with a node and the same file gets the same numbers.</p>
+<pre class="cmd">./kit cli charter census examples/test-society.charter.json</pre>
+<pre class="out pending" data-pending="census">PENDING: census output, and the hand count it was checked against.</pre>
+<p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
+
+<h3 id="t-cleanup">8. Clean up</h3>
 <pre class="cmd">./kit uninstall</pre>
 <pre class="out pending" data-pending="uninstall">PENDING: ./kit uninstall output with the test account.</pre>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
