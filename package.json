@@ -22,6 +22,8 @@
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p .",
-    "kit-client": "tsx src/cli/main.ts"
+    "kit-client": "tsx src/cli/main.ts",
+    "build": "node scripts/build.mjs",
+    "client": "node scripts/build.mjs && node dist/serve.js"
   }
 }

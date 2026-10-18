@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>kit client</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>kit</h1>
+    <span id="node-status" class="pill" title="Your node">node: checking</span>
+    <span id="who" class="who"></span>
+  </header>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <main>
+    <section id="connect" class="card" hidden aria-labelledby="connect-h">
+      <h2 id="connect-h">Connect an account</h2>
+      <p>To post, this client needs its own <em>app key</em>: a key that can cast, react and follow for your account, and nothing else. It expires 30 days after you last use it. Your account's owner key (the custody key) signs one authorization for it.</p>
+      <div class="choices">
+        <button id="use-wallet" class="primary" type="button">Sign with a wallet (recommended)</button>
+        <button id="use-phrase" type="button">Use a test account's recovery phrase</button>
+      </div>
+
+      <div id="phrase-box" hidden>
+        <div class="danger" role="note">
+          <strong>Stop. A recovery phrase is the master key of an account.</strong>
+          <p>Whoever has it can transfer the account, add or remove every app key, and change the username. Pasting it into the wrong page is like running <code>rm -rf /</code> as root: there is no undo.</p>
+          <ul>
+            <li>Use a <strong>test account</strong> only. Never your main account.</li>
+            <li>Only paste it into software whose code you have read, or whose author you trust.</li>
+            <li>Prefer the wallet button above. Then the phrase never leaves your wallet.</li>
+          </ul>
+          <p>This page uses the phrase in your browser to sign one authorization, then drops it. It is never saved and never sent anywhere.</p>
+        </div>
+        <label for="phrase">Recovery phrase (12 or 24 words)</label>
+        <input id="phrase" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <label class="check"><input id="is-test" type="checkbox"> This is a test account, and I have read the warning.</label>
+        <button id="phrase-go" class="primary" type="button" disabled>Continue</button>
+      </div>
+
+      <div id="confirm-box" hidden>
+        <dl class="facts">
+          <dt>Custody address</dt><dd id="c-addr"></dd>
+          <dt>FID</dt><dd id="c-fid"></dd>
+          <dt>Storage units</dt><dd id="c-storage"></dd>
+          <dt>App key can</dt><dd>cast, delete casts, like, recast, follow, unfollow</dd>
+          <dt>Expires</dt><dd>30 days after last use</dd>
+        </dl>
+        <button id="authorize" class="primary" type="button">Authorize this app key</button>
+        <button id="cancel" type="button">Cancel</button>
+      </div>
+    </section>
+
+    <section id="compose" class="card" hidden aria-labelledby="compose-h">
+      <h2 id="compose-h" class="sr-only">New cast</h2>
+      <p id="reply-to" class="reply-to" hidden></p>
+      <label for="text" class="sr-only">Cast text</label>
+      <textarea id="text" rows="3" maxlength="1024" placeholder="What's happening?"></textarea>
+      <div class="row">
+        <span id="count" class="muted">0 / 1024</span>
+        <button id="post" class="primary" type="button">Cast</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="feed-h">
+      <div class="row wrap">
+        <h2 id="feed-h">Feed</h2>
+        <form id="view-form" class="inline">
+          <label for="view" class="sr-only">Show the feed of an FID or username</label>
+          <input id="view" placeholder="FID or username" inputmode="text" autocomplete="off">
+          <button type="submit">Show</button>
+        </form>
+      </div>
+      <p id="feed-title" class="muted"></p>
+      <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
+      <p class="muted small">Tap an app once to show only it, again to hide it, again to reset. Apps are read from each post's key, so tools that use the poster's own key appear as "own key".</p>
+      <ol id="feed" class="feed"></ol>
+      <button id="more" type="button" hidden>Load more</button>
+    </section>
+
+    <section id="key" class="card" hidden aria-labelledby="key-h">
+      <h2 id="key-h">Your app key</h2>
+      <dl class="facts">
+        <dt>FID</dt><dd id="k-fid"></dd>
+        <dt>Public key</dt><dd id="k-pub" class="mono"></dd>
+        <dt>Status</dt><dd id="k-status"></dd>
+      </dl>
+      <p class="muted small">The private part of this key is stored in this browser only. Revoking needs no recovery phrase: the key signs its own removal.</p>
+      <button id="revoke" class="danger-btn" type="button">Revoke this key (uninstall)</button>
+    </section>
+  </main>
+
+  <footer class="muted small">
+    Reads and writes go only to your own node. Open source, MIT.
+  </footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

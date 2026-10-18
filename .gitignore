@@ -10,3 +10,4 @@ coverage/
 # handover and infra notes stay out of the repo
 HANDOVER.md
 node-user-data.yml
+.gstack/
