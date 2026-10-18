@@ -11,10 +11,10 @@ snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requ
 |---|---|---|---|
 | 1 | snapchain `docs/castsbyfid-pagination-example` | httpapi.md pagination example: `/v1/casts` (no such route) -> `/v1/castsByFid` | route list read from code; 404 vs 200 checked on our mainnet read node (docs/evidence/live/upstream-1-casts-route.txt) |
 | 2 | snapchain `docs/signer-endpoints` | document `/v1/signer`, `/v1/signersByFid` (HTTP + gRPC) with the `requesterFids[0]=` syntax (#5 folded in), mark `onChainSigner*` deprecated, fix the http_server.rs doc comment | written; example responses are real, from a local 0.14.3 devnet (one onchain and one gasless key on one FID). Query parsing re-checked on our mainnet node (same results); site build not run |
-| 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | typechecks with hub-nodejs 0.17.0; the example as written (constants and network swapped) adds a key on a local 0.14.3 devnet: docs/evidence/upstream-examples-devnet.txt. Mainnet run pending test account |
+| 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | typechecks with hub-nodejs 0.17.0; the example as written (constants and network swapped) adds a key on a local 0.14.3 devnet: docs/evidence/upstream-examples-devnet.txt. On mainnet with test FID 3355358 it adds the key on a 0.14.3 read node: docs/evidence/live/mainnet-run/03-draft3.txt |
 | 5 | snapchain (issue first, then PR) | `/v1/signersByFid` `requesterFids`: the doc comment says repeat the key (`?requesterFids=1&requesterFids=2`), which the node rejects ("Multiple values for one key"); a single `requesterFids=5` is rejected too ("expected a sequence"); percent-encoded `requesterFids%5B0%5D=5` (what browsers' URLSearchParams send) is silently ignored, so `requesterFidNonces` is missing with no error. Only literal `requesterFids[0]=5` works. Fix options: serde_qs non-strict config, or accept single/repeated values; at minimum fix the comment and docs | reproduced on 0.14.3, see docs/evidence/requesterFids-query-parsing.txt |
 | 6 | snapchain (tiny) | HTTP JSON for onchain events has `"tier_purchase_event_body": null` (snake_case, never skipped) next to camelCase fields; `http_server.rs` `OnChainEvent.tier_purchase_event_body` lacks `#[serde(rename = "tierPurchaseEventBody", skip_serializing_if = "Option::is_none")]` like its siblings. Changing it renames a JSON field, so it needs a maintainer's call; open as an issue first | seen in /v1/signersByFid output on 0.14.3 |
-| 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; new signer step adds a key and a USER_DATA_ADD merges on a local 0.14.3 devnet (docs/evidence/upstream-examples-devnet.txt). yarn.lock not regenerated yet. Mainnet run pending test account |
+| 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; new signer step adds a key and a USER_DATA_ADD merges on a local 0.14.3 devnet (docs/evidence/upstream-examples-devnet.txt). On mainnet with test FID 3355358 the same: docs/evidence/live/mainnet-run/04-draft4.txt. yarn.lock not regenerated yet |
 
 Seen on mainnet, already being handled upstream, so no draft from us:
 - `castsByParent` (all-shard reads) always returns a `nextPageToken`; the last one decodes to
@@ -95,8 +95,8 @@ two things that trip people up: the `Farcaster KeyAdd` EIP-712 domain (so
 `getSignedKeyRequestMetadata` must not be used), and deadlines in Farcaster time.
 
 Tested: the example typechecks against @farcaster/hub-nodejs 0.17.0, and run as written
-(only the constants and network changed) it adds a key on a local snapchain 0.14.3 devnet.
-PENDING: the same run on mainnet with a test account.
+(only the constants and network changed) it adds a key on a local snapchain 0.14.3 devnet,
+and on mainnet through a 0.14.3 read node with a test account.
 
 AI disclosure: drafted with an AI coding assistant, run and checked by a person.
 
@@ -110,6 +110,7 @@ still needs a transaction). Bumps the example to @farcaster/hub-nodejs ^0.17.0.
 
 Tested: typechecks against 0.17.0. On a local snapchain 0.14.3 devnet (FID registered
 through the admin RPC instead of OP) the new signer step adds the key and the example's
-USER_DATA_ADD merges with it. PENDING: mainnet run; regenerate yarn.lock for the version bump.
+USER_DATA_ADD merges with it. The same on mainnet through a 0.14.3 read node with a test
+account. PENDING: regenerate yarn.lock for the version bump.
 
 AI disclosure: drafted with an AI coding assistant, run and checked by a person.
