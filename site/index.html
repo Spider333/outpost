@@ -124,7 +124,11 @@ Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list p
 
 <h3 id="t-login">3. Connect an account</h3>
 <pre class="cmd">./kit client</pre>
-<pre class="out pending" data-pending="client-start">PENDING: ./kit client output (tunnel line, URL).</pre>
+<pre class="out">your node is reachable through an SSH tunnel on 127.0.0.1:13394 (no port opened on the server)
+open http://127.0.0.1:8381 in your browser. Ctrl-C stops the client.
+client: http://127.0.0.1:8381
+node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)</pre>
+<p class="muted">We ran it as <code>KIT_TUNNEL_PORT=13394 ./kit client</code>, because the default local port, 13381, was already in use on our machine. Yours will say 13381 unless you change it.</p>
 <p>On a phone, run <code>./kit client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
 <pre class="out pending" data-pending="phone">PENDING: ./kit client --phone output (needs a provider token to open 443).</pre>
 <p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./kit cli login</code>.</p>
