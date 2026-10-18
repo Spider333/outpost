@@ -3,6 +3,7 @@
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
 import type { EIP1193Provider } from "viem";
+import { FarcasterNetwork } from "@farcaster/core";
 import {
   addAppKey,
   cast,
@@ -109,6 +110,8 @@ const hub = new Hub({ url: location.origin });
 const feed = new FeedBuilder(hub);
 
 let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
+// Mainnet unless the local server says it fronts a test devnet.
+let network = FarcasterNetwork.MAINNET;
 let pendingCustody: Custody | undefined;
 let pendingAccount: AccountInfo | undefined;
 let viewFid: number | undefined;
@@ -190,7 +193,7 @@ function wireConnect() {
   $("authorize").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node...", async () => {
       if (!pendingCustody || !pendingAccount) return;
-      const { key: k, confirmed } = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer }, { timeoutMs: 60_000 }, (added) => {
+      const { key: k, confirmed } = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer, network }, { timeoutMs: 60_000 }, (added) => {
         store(KEY_STORAGE, added); // saved as soon as the node accepts it, so a slow merge cannot lose it
       });
       pendingCustody = undefined; // drop the custody signer; only the app key is kept
@@ -548,6 +551,12 @@ function wireCharter() {
 // ---- start
 
 async function main() {
+  try {
+    const cfg = (await (await fetch("/kit-config.json")).json()) as { network?: string };
+    if (cfg.network === "devnet") network = FarcasterNetwork.DEVNET;
+  } catch {
+    // Served without kit's server (e.g. Caddy for phones): mainnet.
+  }
   wireConnect();
   wireKey();
   wireCompose();

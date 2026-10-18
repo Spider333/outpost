@@ -76,8 +76,13 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
+// Which network this client talks to. Mainnet unless testing against a local devnet.
+const network = process.env.KIT_NETWORK === "devnet" ? "devnet" : "mainnet";
+
 const server = createServer((req, res) => {
-  if (req.url?.startsWith("/v1/")) proxy(req, res);
+  if (req.url === "/kit-config.json") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ network }));
+  } else if (req.url?.startsWith("/v1/")) proxy(req, res);
   else if (req.method === "GET" || req.method === "HEAD") void serveStatic(req, res);
   else res.writeHead(405).end();
 });
@@ -85,4 +90,5 @@ const server = createServer((req, res) => {
 server.listen(port, host, () => {
   console.log(`client: http://${host === "0.0.0.0" ? "localhost" : host}:${port}`);
   console.log(`node:   ${node.origin} (requests to /v1/* are forwarded there)`);
+  if (network !== "mainnet") console.log(`network: ${network} (testing only)`);
 });

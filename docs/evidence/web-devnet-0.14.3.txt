@@ -1,0 +1,9 @@
+# Web client in headless Chromium (400x900) against a local snapchain 0.14.3 devnet, 2026-10-18T04:55:42Z
+# Served by dist/serve.js with KIT_NETWORK=devnet. Throwaway FID registered via the devnet admin RPC.
+phrase flow:  "Found FID 439352. Check the details, then authorize." (FID matched the registered one)
+authorize:    key panel "active, expires 11/17/2026 unless used"
+storage:      recovery phrase not present in localStorage (checked); phrase field empty after Continue
+cast:         composer -> 1 cast in feed, labelled "own key"
+like:         Like button aria-pressed=true after the node confirmed the reaction
+revoke:       "Key revoked. No recovery phrase was needed."; kit.appkey removed from localStorage
+console:      no errors other than the node's 400 responses for not-found lookups
