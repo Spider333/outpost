@@ -26,6 +26,10 @@ import {
   syncState,
   unfollow,
   unreact,
+  FeedBuilder,
+  parseAppSelector,
+  type AppFilter,
+  type FeedItem,
   type AppKey,
   type HexString,
   type Reaction,
@@ -63,6 +67,9 @@ const USAGE = `usage: kit-client <command> [options]
   follow <fid> | unfollow <fid>
   like <fid> <0xhash> | unlike <fid> <0xhash>
   recast <fid> <0xhash> | unrecast <fid> <0xhash>
+  feed [--fid n] [--channel url] [--include apps] [--exclude apps] [--limit n]
+                                 following feed (or a channel) from your node. apps is a
+                                 comma list of app FIDs, "self" or "unknown"
   uninstall                      revoke the app key (no phrase needed) and delete it
   selftest                       sign every message type with throwaway keys and
                                  ask the node to validate them (sends nothing)
@@ -164,6 +171,30 @@ async function cmdWhoami(hub: Hub) {
   if (s.expiresAt) console.log(`expires: ${new Date((s.expiresAt + 1609459200) * 1000).toISOString()} unless used before then`);
 }
 
+async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: string; exclude?: string; limit?: string }) {
+  const fid = v.fid ? parseFid(v.fid) : requireKey().fid;
+  const list = (s?: string) => (s ? s.split(",").map((x) => parseAppSelector(x.trim())) : undefined);
+  const filter: AppFilter = { include: list(v.include), exclude: list(v.exclude) };
+  const limit = v.limit ? Number(v.limit) : 30;
+  const feed = new FeedBuilder(hub);
+  const t0 = Date.now();
+  const items = v.channel ? await feed.channel(v.channel, { limit, filter }) : await feed.following(fid, { limit, filter });
+  const ms = Date.now() - t0;
+  const names = await feed.appNames(items);
+  const label = (it: FeedItem) =>
+    it.app.kind === "app" ? `via ${names.get(it.app.requestFid!) ?? it.app.requestFid} (app fid ${it.app.requestFid})` : it.app.kind === "self" ? "via own key" : "via unknown key";
+  for (const it of items) {
+    const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
+    console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}`);
+    console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
+    console.log(`  ${it.fid}:${it.hash}`);
+  }
+  const mix = new Map<string, number>();
+  for (const it of items) mix.set(label(it), (mix.get(label(it)) ?? 0) + 1);
+  console.log(`\n${items.length} casts in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
+  for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${k}`);
+}
+
 async function cmdUninstall(hub: Hub) {
   const key = requireKey();
   const active = await hub.signer(key.fid, key.publicKey);
@@ -226,6 +257,10 @@ async function main(argv: string[]) {
       channel: { type: "string" },
       embed: { type: "string", multiple: true },
       "ttl-days": { type: "string", default: "30" },
+      fid: { type: "string" },
+      include: { type: "string" },
+      exclude: { type: "string" },
+      limit: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -250,6 +285,7 @@ async function main(argv: string[]) {
     whoami: () => cmdWhoami(hub),
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
+    feed: () => cmdFeed(hub, values),
     cast: async () => {
       const text = args.join(" ");
       report(

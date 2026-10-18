@@ -199,6 +199,10 @@ export class Hub {
     return this.request("GET", "/v1/signersByFid", { fid, requesterFids: requesterFid });
   }
 
+  signersByFidPage(fid: number, pageToken?: string): Promise<SignersByFid> {
+    return this.request("GET", "/v1/signersByFid", { fid, pageSize: 1000, pageToken });
+  }
+
   async signer(fid: number, key: HexString): Promise<HubSigner | undefined> {
     try {
       const res = await this.request<{ signer: HubSigner }>("GET", "/v1/signer", { fid, signer: key });
