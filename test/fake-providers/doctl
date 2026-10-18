@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fake doctl: keeps resources as "id name ip" lines and honours --format.
 S="${FAKE_STATE:?}"; echo "doctl $*" >> "$S/calls.log"
-fmt=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; prev="$a"; done
+fmt=""; tag=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; [ "$prev" = "--tag-names" ] && tag="$a"; prev="$a"; done
 list() { # $1 = file glob prefix
   for f in "$S"/$1.*; do [ -e "$f" ] || continue; read -r id name ip < "$f"
     case "$fmt" in ID,Name) echo "$id $name";; Name) echo "$name";; Name,PublicIPv4) echo "$name $ip";; DropletIDs) echo "[]";; *) echo "$id $name $ip";; esac; done; }
@@ -14,9 +14,16 @@ case "$1 $2 $3" in
   "compute volume get") echo "[]" ;;
   "compute volume delete") for f in "$S"/volume.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
   "compute firewall list") list fw ;;
-  "compute firewall create") echo "fw-9 $5" > "$S/fw.$5" ;;
+  "compute firewall create") # like DigitalOcean: HTTP 422 when the tag does not exist yet
+    [ -e "$S/tag.$tag" ] || { echo "Error: tag $tag does not exist (422)" >&2; exit 1; }
+    echo "fw-9 $5" > "$S/fw.$5" ;;
   "compute firewall delete") for f in "$S"/fw.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
-  "compute ssh-key get") [ -e "$S/key" ] || exit 1 ;;
-  "compute ssh-key import") touch "$S/key" ;;
+  "compute ssh-key get") ls "$S"/sshkey.* >/dev/null 2>&1 || exit 1 ;;
+  "compute ssh-key import") echo "k-1 $4" > "$S/sshkey.$4" ;;
+  "compute ssh-key list") list sshkey ;;
+  "compute ssh-key delete") for f in "$S"/sshkey.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
+  "compute tag get") [ -e "$S/tag.$4" ] || exit 1 ;;
+  "compute tag create") echo "t-1 $4" > "$S/tag.$4" ;;
+  "compute tag delete") rm -f "$S/tag.$4" ;;
   *) echo "fake doctl: unhandled $*" >&2; exit 3 ;;
 esac
