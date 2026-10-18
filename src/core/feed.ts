@@ -47,6 +47,22 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Pr
   return out;
 }
 
+// Mentions are not part of a cast's text: the node stores the mentioned FIDs and the UTF-8
+// byte offsets where each one goes. This puts "@name" back at those offsets.
+export function withMentions(text: string, mentions: number[], positions: number[], name: (fid: number) => string): string {
+  if (!mentions.length) return text;
+  const bytes = new TextEncoder().encode(text);
+  const dec = new TextDecoder();
+  let out = "";
+  let at = 0;
+  mentions.forEach((fid, i) => {
+    const p = Math.min(Math.max(positions[i] ?? at, at), bytes.length);
+    out += `${dec.decode(bytes.slice(at, p))}@${name(fid)}`;
+    at = p;
+  });
+  return out + dec.decode(bytes.slice(at));
+}
+
 export function toItem(m: HubMessage, app: AppRef): FeedItem | undefined {
   const body = m.data.castAddBody;
   if (!body) return undefined;
@@ -147,6 +163,7 @@ export class FeedBuilder {
   // Walks the sorted casts, resolving apps, until `limit` casts pass the filter.
   private async hydrate(casts: HubMessage[], limit: number, filter: AppFilter | undefined, concurrency: number): Promise<FeedItem[]> {
     const out: FeedItem[] = [];
+    const msgs: HubMessage[] = [];
     for (let i = 0; i < casts.length && out.length < limit; i += limit) {
       const batch = casts.slice(i, i + limit);
       const refs = await mapLimit(batch, concurrency, (m) => this.apps.appOf(m.data.fid, m.signer));
@@ -154,12 +171,26 @@ export class FeedBuilder {
         const ref = refs[j]!;
         if (out.length < limit && passesFilter(ref, filter)) {
           const item = toItem(m, ref);
-          if (item) out.push(item);
+          if (item) {
+            out.push(item);
+            msgs.push(m);
+          }
         }
       });
     }
     const authors = await mapLimit(out, concurrency, (it) => this.profile(it.fid).catch(() => ({ fid: it.fid })));
     out.forEach((it, i) => (it.author = authors[i]));
+    const mentioned = [...new Set(msgs.flatMap((m) => m.data.castAddBody?.mentions ?? []))];
+    const names = new Map(
+      await mapLimit(mentioned, concurrency, async (f) => {
+        const p = await this.profile(f).catch(() => ({ fid: f }) as Profile);
+        return [f, p.username ?? `fid:${f}`] as const;
+      }),
+    );
+    out.forEach((it, i) => {
+      const b = msgs[i]!.data.castAddBody!;
+      it.text = withMentions(it.text, b.mentions ?? [], b.mentionsPositions ?? [], (f) => names.get(f) ?? `fid:${f}`);
+    });
     return out;
   }
 

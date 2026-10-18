@@ -191,3 +191,15 @@ test("sync state counts data shards only, not the block shard", async () => {
   assert.deepEqual(syncState({ shardInfos: [shard(0, 0), shard(1, 78_016), shard(2, 2)] } as any), { synced: false, maxDelay: 78_016 });
   assert.equal(syncState({ shardInfos: [shard(0, 0)] } as any).synced, false);
 });
+
+test("mentions go back into the text at their byte offsets", async () => {
+  const { withMentions } = await import("../src/core/index.js");
+  const names = new Map([[3, "dwr"], [5650, "vitalik.eth"]]);
+  const name = (f: number) => names.get(f) ?? `fid:${f}`;
+  // Mainnet shape: "Excited to collaborate with  and " with two mentions at offsets 28 and 33.
+  assert.equal(withMentions("Excited to collaborate with  and ", [3, 5650], [28, 33], name), "Excited to collaborate with @dwr and @vitalik.eth");
+  // Offsets count UTF-8 bytes: "é" and "👀" are 2 and 4 bytes.
+  assert.equal(withMentions("é  👀 !", [3, 7], [3, 9], name), "é @dwr 👀 @fid:7!");
+  assert.equal(withMentions(" gm", [3], [0], name), "@dwr gm");
+  assert.equal(withMentions("plain", [], [], name), "plain");
+});
