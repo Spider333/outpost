@@ -1,0 +1,4 @@
+$ npx tsx upstream/tests/docs-example.mainnet.ts
+key added
+harness: key revoked 0x1ed2a790c1da1ce4677cd01ce1822481b368bb85b373e6b9aef8e115ac6f03c8
+exit 0

@@ -1,0 +1,9 @@
+$ node upstream/tests/web-phrase.mainnet.mjs http://127.0.0.1:8381 http://127.0.0.1:13391 <out>
+22:43:28  node pill: node synced (v0.14.3)
+22:43:29  phrase field after Continue: empty
+22:43:29  confirm step: custody 0x15020a39b36cF852CDBD1aC036DF1f45ea4ccafa, FID 3355358, storage 1
+22:43:31  app key panel: FID 3355358, key 0x9a9aa43ec31c153a3af72415cfa326d27125381e1431d299813b26200dbf7a20, status active, expires 11/17/2026 unless used
+22:43:31  node: 1 new key; this key source SIGNER_SOURCE_OFFCHAIN, requestFid 3355358, scopes 6
+22:43:33  status line: Key revoked. No recovery phrase was needed.
+22:43:33  node: key 0x9a9aa43ec31c153a3af72415cfa326d27125381e1431d299813b26200dbf7a20 gone
+exit 0

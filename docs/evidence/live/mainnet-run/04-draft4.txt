@@ -1,0 +1,7 @@
+$ npx tsx upstream/tests/hello-world.mainnet.ts
+Created new signer for test with private key: <redacted>
+Registered new signer with public key: 0xdb928fafea6bc26709c7938aec0d1b194ee5d4ac8241701e8ce9f4d466c11431
+user data on node: hello world
+harness: display name after clearing: ""
+harness: key revoked 0xdb928fafea6bc26709c7938aec0d1b194ee5d4ac8241701e8ce9f4d466c11431
+exit 0

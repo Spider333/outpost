@@ -1,0 +1,80 @@
+$ ./kit cli whoami
+FID 3355358, app key 0xd7e51cc46a7e5c048a53896971086ede6420a17a12bf13a70d99b8ca0e6eb253
+scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
+expires: 2026-11-17T22:36:27.000Z unless used before then
+
+$ ./kit cli cast kit test cast 1: testing a self-hosted client
+cast: 0x8d68f14977a916a7b2ba157309e935aeb104dc9d (confirmed: your node returns it)
+
+$ ./kit cli cast kit test cast 2: deleted after the test
+cast: 0xa41c9c06a26a7392f419f8f319293e547629e1d6 (confirmed: your node returns it)
+
+$ ./kit cli follow 1
+follow: 0x2226024478f6f2b442afd9a9237f198d74118298 (confirmed: your node returns it)
+
+$ ./kit cli like 3355358 0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+like: 0x792e1def513df83bd3029bd24b0f41cba30eeea2 (confirmed: your node returns it)
+
+$ ./kit cli recast 3355358 0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+recast: 0xf31f1b1f2a9c7f12398f787810bc9146161e9bc0 (confirmed: your node returns it)
+
+$ ./kit cli feed --limit 5
+2026-10-18 22:36  fid:3355358  via own key
+  kit test cast 2: deleted after the test
+  3355358:0xa41c9c06a26a7392f419f8f319293e547629e1d6
+2026-10-18 22:36  fid:3355358  via own key
+  kit test cast 1: testing a self-hosted client
+  3355358:0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+
+2 casts in 0.13 s from http://127.0.0.1:13392
+    2  via own key
+
+$ ./kit cli feed --limit 5 --include self
+2026-10-18 22:36  fid:3355358  via own key
+  kit test cast 2: deleted after the test
+  3355358:0xa41c9c06a26a7392f419f8f319293e547629e1d6
+2026-10-18 22:36  fid:3355358  via own key
+  kit test cast 1: testing a self-hosted client
+  3355358:0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+
+2 casts in 0.13 s from http://127.0.0.1:13392
+    2  via own key
+
+$ ./kit cli feed --limit 5 --exclude self
+
+0 casts in 0.11 s from http://127.0.0.1:13392
+
+$ ./kit cli unfollow 1
+unfollow: 0x60d94f86520e8d03fbda3e59d35ea50412d7cf47 (confirmed: your node returns it)
+
+$ ./kit cli charter join docs/evidence/live/mainnet-run/live-test.charter.json
+"kit live test": following 1 members you do not follow yet (1 already followed or you).
+  follow 1: confirmed
+done: 1/1 confirmed. To leave, stop using the charter; your follows stay yours.
+
+$ ./kit cli feed --limit 3 --exclude self
+
+0 casts in 0.13 s from http://127.0.0.1:13392
+
+$ ./kit cli unfollow 1
+unfollow: 0x90e319894f2b886d207ac4cb950479437191f7f9 (confirmed: your node returns it)
+
+$ ./kit cli unlike 3355358 0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+unlike: 0xb6b6f1ac91c641c58978d6fc02ed50185a4cbcd5 (confirmed: your node returns it)
+
+$ ./kit cli unrecast 3355358 0x8d68f14977a916a7b2ba157309e935aeb104dc9d
+unrecast: 0xa4d5dde2d6b3b641079d9769dc6e274647391dfb (confirmed: your node returns it)
+
+$ ./kit cli delete 0xa41c9c06a26a7392f419f8f319293e547629e1d6
+delete: 0x5f675cdadac3a7b6fe431ec19521ce42dcb253ef (confirmed: your node returns it)
+
+$ ./kit cli uninstall
+revoked app key 0xd7e51cc46a7e5c048a53896971086ede6420a17a12bf13a70d99b8ca0e6eb253 for FID 3355358. No recovery phrase was needed.
+deleted /home/david/.config/kit/appkey.json
+
+$ ./kit cli whoami
+error: no app key found at /home/david/.config/kit/appkey.json. Run: kit-client login
+
+$ npx tsx upstream/tests/revoked-cast.mainnet.mts <saved copy of the revoked key>
+cast with revoked key 0xd7e51cc46a7e5c048a53896971086ede6420a17a12bf13a70d99b8ca0e6eb253: rejected: Failed to submit message: status: InvalidArgument, message: "bad_request.validation_failure/invalid signer", details: [], metadata: MetadataMap { headers: {"x-err-code": "bad_request.validation_failure"} }
+
