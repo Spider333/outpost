@@ -312,7 +312,7 @@ cmd_node() {
   say ""
   say "The node downloads a snapshot of the network (about 560 GB), loads it, then catches up"
   say "on the blocks since. On our test server loading took about 7 hours and catching up"
-  say "several more. The client works once loading is done; the newest casts appear as it"
+  say "about 6.5 more. The client works once loading is done; the newest casts appear as it"
   say "catches up. You can press Ctrl-C at any time; the node keeps going."
   say "Check later with ./kit status."
   local last=""
@@ -464,8 +464,12 @@ cmd_cli() {
 }
 
 cmd_status() {
-  say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: ${KIT_HOST:-$(state_get IP)}"
   [ -n "$(state_get IP)${KIT_HOST:-}" ] || { say "no server yet. Run ./kit provision"; return 0; }
+  if [ -n "${KIT_HOST:-}" ]; then
+    say "server: $KIT_HOST (KIT_HOST)"
+  else
+    say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: $(state_get IP)"
+  fi
   say "node: $(node_progress)"
 }
 

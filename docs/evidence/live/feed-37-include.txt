@@ -1,19 +1,64 @@
-# kit-client feed --fid 37 --limit 20 --include 16823 (2026-10-18T10:25:59Z, node http://127.0.0.1:13391)
-2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
-  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
-  5650:0x9252885364ac7db01ac427e97dd246b7af619949
-2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
-  Big congratulations to the airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to security. To   [1 embed]
-  5650:0x2939942b565704c087d33fd818fac745551776e6
-2026-10-12 13:31  @vitalik.eth  via fireflyapp (app fid 16823)
-  For anyone who is either a fan of vaccines, or a critic of vaccines but open-minded to the idea that vaccines *could* be great if they were made with a more open-source open-science and public-spirite  [3 embed]
-  5650:0x3328fec2d99c9aebe1a70604b0d67f3f092d162c
-2026-10-07 23:28  @vitalik.eth  via fireflyapp (app fid 16823)
-  I don't recommend anyone scramble to move their funds to new wallets today. But we should take the risks to cryptography from AI-accelerated math seriously, and minimize our exposure to not just quant  [1 embed]
-  5650:0x7a95106ba6368c3359cf995a0d721d6e0ad7d063
-2026-10-06 09:24  @vitalik.eth  via fireflyapp (app fid 16823)
-  Nethermind continues doing excellent work and making Ethereum more efficient and faster. https://firefly.social/post/x/2107387115537338756  [1 embed]
-  5650:0x19a7d263e54029e809c46b0a29968ff7687a90e2
+# kit-client feed --fid 37 --limit 20 --include 9152 (2026-10-18T16:40:19Z, node http://127.0.0.1:13391)
+2026-10-18 12:27  @vibhu  via warpcast (app fid 9152)
+  Excited to collaborate with and the new team to make a first-class citizen of the underlying platform More to come 👀
+  3355261:0xf1531e6857776884025a907e9bd803d94661638b
+2026-10-18 10:38  @vrn.eth  via warpcast (app fid 9152)
+  ‘tis the season of gelatinous bone broth  [2 embed]
+  340885:0x72d91a43438cd110eff1d5ad12c064a9a46052de
+2026-10-17 23:45  @vrypan.eth  via warpcast (app fid 9152)
+  A core feature of Scotty is new tabs are added to the right of the current tab, instead of splitting it in half. Open as many as you like, just swipe or use cmd-[] to move between them. https://scotty  [2 embed]
+  280:0x45782e51f49de1cc4b3ed59af128b74fa7d991ba
+2026-10-17 16:42  @hyperbad  via warpcast (app fid 9152)
+  the highest compliment  [1 embed]
+  238:0x019bd0e088fcaf94c4ab42fccd0435160bd98fc2
+2026-10-17 02:30  @dwr  via warpcast (app fid 9152)
+    [1 embed]
+  3:0x0256ae66308d546514fa666cda44052abbfea066
+2026-10-17 02:23  @dwr  via warpcast (app fid 9152)
+  Neat
+  3:0xec0c8a227d7f34ad3e2243ae098b46459b7d1847
+2026-10-16 21:45  @mazmhussain  via warpcast (app fid 9152)
+  Posting on Farcaster. Test.
+  758919:0x4e645d9213f107dbde4995392a8f9bf14b0ee220
+2026-10-16 21:29  @vrypan.eth  via warpcast (app fid 9152)
+  Command line's best friend.  [1 embed]
+  280:0x794fe34ef22ed42fa9cd2f698815bb90c364c5a1
+2026-10-16 15:57  @0xstark.eth  via warpcast (app fid 9152)
+  logged back in for first time in a while to vote to stay, along for the experiment! was off all social media for a few months, wonder if this new direction will draw me back here
+  368:0x529078699f312ef65f1cbed763811d98315640d9
+2026-10-16 12:18  @jesse.base.eth  via warpcast (app fid 9152)
+  heck yeah excited for the next chapter and grateful we have a new steward of the decentralized social network vision
+  99:0x5af7eadb18c2feb978780ef0a05aaf96e0b69ce3
+2026-10-16 12:17  @jesse.base.eth  via warpcast (app fid 9152)
+  I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [2 embed]
+  99:0xb9726b0fe611423c04b52fb9ab7557dd07c2885d
+2026-10-16 10:00  @vrypan.eth  via warpcast (app fid 9152)
+  100% to the point
+  280:0xc0aff85d991080edfbfb9f125cddc3c9d478235f
+2026-10-16 07:30  @vrn.eth  via warpcast (app fid 9152)
+  If you’re an engineer (or systems optimizer) and have never tried understanding & optimizing your biological health, you are stuck in Plato’s cave. AKA you don’t fully understand life. We’re still jus
+  340885:0x4a929ee5899c6f42c9db876cfb357e87cc807d1f
+2026-10-16 02:59  @hyperbad  via warpcast (app fid 9152)
+  You Can See Everything is best new movie i’ve watched in a very long time broke my curfew and was worth it 10/10 can’t believe it was 3 hrs went by fast I hate and actively avoid doomer/failure porn s
+  238:0x1a74587ff9123c8c0eec77cbcd32354efdc78319
+2026-10-16 01:42  @rish  via warpcast (app fid 9152)
+  he wasn’t joking about rocket thrusters https://youtube.com/shorts/u0oM6hIg0bk?is=lk2Bx4BJXGc6EoUv  [1 embed]
+  194:0xcb2647389d8c89fa396809a9f4fb7914113c815a
+2026-10-16 00:30  @dwr  via warpcast (app fid 9152)
+  Snapchain node wishlist 1. I want to sync only a subset of the network. 2. I don’t want to keep more than 7 days worth of content.
+  3:0x35f104e944de03c93cc4eb513e8b84cef58d9b77
+2026-10-15 21:57  @stringtheory69  via warpcast (app fid 9152)
+  I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [1 embed]
+  191213:0xbb48e0e1448dddc1f266e789f95a5100d5adcd92
+2026-10-15 20:19  @fredwilson.eth  via warpcast (app fid 9152)
+  If you know , you know he will be a great steward of this protocol, app, and community.
+  169:0xaef0b7c2b58cf87c443690c4ce1c9b48182a9f44
+2026-10-15 19:50  @phil  via warpcast (app fid 9152)
+    [1 embed]
+  129:0xcfba523baec895dca4d524e98ee07cfe12527abc
+2026-10-15 19:16  @brianjckim  via warpcast (app fid 9152)
+  I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [1 embed]
+  426:0x6c1602dd2749411c121f03fbeb33317606693a54
 
-5 casts in 0.58 s from http://127.0.0.1:13391
-    5  via fireflyapp (app fid 16823)
+20 casts in 0.54 s from http://127.0.0.1:13391
+   20  via warpcast (app fid 9152)

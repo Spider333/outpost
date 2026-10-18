@@ -1,4 +1,4 @@
-# signer endpoints, FID 3 (2026-10-18T10:26:00Z, node http://127.0.0.1:13391)
+# signer endpoints, FID 3 (2026-10-18T16:40:20Z, node http://127.0.0.1:13391)
 $ curl -g 'http://127.0.0.1:13391/v1/signer?fid=3&signer=0xc887f5bf385a4718eaee166481f1832198938cf33e98a82dc81a0b4b81ffe33d'
 {
   "signer": {
