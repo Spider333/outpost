@@ -135,7 +135,22 @@ Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list p
 <p><strong>Storage.</strong> The network only keeps messages for accounts that rent storage. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; when you go over, the oldest are pruned. Storage is bought onchain. kit does not buy it; it stops if the account has none.</p>
 </div>
 
-<pre class="out pending" data-pending="login">PENDING: ./kit cli login output with the test account (custody address, FID, storage units, key added).</pre>
+<p class="muted">The outputs in this step and the next come from a run against a local Snapchain test network (a devnet) with throwaway accounts, because they were recorded before a mainnet test account was ready. <span class="pending" data-pending="mainnet-swap">PENDING: replace with the mainnet run.</span></p>
+<pre class="out">Is this a test account, and do you accept the above? [y/N] y
+Recovery phrase (input hidden):
+
+custody address  0x60f5Ea6C58F61871133C04AD8b9aabC729F8AFbd
+FID              422267
+storage units    1
+app key          can cast, react and follow; expires 30 days after last use
+Sign the app key authorization for this FID? [y/N] y
+
+app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 is live. Saved to ~/.config/kit/appkey.json.
+Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall</pre>
+<pre class="cmd">./kit cli whoami</pre>
+<pre class="out">FID 422267, app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4
+scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
+expires: 2026-11-17T04:53:11.000Z unless used before then</pre>
 
 <div class="concept">
 <p><strong>App keys.</strong> You do not sign every post with the custody key. Instead the custody key authorizes an <em>app key</em>, an Ed25519 key the client holds. Since May 2026 this is a plain message to the network, <code>KEY_ADD</code>, with no Optimism transaction and no gas. Each key has:</p>
@@ -167,7 +182,15 @@ all 11 checks passed against http://127.0.0.1:13381</pre>
 <h3 id="t-post">4. Read and post</h3>
 <p>Snapchain has no home timeline endpoint. A following feed is the list of accounts you follow (<code>/v1/linksByFid</code>), the latest casts of each (<code>/v1/castsByFid</code>), merged by time. That is one request per account you follow, which is fine on your own node.</p>
 <pre class="out pending" data-pending="feed">PENDING: ./kit cli feed --fid 37 output with timing.</pre>
-<pre class="out pending" data-pending="cast">PENDING: ./kit cli cast, follow, like, recast output with the test account.</pre>
+<pre class="cmd">./kit cli cast "hello from the kit CLI on a devnet"
+./kit cli follow 422268
+./kit cli like 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79
+./kit cli recast 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79</pre>
+<pre class="out">cast: 0x77759e8047fd3f44c3754703f7ac5e28072fae79 (confirmed: your node returns it)
+follow: 0x6fbfe1236ddad27cfe6acc4dea8cd19456124ca8 (confirmed: your node returns it)
+like: 0x63511037a5d405e939a04fff8283cc793a2cb7f5 (confirmed: your node returns it)
+recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns it)</pre>
+<p>Each line is a message hash. "Confirmed" means kit read that exact message back from your node.</p>
 
 <div class="concept">
 <p><strong>Messages.</strong> Every action is a message: a small protobuf with your FID, a timestamp, the action, a BLAKE3 hash of those bytes and an Ed25519 signature from the app key. A cast, a follow, a like and a recast are four message types. Nodes check the signature and that the key is allowed to sign that type, then store the message. Deleting a cast is another message that removes it.</p>
@@ -209,7 +232,9 @@ all 11 checks passed against http://127.0.0.1:13381</pre>
 
 <h3 id="t-cleanup">8. Clean up</h3>
 <pre class="cmd">./kit uninstall</pre>
-<pre class="out pending" data-pending="uninstall">PENDING: ./kit uninstall output with the test account.</pre>
+<pre class="out">revoked app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 for FID 422267. No recovery phrase was needed.
+deleted ~/.config/kit/appkey.json</pre>
+<p>Casts the key signed stay on the network after it is revoked. (Checked on Snapchain 0.14.3: the cast above is still there after the key is gone.) Delete them first with <code>./kit cli delete &lt;hash&gt;</code> if you want them gone.</p>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
 <pre class="cmd">./kit destroy</pre>
 <p>This deletes the server, the volume and the firewall after you type the server's name. Your account, follows and casts are not affected; they live on the network.</p>
