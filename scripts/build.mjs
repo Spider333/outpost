@@ -25,6 +25,18 @@ await build({
   outfile: "dist/serve.js",
   logLevel: "warning",
 });
+await build({
+  entryPoints: ["src/cli/main.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: ["node20"],
+  outfile: "dist/cli.js",
+  alias: { "@faker-js/faker": "./src/web/faker-stub.ts" },
+  // Some bundled CommonJS code calls require(); give ESM output a require().
+  banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+  logLevel: "warning",
+});
 await copyFile("src/web/index.html", "dist/web/index.html");
 await copyFile("src/web/style.css", "dist/web/style.css");
-console.log("built dist/web and dist/serve.js");
+console.log("built dist/web, dist/serve.js and dist/cli.js");

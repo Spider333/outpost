@@ -1,0 +1,17 @@
+#cloud-config
+# Minimal first-boot setup for a kit node server. `kit provision` fills in the SSH key.
+# The node itself is installed by `kit node` (infra/node-setup.sh), so the same steps
+# also work on a server you rented by hand.
+ssh_pwauth: false
+disable_root: false
+ssh_authorized_keys:
+  - __SSH_PUBLIC_KEY__
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - jq
+  - curl
+runcmd:
+  - [systemctl, enable, --now, docker]
+  - [sh, -c, "echo kit-cloud-init-done > /var/lib/kit-ready"]

@@ -1,0 +1,460 @@
+#!/usr/bin/env bash
+# kit: from zero to your own read node and client, in three commands.
+#
+#   ./kit provision   rent a server (DigitalOcean or Hetzner) with a 2 TB disk
+#   ./kit node        start a Snapchain read node on it; no API keys
+#   ./kit client      run the web client on your machine, talking to your node
+#
+# Also: ./kit status, ./kit cli <args>, ./kit uninstall, ./kit destroy
+# Every command is safe to run twice. Add --dry-run to provision/destroy to see the
+# exact provider commands without running them.
+
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="${KIT_STATE_DIR:-$KIT_DIR/.kit}"
+STATE_FILE="$STATE_DIR/state"
+TUNNEL_PORT="${KIT_TUNNEL_PORT:-13381}"
+CLIENT_PORT="${KIT_PORT:-8080}"
+
+DRY_RUN=0
+ASSUME_YES=0
+
+say() { printf '%s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# Runs a command, or with --dry-run prints it exactly as it would run.
+run() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '+'
+    printf ' %q' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+confirm() {
+  [ "$ASSUME_YES" -eq 1 ] && return 0
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  local reply
+  read -r -p "$1 [y/N] " reply
+  [[ "$reply" =~ ^[Yy](es)?$ ]]
+}
+
+# ---- state
+
+state_get() {
+  [ -f "$STATE_FILE" ] || return 0
+  grep -E "^$1=" "$STATE_FILE" | tail -1 | cut -d= -f2- || true
+}
+
+state_set() {
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+  local tmp="$STATE_FILE.tmp"
+  {
+    if [ -f "$STATE_FILE" ]; then grep -vE "^$1=" "$STATE_FILE" || true; fi
+    echo "$1=$2"
+  } >"$tmp"
+  mv "$tmp" "$STATE_FILE"
+}
+
+# ---- SSH
+
+ssh_key_path() {
+  local k="${KIT_SSH_KEY:-$(state_get SSH_KEY)}"
+  if [ -z "$k" ]; then
+    for c in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/kit_ed25519"; do
+      [ -f "$c" ] && [ -f "$c.pub" ] && { k="$c"; break; }
+    done
+  fi
+  if [ -z "$k" ]; then
+    k="$HOME/.ssh/kit_ed25519"
+    say "creating SSH key $k"
+    run ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k"
+  fi
+  echo "$k"
+}
+
+node_host() {
+  local ip="${KIT_HOST:-$(state_get IP)}"
+  [ -n "$ip" ] || die "no server yet. Run ./kit provision first, or set KIT_HOST=<ip> for a server you already have."
+  echo "$ip"
+}
+
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=30)
+
+node_ssh() {
+  local key host
+  key="$(ssh_key_path)"
+  host="$(node_host)"
+  ssh -i "$key" "${SSH_OPTS[@]}" "root@$host" "$@"
+}
+
+# ---- providers
+
+pick_provider() {
+  local p="${1:-$(state_get PROVIDER)}"
+  if [ -z "$p" ]; then
+    if command -v doctl >/dev/null 2>&1; then p="do"
+    elif command -v hcloud >/dev/null 2>&1; then p=hetzner
+    else die "install doctl (DigitalOcean) or hcloud (Hetzner), log in, then run again. Or pass --provider."
+    fi
+  fi
+  case "$p" in "do"|digitalocean) echo "do" ;; hetzner|hcloud) echo hetzner ;; *) die "unknown provider: $p (use do or hetzner)" ;; esac
+}
+
+require_cli() {
+  local bin="$1" hint="$2"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    if [ "$DRY_RUN" -eq 1 ]; then warn "$bin is not installed (dry run continues)"; return 0; fi
+    die "$bin is not installed. $hint"
+  fi
+}
+
+md5_fingerprint() { ssh-keygen -E md5 -lf "$1" | awk '{print $2}' | sed 's/^MD5://'; }
+
+render_cloud_init() {
+  local pub="$1" out="$2"
+  local key
+  key="$(cat "$pub")"
+  sed "s#__SSH_PUBLIC_KEY__#${key}#" "$KIT_DIR/infra/cloud-init.yml" >"$out"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "--- user data that would be sent ($out):"
+    cat "$out"
+    say "---"
+  fi
+}
+
+do_server_ip() {
+  doctl compute droplet list --format Name,PublicIPv4 --no-header 2>/dev/null | awk -v n="$1" '$1==n {print $2; exit}'
+}
+
+provision_do() {
+  local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4"
+  require_cli doctl "See https://docs.digitalocean.com/reference/doctl/how-to/install/ then run: doctl auth init"
+  local ip=""
+  [ "$DRY_RUN" -eq 0 ] && ip="$(do_server_ip "$name")"
+  if [ -n "$ip" ]; then
+    say "droplet $name already exists at $ip"
+    state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
+    return 0
+  fi
+  say "DigitalOcean: droplet $name ($size) in $region with a 2 TiB volume."
+  say "Billed by the hour while it exists: about \$0.53/h (droplet + volume, 2025 list prices; check yours)."
+  confirm "Create it now?" || die "cancelled"
+
+  local fp ud
+  fp="$(md5_fingerprint "$key.pub")"
+  if [ "$DRY_RUN" -eq 1 ] || ! doctl compute ssh-key get "$fp" >/dev/null 2>&1; then
+    run doctl compute ssh-key import "$name-key" --public-key-file "$key.pub"
+  fi
+  local vol_id="<volume-id>"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    vol_id="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+  fi
+  if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
+    run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "kit snapchain data"
+    [ "$DRY_RUN" -eq 0 ] && vol_id="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+  fi
+  if [ "$DRY_RUN" -eq 1 ] || ! doctl compute firewall list --format Name --no-header | grep -qx "$name-fw"; then
+    run doctl compute firewall create --name "$name-fw" --tag-names "$name" \
+      --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0 protocol:udp,ports:3382,address:0.0.0.0/0,address:::/0" \
+      --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
+  fi
+  ud="$(mktemp)"
+  render_cloud_init "$key.pub" "$ud"
+  run doctl compute droplet create "$name" --region "$region" --size "$size" --image ubuntu-24-04-x64 \
+    --ssh-keys "$fp" --user-data-file "$ud" --volumes "$vol_id" --tag-name "$name" --wait
+  rm -f "$ud"
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  ip="$(do_server_ip "$name")"
+  [ -n "$ip" ] || die "droplet created but has no public IP yet; run ./kit provision again in a minute"
+  state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
+}
+
+provision_hetzner() {
+  local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4"
+  require_cli hcloud "See https://github.com/hetznercloud/cli then run: hcloud context create kit"
+  local ip=""
+  [ "$DRY_RUN" -eq 0 ] && ip="$(hcloud server ip "$name" 2>/dev/null || true)"
+  if [ -n "$ip" ]; then
+    say "server $name already exists at $ip"
+    state_set PROVIDER hetzner; state_set NAME "$name"; state_set IP "$ip"
+    return 0
+  fi
+  say "Hetzner: server $name ($type) in $location with a 2 TB volume."
+  say "Billed by the hour while it exists. Check current prices for $type and volumes before you go on."
+  say "Note: new Hetzner accounts can have a volume size limit below 2 TB. Ask support to raise it if create fails."
+  confirm "Create it now?" || die "cancelled"
+
+  local fp keyname ud
+  fp="$(md5_fingerprint "$key.pub")"
+  keyname=""
+  [ "$DRY_RUN" -eq 0 ] && keyname="$(hcloud ssh-key list -o noheader -o columns=name,fingerprint | awk -v f="$fp" '$2==f {print $1; exit}')"
+  if [ -z "$keyname" ]; then
+    keyname="$name-key"
+    run hcloud ssh-key create --name "$keyname" --public-key-from-file "$key.pub"
+  fi
+  if [ "$DRY_RUN" -eq 1 ] || ! hcloud firewall describe "$name-fw" >/dev/null 2>&1; then
+    local rules
+    rules="$(mktemp)"
+    cat >"$rules" <<'JSON'
+[
+  {"direction": "in", "protocol": "tcp", "port": "22", "source_ips": ["0.0.0.0/0", "::/0"], "description": "ssh"},
+  {"direction": "in", "protocol": "udp", "port": "3382", "source_ips": ["0.0.0.0/0", "::/0"], "description": "snapchain gossip"}
+]
+JSON
+    run hcloud firewall create --name "$name-fw" --rules-file "$rules"
+    rm -f "$rules"
+  fi
+  if [ "$DRY_RUN" -eq 1 ] || ! hcloud volume describe "$name-data" >/dev/null 2>&1; then
+    run hcloud volume create --name "$name-data" --size 2048 --location "$location" --format ext4
+  fi
+  ud="$(mktemp)"
+  render_cloud_init "$key.pub" "$ud"
+  run hcloud server create --name "$name" --type "$type" --image ubuntu-24.04 --location "$location" \
+    --ssh-key "$keyname" --user-data-from-file "$ud" --firewall "$name-fw" --volume "$name-data" --automount
+  rm -f "$ud"
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  ip="$(hcloud server ip "$name")"
+  state_set PROVIDER hetzner; state_set NAME "$name"; state_set IP "$ip"
+}
+
+wait_for_ssh() {
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  say "waiting for the server to accept SSH and finish first boot..."
+  for _ in $(seq 1 60); do
+    if node_ssh 'test -f /var/lib/kit-ready || cloud-init status --wait >/dev/null 2>&1; test -f /var/lib/kit-ready' 2>/dev/null; then
+      say "server ready: $(node_host)"
+      return 0
+    fi
+    sleep 10
+  done
+  die "server did not come up within 10 minutes. Check it in your provider's console."
+}
+
+cmd_provision() {
+  local provider="" name="${KIT_NAME:-kit-node}" region="" size=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --provider) provider="$2"; shift 2 ;;
+      --name) name="$2"; shift 2 ;;
+      --region|--location) region="$2"; shift 2 ;;
+      --size|--type) size="$2"; shift 2 ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --yes|-y) ASSUME_YES=1; shift ;;
+      *) die "unknown option for provision: $1" ;;
+    esac
+  done
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || die "server name must be lowercase letters, digits and dashes"
+  provider="$(pick_provider "$provider")"
+  local key
+  key="$(ssh_key_path)"
+  state_set SSH_KEY "$key"
+  case "$provider" in
+    "do") provision_do "$name" "$region" "$size" "$key" ;;
+    hetzner) provision_hetzner "$name" "$region" "$size" "$key" ;;
+  esac
+  wait_for_ssh
+  [ "$DRY_RUN" -eq 1 ] || say "next: ./kit node"
+}
+
+# ---- node
+
+cmd_node() {
+  local wait=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-wait) wait=0; shift ;;
+      *) die "unknown option for node: $1" ;;
+    esac
+  done
+  local host
+  host="$(node_host)"
+  say "setting up the read node on $host"
+  node_ssh 'bash -s' <"$KIT_DIR/infra/node-setup.sh"
+  [ "$wait" -eq 1 ] || { say "started. Check progress with ./kit status"; return 0; }
+  say ""
+  say "The node first downloads a snapshot of the network (about 400 GB), then catches up."
+  say "This takes 2 to 6 hours. You can press Ctrl-C at any time; the node keeps going."
+  say "Check later with ./kit status."
+  local last=""
+  while true; do
+    local line
+    line="$(node_progress)"
+    if [ "$line" != "$last" ]; then say "$(date -u +%H:%M) $line"; last="$line"; fi
+    case "$line" in synced*) say "next: ./kit client"; return 0 ;; esac
+    sleep 60
+  done
+}
+
+# Prints one line: snapshot progress, catch-up state, or "synced".
+node_progress() {
+  # shellcheck disable=SC2016 # runs on the server; expands there
+  node_ssh 'set -o pipefail
+    info=$(curl -s -m 5 http://127.0.0.1:3381/v1/info || true)
+    if [ -n "$info" ]; then
+      max=$(echo "$info" | jq "[.shardInfos[].blockDelay] | max")
+      if [ "$max" -lt 10 ]; then echo "synced: every shard is within $max blocks of the tip"
+      else echo "catching up: furthest shard is $max blocks behind"; fi
+    else
+      c=$(docker ps -qf name=snapchain-snapchain || true)
+      [ -n "$c" ] || { echo "node container is not running"; exit 0; }
+      p=$(docker logs --tail 200 "$c" 2>&1 | sed "s/\x1b\[[0-9;]*m//g" | grep -oE "Progress: [0-9]+/[0-9]+ chunks \([0-9]+%\) \(ETA: [^)]*\)" | tail -1)
+      if [ -n "$p" ]; then echo "downloading snapshot: $p"; else echo "loading snapshot into the database (no API yet)"; fi
+    fi' 2>/dev/null || echo "cannot reach the server over SSH"
+}
+
+# ---- client
+
+# Unix sockets paths are limited to ~104 bytes, so keep this short; %C is ssh's hash of
+# user, host and port.
+tunnel_socket() { echo "$HOME/.ssh/kit-%C"; }
+
+tunnel_up() {
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+  local sock key host
+  sock="$(tunnel_socket)"
+  key="$(ssh_key_path)"
+  host="$(node_host)"
+  if ssh -S "$sock" -O check "root@$host" >/dev/null 2>&1; then
+    return 0
+  fi
+  ssh -i "$key" "${SSH_OPTS[@]}" -f -N -M -S "$sock" -o ExitOnForwardFailure=yes \
+    -L "127.0.0.1:$TUNNEL_PORT:127.0.0.1:3381" "root@$host"
+}
+
+tunnel_down() {
+  local sock
+  sock="$(tunnel_socket)"
+  local host
+  host="${KIT_HOST:-$(state_get IP)}"
+  [ -n "$host" ] || return 0
+  ssh -S "$sock" -O exit "root@$host" >/dev/null 2>&1 || true
+}
+
+ensure_build() {
+  command -v node >/dev/null 2>&1 || die "Node.js 20 or newer is needed for the client. See https://nodejs.org"
+  local major
+  major="$(node -p 'process.versions.node.split(".")[0]')"
+  [ "$major" -ge 20 ] || die "Node.js $major is too old; install 20 or newer"
+  if [ ! -d "$KIT_DIR/node_modules" ]; then
+    say "installing client dependencies (npm ci)"
+    (cd "$KIT_DIR" && npm ci --no-audit --no-fund)
+  fi
+  if [ ! -f "$KIT_DIR/dist/serve.js" ] || [ -n "$(find "$KIT_DIR/src" -newer "$KIT_DIR/dist/serve.js" -print -quit)" ]; then
+    (cd "$KIT_DIR" && node scripts/build.mjs)
+  fi
+}
+
+cmd_client() {
+  ensure_build
+  tunnel_up
+  trap tunnel_down EXIT
+  say "your node is reachable through an SSH tunnel on 127.0.0.1:$TUNNEL_PORT (no port opened on the server)"
+  say "open http://127.0.0.1:$CLIENT_PORT in your browser. Ctrl-C stops the client."
+  KIT_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" KIT_PORT="$CLIENT_PORT" node "$KIT_DIR/dist/serve.js"
+}
+
+cmd_cli() {
+  ensure_build
+  tunnel_up
+  KIT_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$KIT_DIR/dist/cli.js" "$@"
+}
+
+cmd_status() {
+  say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: ${KIT_HOST:-$(state_get IP)}"
+  [ -n "$(state_get IP)${KIT_HOST:-}" ] || { say "no server yet. Run ./kit provision"; return 0; }
+  say "node: $(node_progress)"
+}
+
+cmd_uninstall() {
+  say "revoking the CLI's app key with the key itself (no recovery phrase needed)"
+  cmd_cli uninstall
+  say "keys added in the web client are revoked from its 'Your app key' panel."
+}
+
+cmd_destroy() {
+  local provider name
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --yes|-y) ASSUME_YES=1; shift ;;
+      --name) KIT_NAME="$2"; shift 2 ;;
+      --provider) KIT_PROVIDER="$2"; shift 2 ;;
+      *) die "unknown option for destroy: $1" ;;
+    esac
+  done
+  provider="$(pick_provider "${KIT_PROVIDER:-}")"
+  name="${KIT_NAME:-$(state_get NAME)}"
+  name="${name:-kit-node}"
+  say "This deletes server $name, its 2 TB volume (all chain data) and its firewall on $provider."
+  say "Your account, follows and casts are not affected; they live on the network, not on this server."
+  if [ "$DRY_RUN" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ]; then
+    local typed
+    read -r -p "Type the server name ($name) to confirm: " typed
+    [ "$typed" = "$name" ] || die "cancelled"
+  fi
+  tunnel_down
+  case "$provider" in
+    "do")
+      require_cli doctl "Install doctl and run doctl auth init"
+      local id vol
+      id=""; vol=""
+      if [ "$DRY_RUN" -eq 0 ]; then
+        id="$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$name" '$2==n {print $1; exit}')"
+        vol="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+      fi
+      if [ "$DRY_RUN" -eq 1 ] || [ -n "$id" ]; then run doctl compute droplet delete "$name" --force; else say "droplet $name: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || [ -n "$vol" ]; then
+        # A volume can only be deleted once the droplet has released it.
+        [ "$DRY_RUN" -eq 1 ] || sleep 20
+        run doctl compute volume delete "${vol:-<volume-id>}" --force
+      else say "volume $name-data: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ]; then
+        run doctl compute firewall delete "<firewall-id of $name-fw>" --force
+      else
+        local fw
+        fw="$(doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
+        if [ -n "$fw" ]; then run doctl compute firewall delete "$fw" --force; else say "firewall $name-fw: already gone"; fi
+      fi
+      ;;
+    hetzner)
+      require_cli hcloud "Install hcloud and run hcloud context create kit"
+      if [ "$DRY_RUN" -eq 1 ] || hcloud server describe "$name" >/dev/null 2>&1; then run hcloud server delete "$name"; else say "server $name: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hcloud volume describe "$name-data" >/dev/null 2>&1; then run hcloud volume delete "$name-data"; else say "volume $name-data: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hcloud firewall describe "$name-fw" >/dev/null 2>&1; then run hcloud firewall delete "$name-fw"; else say "firewall $name-fw: already gone"; fi
+      ;;
+  esac
+  if [ "$DRY_RUN" -eq 0 ]; then
+    rm -f "$STATE_FILE"
+    say "done. Billing for these resources has stopped."
+  fi
+}
+
+usage() {
+  sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+main() {
+  local cmd="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    provision) cmd_provision "$@" ;;
+    node) cmd_node "$@" ;;
+    client) cmd_client "$@" ;;
+    cli) cmd_cli "$@" ;;
+    status) cmd_status "$@" ;;
+    uninstall) cmd_uninstall "$@" ;;
+    destroy) cmd_destroy "$@" ;;
+    ""|-h|--help|help) usage ;;
+    *) usage; die "unknown command: $cmd" ;;
+  esac
+}
+
+main "$@"
