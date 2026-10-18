@@ -6,7 +6,7 @@
 // self-signed tools look the same. A removed key may no longer be listed.
 
 import { decodeGaslessSignedKeyRequestMetadata } from "@farcaster/core";
-import { Hub, type HexString, type HubSigner } from "./hub.js";
+import { Hub, liveToken, type HexString, type HubSigner } from "./hub.js";
 
 export type AppKind = "app" | "self" | "unknown";
 
@@ -55,7 +55,7 @@ export class AppResolver {
         do {
           const page = await this.hub.signersByFidPage(fid, pageToken);
           for (const s of page.signers) this.byKey.set(`${fid}:${s.key.toLowerCase()}`, appRefOf(fid, s));
-          pageToken = page.nextPageToken || undefined;
+          pageToken = liveToken(page.nextPageToken);
         } while (pageToken);
       })();
       p.catch(() => this.loaded.delete(fid));

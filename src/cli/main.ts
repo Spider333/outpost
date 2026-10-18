@@ -129,9 +129,10 @@ async function cmdStatus(hub: Hub) {
   const { synced, maxDelay } = syncState(info);
   console.log(`node ${hub.url}  version ${info.version}`);
   for (const s of info.shardInfos) {
-    console.log(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages`);
+    const note = s.shardId === 0 ? " (block shard: no messages, not needed for reads)" : "";
+    console.log(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages${note}`);
   }
-  console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
+  console.log(synced ? "synced: yes" : `synced: no (furthest data shard is ${maxDelay} blocks behind)`);
 }
 
 async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {

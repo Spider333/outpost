@@ -1,0 +1,18 @@
+# census vs manual count (2026-10-18T10:33:24Z, node still catching up: newest day partly missing)
+$ kit-client charter census examples/network-states.charter.json
+"network-states channel (example)"
+census 2026-10-11 to 2026-10-18 (7 days), from your node
+  members            24
+  active (posted)    22
+  casts              816  (116.6 per day)
+  apps members posted from:
+      783  warpcast (app fid 9152)
+       22  own key
+       11  fireflyapp (app fid 16823)
+computed in 0.5 s
+
+$ scripts/manual-census.sh examples/network-states.charter.json 7
+members 24
+active 22
+casts 816
+casts_per_day 116.6

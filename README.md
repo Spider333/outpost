@@ -5,7 +5,7 @@ that reads from it and posts through it. No API keys from anyone.
 
 ```
 ./kit provision   # rent a server with a 2 TB disk (DigitalOcean or Hetzner), billed by the hour
-./kit node        # start a Snapchain read node on it; first sync takes 2 to 6 hours
+./kit node        # start a Snapchain read node on it; first sync takes most of a day
 ./kit client      # open http://127.0.0.1:8381
 ```
 

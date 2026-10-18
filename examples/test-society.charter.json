@@ -1,0 +1,22 @@
+{
+  "charter": 1,
+  "name": "kit test society",
+  "description": "The society people join while testing kit. Members are the testers who vouched for it.",
+  "codeOfConduct": "https://github.com/Spider333/fc-prize/blob/main/examples/test-society-conduct.md",
+  "members": [],
+  "moderators": [],
+  "clients": {
+    "exclude": []
+  },
+  "feed": {
+    "excludeKeywords": [
+      "airdrop"
+    ]
+  },
+  "issuedAt": "2026-10-18T10:33:08.223Z",
+  "signature": {
+    "type": "eip712",
+    "signer": "0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4",
+    "value": "0x85cff0057b7c4cea0d33cf4980889d7599fd637bfd1602593463eeec1d914edb36aa9fcda88571346bfab4e226ca0fb173bb51d62d60ff10aabb93a48a111cf51b"
+  }
+}

@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { FARCASTER_EPOCH_MS, Hub, signCharter, verifyCharter, type CharterBody, type HexString } from "../src/core/index.js";
+import { FARCASTER_EPOCH_MS, Hub, notFuture, signCharter, verifyCharter, type CharterBody, type HexString } from "../src/core/index.js";
 
 const hub = new Hub({ url: process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381" });
 const keyFile = join(homedir(), ".config/kit/example-charter.key");
@@ -21,8 +21,10 @@ function exampleKey() {
   return privateKeyToAccount(readFileSync(keyFile, "utf8").trim() as HexString);
 }
 
-// Channel casts carry the channel's parent URL. Older channels used the warpcast.com form.
+// Channel casts carry the channel's parent URL. Early channels used a custom URL:
+// /network-states is https://thenetworkstate.com. Newer ones use the warpcast.com form.
 const CHANNEL_CANDIDATES = [
+  "https://thenetworkstate.com",
   "https://warpcast.com/~/channel/network-states",
   "https://farcaster.xyz/~/channel/network-states",
 ];
@@ -36,12 +38,13 @@ async function channelPosters(days: number, top: number): Promise<{ url: string;
     for (let page = 0; page < 50; page++) {
       const res = await hub.castsByParentUrl(url, { reverse: true, pageSize: 1000, pageToken });
       for (const m of res.items) {
-        if (m.data.timestamp < cutoff) continue;
+        if (m.data.timestamp < cutoff || !notFuture(m)) continue;
         casts++;
         counts.set(m.data.fid, (counts.get(m.data.fid) ?? 0) + 1);
       }
-      const oldest = res.items.at(-1)?.data.timestamp;
-      if (!res.nextPageToken || oldest === undefined || oldest < cutoff) break;
+      // A page holds one newest-first run per shard, so stop only when the whole page is old.
+      const newest = Math.max(...res.items.map((m) => m.data.timestamp));
+      if (!res.nextPageToken || !res.items.length || newest < cutoff) break;
       pageToken = res.nextPageToken;
     }
     console.log(`${url}: ${casts} casts from ${counts.size} accounts in the last ${days} days`);

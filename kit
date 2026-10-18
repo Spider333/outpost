@@ -302,8 +302,10 @@ cmd_node() {
   node_ssh 'bash -s' <"$KIT_DIR/infra/node-setup.sh"
   [ "$wait" -eq 1 ] || { say "started. Check progress with ./kit status"; return 0; }
   say ""
-  say "The node first downloads a snapshot of the network (about 400 GB), then catches up."
-  say "This takes 2 to 6 hours. You can press Ctrl-C at any time; the node keeps going."
+  say "The node downloads a snapshot of the network (about 560 GB), loads it, then catches up"
+  say "on the blocks since. On our test server loading took about 7 hours and catching up"
+  say "several more. The client works once loading is done; the newest casts appear as it"
+  say "catches up. You can press Ctrl-C at any time; the node keeps going."
   say "Check later with ./kit status."
   local last=""
   while true; do
@@ -321,9 +323,10 @@ node_progress() {
   node_ssh 'set -o pipefail
     info=$(curl -s -m 5 http://127.0.0.1:3381/v1/info || true)
     if [ -n "$info" ]; then
-      max=$(echo "$info" | jq "[.shardInfos[].blockDelay] | max")
-      if [ "$max" -lt 10 ]; then echo "synced: every shard is within $max blocks of the tip"
-      else echo "catching up: furthest shard is $max blocks behind"; fi
+      # Data shards only. Shard 0 (blocks, no messages) replays from zero and takes months.
+      max=$(echo "$info" | jq "[.shardInfos[] | select(.shardId != 0) | .blockDelay] | max // 1000000000")
+      if [ "$max" -lt 10 ]; then echo "synced: every data shard is within $max blocks of the tip"
+      else echo "catching up: furthest data shard is $max blocks behind"; fi
     else
       c=$(docker ps -qf name=snapchain-snapchain || true)
       [ -n "$c" ] || { echo "node container is not running"; exit 0; }

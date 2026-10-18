@@ -1,0 +1,43 @@
+{
+  "charter": 1,
+  "name": "network-states channel (example)",
+  "description": "Unofficial example built by kit from public data: the 24 accounts that posted most in /network-states in the 90 days before 2026-10-18. Not signed by the channel's moderators.",
+  "members": [
+    3854,
+    4132,
+    4167,
+    9431,
+    191780,
+    192160,
+    194372,
+    255457,
+    291557,
+    299597,
+    412253,
+    512380,
+    649360,
+    862481,
+    1021694,
+    1043144,
+    1043423,
+    1043503,
+    1043514,
+    1062998,
+    1080343,
+    1300255,
+    1456371,
+    3321454
+  ],
+  "moderators": [],
+  "feed": {
+    "channels": [
+      "https://thenetworkstate.com"
+    ]
+  },
+  "issuedAt": "2026-10-18T10:33:08.223Z",
+  "signature": {
+    "type": "eip712",
+    "signer": "0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4",
+    "value": "0x3cc457eb51bd5444a1b28e7efa8fcda80c5189364b4603bd3ad7d8e6e1633777276041db4c310c8cc58f703572cb65353d391a4d6ba87f944d3b66ae28b3c9df1c"
+  }
+}

@@ -53,7 +53,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 cd kit
 # rent a server with a 2 TB disk, billed by the hour
 ./kit provision
-# start a read node; the first sync takes 2 to 6 hours
+# start a read node; the first sync takes most of a day
 ./kit node
 # then open http://127.0.0.1:8381
 ./kit client</pre>
@@ -113,7 +113,7 @@ Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list p
  Container snapchain-snapchain-1  Running
 [node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.</pre>
 <p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. kit does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
-<p>The first sync downloads the snapshot, unpacks it, then catches up on the blocks since. <code>./kit status</code> shows where it is:</p>
+<p>The first sync downloads the snapshot (about 560 GB), unpacks it, then catches up on the blocks since. On our test server (DigitalOcean, 8 vCPU, 32 GB RAM, 2 TB volume) download and unpacking took 6 hours 40 minutes. The node answers reads as soon as unpacking is done; the newest casts appear as it catches up. <code>./kit status</code> shows where it is:</p>
 <pre class="out">node: downloading snapshot: Progress: 1312/5689 chunks (23%) (ETA: 2h35m)</pre>
 <pre class="out pending" data-pending="node-synced">PENDING: ./kit status output once synced (catch-up line, then "synced").</pre>
 

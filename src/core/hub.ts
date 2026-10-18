@@ -87,6 +87,20 @@ export interface StorageLimits {
   limits: Array<{ storeType: string; name?: string; limit: number; used: number }>;
 }
 
+// Endpoints that read every shard (castsByParent, for example) end with a token that is
+// base64 of "[null,null]", not an empty one. Sending it back starts again from page 1, so a
+// client that follows tokens until they run out loops forever. Treat it as the end.
+export function liveToken(token: string | undefined | null): string | undefined {
+  if (!token) return undefined;
+  try {
+    const parts: unknown = JSON.parse(atob(token));
+    if (Array.isArray(parts) && parts.every((p) => p === null)) return undefined;
+  } catch {
+    // A single-shard token is opaque bytes, not JSON.
+  }
+  return token;
+}
+
 export class HubError extends Error {
   constructor(
     message: string,
@@ -231,7 +245,7 @@ export class Hub {
 
   private async paged(path: string, query: Query): Promise<Paged<HubMessage>> {
     const res = await this.request<{ messages: HubMessage[]; nextPageToken?: string }>("GET", path, query);
-    return { items: res.messages ?? [], nextPageToken: res.nextPageToken || undefined };
+    return { items: res.messages ?? [], nextPageToken: liveToken(res.nextPageToken) };
   }
 
   castsByFid(fid: number, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
@@ -284,9 +298,11 @@ export class Hub {
   }
 }
 
-// A node is usable when every shard is within a few blocks of the chain tip.
+// A node is usable when every data shard (1 and up) is within a few blocks of the tip.
+// Shard 0 is the block shard: it holds no messages, the snapshot does not include it, and a
+// read node replays it from height 0, which takes months. Reads and writes do not wait on it.
 export function syncState(info: HubInfo): { synced: boolean; maxDelay: number } {
-  const shards = info.shardInfos;
+  const shards = info.shardInfos.filter((s) => s.shardId !== 0);
   const maxDelay = Math.max(0, ...shards.map((s) => s.blockDelay));
   return { synced: shards.length > 0 && maxDelay < 10, maxDelay };
 }

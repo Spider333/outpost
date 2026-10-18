@@ -163,3 +163,31 @@ test("list query params use literal brackets (snapchain serde_qs strict mode)", 
   assert.equal(seen, "http://node.test/v1/signersByFid?fid=100&requesterFids[0]=42");
   assert.equal(r.requesterFidNonces!["42"], 7);
 });
+
+test("a multi-shard page token of all nulls means no more pages", async () => {
+  const { liveToken } = await import("../src/core/index.js");
+  // Real tokens from mainnet castsByParent: the last page returns base64 of "[null,null]".
+  assert.equal(liveToken("W251bGwsbnVsbF0="), undefined);
+  assert.equal(liveToken(""), undefined);
+  assert.equal(liveToken(undefined), undefined);
+  const more = "W1s0LDEwNCwxMTZdLFs0LDEwNF1d"; // "[[4,104,116],[4,104]]"
+  assert.equal(liveToken(more), more);
+  assert.equal(liveToken("AAEC"), "AAEC", "opaque single-shard token kept");
+  let n = 0;
+  const h = new Hub({
+    url: "http://node.test",
+    fetch: async () => (n++, new Response(JSON.stringify({ messages: [], nextPageToken: "W251bGwsbnVsbF0=" }))),
+  });
+  const page = await h.castsByParentUrl("https://example.org");
+  assert.equal(page.nextPageToken, undefined);
+  assert.equal(n, 1);
+});
+
+test("sync state counts data shards only, not the block shard", async () => {
+  const { syncState } = await import("../src/core/index.js");
+  const shard = (shardId: number, blockDelay: number) => ({ shardId, blockDelay, maxHeight: 1, numMessages: 0, numFidRegistrations: 0, approxSize: 0 });
+  // Mainnet read node after loading the snapshot: shard 0 replays from zero.
+  assert.deepEqual(syncState({ shardInfos: [shard(0, 49_725_542), shard(1, 3), shard(2, 4)] } as any), { synced: true, maxDelay: 4 });
+  assert.deepEqual(syncState({ shardInfos: [shard(0, 0), shard(1, 78_016), shard(2, 2)] } as any), { synced: false, maxDelay: 78_016 });
+  assert.equal(syncState({ shardInfos: [shard(0, 0)] } as any).synced, false);
+});
