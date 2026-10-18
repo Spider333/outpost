@@ -7,11 +7,14 @@ list() { # $1 = file glob prefix
     case "$fmt" in ID,Name) echo "$id $name";; Name) echo "$name";; Name,PublicIPv4) echo "$name $ip";; DropletIDs) echo "[]";; *) echo "$id $name $ip";; esac; done; }
 case "$1 $2 $3" in
   "compute droplet list") list droplet ;;
-  "compute droplet create") echo "d-1 $4 203.0.113.7" > "$S/droplet.$4" ;;
-  "compute droplet delete") rm -f "$S/droplet.$4" ;;
+  "compute droplet create") echo "d-1 $4 203.0.113.7" > "$S/droplet.$4"
+    # Like DigitalOcean on a bad day: --volumes is accepted but nothing is attached.
+    [ -n "${FAKE_SKIP_ATTACH:-}" ] || : > "$S/attached" ;;
+  "compute droplet delete") rm -f "$S/droplet.$4" "$S/attached" ;;
   "compute volume list") list volume ;;
   "compute volume create") echo "vol-123 $4" > "$S/volume.$4" ;;
-  "compute volume get") echo "[]" ;;
+  "compute volume get") if [ -e "$S/attached" ]; then echo "[d-1]"; else echo "[]"; fi ;;
+  "compute volume-action attach") : > "$S/attached" ;;
   "compute volume delete") for f in "$S"/volume.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
   "compute firewall list") list fw ;;
   "compute firewall create") # like DigitalOcean: HTTP 422 when the tag does not exist yet

@@ -26,6 +26,7 @@
     "outpost-cli": "tsx src/cli/main.ts",
     "build": "node scripts/build.mjs",
     "client": "node scripts/build.mjs && node dist/serve.js",
-    "test:providers": "bash test/providers.sh"
+    "test:providers": "bash test/providers.sh",
+    "test:restore": "bash test/snapshot-restore.sh"
   }
 }

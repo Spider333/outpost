@@ -12,7 +12,7 @@ fail() { echo "FAIL: $*"; exit 1; }
 for p in "do" hetzner; do
   find "$FAKE_STATE" -type f -delete
   "$ROOT/outpost" provision --provider "$p" --yes --no-wait >/dev/null
-  [ "$(find "$FAKE_STATE" -type f ! -name calls.log ! -name 'sshkey.*' ! -name hz.key ! -name 'tag.*' | wc -l)" -eq 3 ] || fail "$p: expected server, volume, firewall"
+  [ "$(find "$FAKE_STATE" -type f ! -name calls.log ! -name 'sshkey.*' ! -name hz.key ! -name 'tag.*' ! -name attached | wc -l)" -eq 3 ] || fail "$p: expected server, volume, firewall"
   : >"$FAKE_STATE/calls.log"
   out="$("$ROOT/outpost" provision --provider "$p" --yes --no-wait)"
   [[ "$out" == *"already exists"* ]] || fail "$p: second provision did not reuse the server"
@@ -24,4 +24,12 @@ for p in "do" hetzner; do
   [[ "$out" == *"already gone"* ]] || fail "$p: second destroy not a no-op"
   echo "ok: $p provision x2, destroy x2"
 done
+
+# DigitalOcean skipping the volume attach at create: provision must notice and attach it.
+find "$FAKE_STATE" -type f -delete
+FAKE_SKIP_ATTACH=1 "$ROOT/outpost" provision --provider "do" --yes --no-wait >/dev/null
+[ -e "$FAKE_STATE/attached" ] || fail "do: provision did not attach a volume DigitalOcean left detached"
+grep -q "compute volume-action attach" "$FAKE_STATE/calls.log" || fail "do: no attach call"
+"$ROOT/outpost" destroy --yes >/dev/null
+echo "ok: do provision attaches a volume left detached"
 find "$WORK" -type f -delete

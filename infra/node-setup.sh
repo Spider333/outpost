@@ -12,12 +12,17 @@
 #     through an open node, and the client reaches the node over an SSH tunnel anyway
 #   - statsd bound to 127.0.0.1; Grafana is not started
 # Gossip (3382/udp) stays public: the node needs it to sync and to relay your writes.
+#
+# On a new server the snapshot is loaded by snapshot-restore.sh (8 parallel downloads streamed
+# into the database, about 600 GB on disk) instead of Snapchain's own loader, which goes one
+# chunk at a time and needs about twice the disk. Set OUTPOST_FAST_RESTORE=0 to use Snapchain's.
 
 set -euo pipefail
 
 SNAPCHAIN_VERSION="${SNAPCHAIN_VERSION:-0.14.3}"
 DATA_DIR="${OUTPOST_DATA_DIR:-}"
-MIN_FREE_GB="${OUTPOST_MIN_FREE_GB:-1500}"
+MIN_FREE_GB="${OUTPOST_MIN_FREE_GB:-1000}"
+RESTORE=/usr/local/lib/outpost/snapshot-restore.sh
 
 log() { printf '[node-setup] %s\n' "$*"; }
 die() { printf '[node-setup] error: %s\n' "$*" >&2; exit 1; }
@@ -26,7 +31,7 @@ die() { printf '[node-setup] error: %s\n' "$*" >&2; exit 1; }
 
 free_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
 
-# Pick where the ~1.5 TB of chain data goes: an attached volume if there is one.
+# Pick where the ~600 GB of chain data goes (it grows): an attached volume if there is one.
 find_data_dir() {
   local mp
   # Hetzner (--automount) mounts volumes at /mnt/HC_Volume_<id>; DigitalOcean at /mnt/<name>.
@@ -60,7 +65,7 @@ find_data_dir() {
 }
 
 if [ -z "$DATA_DIR" ]; then
-  DATA_DIR="$(find_data_dir)" || die "no disk with ${MIN_FREE_GB} GB free. Snapchain needs about 1.5 TB while it loads the snapshot. Attach a 2 TB volume."
+  DATA_DIR="$(find_data_dir)" || die "no disk with ${MIN_FREE_GB} GB free. The chain data is about 600 GB and growing. Attach a 1.2 TB volume."
 fi
 log "data directory: $DATA_DIR ($(free_gb "$DATA_DIR") GB free)"
 
@@ -72,6 +77,7 @@ command -v docker >/dev/null 2>&1 || pkgs+=(docker.io)
 docker compose version >/dev/null 2>&1 || pkgs+=(docker-compose-v2)
 command -v jq >/dev/null 2>&1 || pkgs+=(jq)
 command -v curl >/dev/null 2>&1 || pkgs+=(curl)
+command -v pigz >/dev/null 2>&1 || pkgs+=(pigz)
 if [ "${#pkgs[@]}" -gt 0 ]; then
   log "installing ${pkgs[*]}"
   "${APT[@]}" update
@@ -109,6 +115,23 @@ if ! compose_ok; then
   done
   mv docker-compose.yml.new docker-compose.yml
 fi
+# A restore by snapshot-restore.sh runs as the outpost-restore unit and starts the node itself
+# when it is done (it runs this script again with OUTPOST_FROM_RESTORE=1).
+if [ -z "${OUTPOST_FROM_RESTORE:-}" ] && systemctl is-active --quiet outpost-restore 2>/dev/null; then
+  log "the snapshot is still loading in the background; leaving the node alone. Check ./outpost status."
+  exit 0
+fi
+mkdir -p .rocks .rocks.snapshot .onchain-config
+# New server (empty .rocks, node never started), or an unfinished restore (.restore exists):
+# load the snapshot with snapshot-restore.sh.
+if [ -z "${OUTPOST_FROM_RESTORE:-}" ] && [ "${OUTPOST_FAST_RESTORE:-1}" = 1 ] && [ -f "$RESTORE" ] &&
+  { [ -d .restore ] || { [ -z "$(ls -A .rocks)" ] && [ -z "$(docker compose ps -aq snapchain 2>/dev/null)" ]; }; }; then
+  systemctl reset-failed outpost-restore >/dev/null 2>&1 || true
+  systemd-run --unit=outpost-restore --collect --quiet /bin/bash "$RESTORE" "$DIR"
+  log "loading the snapshot in the background: 8 downloads at a time, streamed into the database."
+  log "the node starts by itself when all three shards are in. Check progress with ./outpost status."
+  exit 0
+fi
 # Snapchain loads the snapshot one shard after another, shard 0 last, and deletes
 # .rocks.snapshot when it is done (Docker recreates the empty mount folder). On a restart it
 # skips the snapshot as soon as .rocks has any data, so restarting it mid-load leaves the
@@ -121,8 +144,6 @@ if [ -f .rocks.snapshot/metadata.json ] && [ -n "$(ls -A .rocks 2>/dev/null)" ];
   fi
   die "an earlier snapshot load on this server was interrupted, so some shards are missing. See \"Shard 0 did not load\" in the README."
 fi
-mkdir -p .rocks .rocks.snapshot .onchain-config
-
 log "starting snapchain ${SNAPCHAIN_VERSION} (read node)"
 docker compose up -d snapchain statsd
 docker compose ps --format '{{.Name}} {{.Status}}'
