@@ -147,3 +147,17 @@ test("signers are fetched once per author, not once per cast", async () => {
   const signerCalls = calls.filter((c) => c === "/v1/signersByFid").length;
   assert.equal(signerCalls, 3); // authors 100, 200, 300
 });
+
+test("list query params use literal brackets (snapchain serde_qs strict mode)", async () => {
+  let seen = "";
+  const h = new Hub({
+    url: "http://node.test",
+    fetch: async (input) => {
+      seen = String(input);
+      return new Response(JSON.stringify({ signers: [], gaslessSignerCount: 0, gaslessSignerLimit: 1000, currentUserNonce: 3, requesterFidNonces: { "42": 7 } }));
+    },
+  });
+  const r = await h.signersByFid(100, 42);
+  assert.equal(seen, "http://node.test/v1/signersByFid?fid=100&requesterFids[0]=42");
+  assert.equal(r.requesterFidNonces!["42"], 7);
+});

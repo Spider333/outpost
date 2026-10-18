@@ -145,7 +145,8 @@ export async function addAppKey(
 
 export async function revokeAppKey(hub: Hub, key: AppKey, wait: { timeoutMs?: number; intervalMs?: number } = {}): Promise<void> {
   const signers = await hub.signersByFid(key.fid, key.requestFid);
-  const current = signers.requesterFidNonces?.[String(key.requestFid)] ?? 0;
+  const current = signers.requesterFidNonces?.[String(key.requestFid)];
+  if (current === undefined) throw new Error(`the node did not return the app nonce for requestFid ${key.requestFid}`);
   await hub.submit(await buildSelfRevoke(key, current + 1));
   const gone = await waitFor(async () => ((await hub.signer(key.fid, key.publicKey)) ? undefined : true), wait);
   if (!gone) throw new Error("revocation was accepted but the key is still listed. Check again in a minute.");

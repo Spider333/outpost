@@ -12,6 +12,7 @@ snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requ
 | 1 | snapchain `docs/castsbyfid-pagination-example` | httpapi.md pagination example: `/v1/casts` (no such route) -> `/v1/castsByFid` | route list read from code; live 404/200 check pending sync |
 | 2 | snapchain `docs/signer-endpoints` | document `/v1/signer`, `/v1/signersByFid` (HTTP + gRPC), mark `onChainSignersByFid` deprecated | not started: needs real responses from our node |
 | 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | example typechecks with hub-nodejs 0.17.0; live run pending test account |
+| 5 | snapchain (issue first, then PR) | `/v1/signersByFid` `requesterFids`: the doc comment says repeat the key (`?requesterFids=1&requesterFids=2`), which the node rejects ("Multiple values for one key"); a single `requesterFids=5` is rejected too ("expected a sequence"); percent-encoded `requesterFids%5B0%5D=5` (what browsers' URLSearchParams send) is silently ignored, so `requesterFidNonces` is missing with no error. Only literal `requesterFids[0]=5` works. Fix options: serde_qs non-strict config, or accept single/repeated values; at minimum fix the comment and docs | reproduced on 0.14.3, see docs/evidence/requesterFids-query-parsing.txt |
 | 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; live run pending test account |
 
 ## PR text

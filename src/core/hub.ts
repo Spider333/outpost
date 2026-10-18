@@ -108,7 +108,7 @@ export interface HubOptions {
   timeoutMs?: number;
 }
 
-type Query = Record<string, string | number | boolean | undefined>;
+type Query = Record<string, string | number | boolean | Array<string | number> | undefined>;
 
 export class Hub {
   readonly url: string;
@@ -130,11 +130,16 @@ export class Hub {
   }
 
   private async request<T>(method: "GET" | "POST", path: string, query?: Query, body?: Uint8Array): Promise<T> {
-    const qs = new URLSearchParams();
+    // Snapchain parses queries with serde_qs in strict mode: list parameters must be written
+    // as key[0]=a&key[1]=b with literal brackets. Percent-encoded brackets (what
+    // URLSearchParams produces) are silently ignored, and repeated keys are rejected.
+    const parts: string[] = [];
     for (const [k, v] of Object.entries(query ?? {})) {
-      if (v !== undefined) qs.set(k, String(v));
+      if (v === undefined) continue;
+      if (Array.isArray(v)) v.forEach((x, i) => parts.push(`${encodeURIComponent(k)}[${i}]=${encodeURIComponent(String(x))}`));
+      else parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
     }
-    const url = `${this.url}${path}${qs.size ? `?${qs}` : ""}`;
+    const url = `${this.url}${path}${parts.length ? `?${parts.join("&")}` : ""}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     let res: Response;
@@ -204,7 +209,7 @@ export class Hub {
   }
 
   signersByFid(fid: number, requesterFid?: number): Promise<SignersByFid> {
-    return this.request("GET", "/v1/signersByFid", { fid, requesterFids: requesterFid });
+    return this.request("GET", "/v1/signersByFid", { fid, requesterFids: requesterFid !== undefined ? [requesterFid] : undefined });
   }
 
   signersByFidPage(fid: number, pageToken?: string): Promise<SignersByFid> {

@@ -1,0 +1,9 @@
+# /v1/signersByFid requesterFids parsing, snapchain 0.14.3 (local container), 2026-10-18T04:38:27Z
+$ curl -g 'http://127.0.0.1:3381/v1/signersByFid?fid=1&requesterFids=5'
+Invalid query parameters: invalid type: string "5", expected a sequence
+$ curl -g 'http://127.0.0.1:3381/v1/signersByFid?fid=1&requesterFids=5&requesterFids=6'
+Invalid query parameters: Multiple values for one key: "requesterFids"
+$ curl -g 'http://127.0.0.1:3381/v1/signersByFid?fid=1&requesterFids%5B0%5D=5'
+{"signers":[],"gaslessSignerCount":0,"gaslessSignerLimit":1000,"currentUserNonce":0}
+$ curl -g 'http://127.0.0.1:3381/v1/signersByFid?fid=1&requesterFids[0]=5&requesterFids[1]=6'
+{"signers":[],"gaslessSignerCount":0,"gaslessSignerLimit":1000,"currentUserNonce":0,"requesterFidNonces":{"5":0,"6":0}}
