@@ -13,6 +13,8 @@ import {
   NobleEd25519Signer,
   type Eip712Signer,
   type Message,
+  ADMISSIBLE_KEY_ADD_SCOPES,
+  MAX_KEY_ADD_SCOPES,
   MAX_KEY_TTL_SECONDS,
 } from "@farcaster/core";
 import { bytesToHex, hexToBytes } from "viem";
@@ -81,7 +83,10 @@ export async function buildKeyAdd(opts: KeyAddOptions): Promise<{ message: Messa
   const scopes = opts.scopes ?? DEFAULT_SCOPES;
   const ttl = opts.ttl ?? DEFAULT_TTL_SECONDS;
   if (scopes.length === 0) throw new Error("an app key needs at least one scope");
-  if (!(ttl > 0 && ttl <= MAX_KEY_TTL_SECONDS)) throw new Error(`ttl must be between 1 second and 90 days`);
+  if (scopes.length > MAX_KEY_ADD_SCOPES || new Set(scopes).size !== scopes.length) throw new Error("scopes must be distinct, at most 16");
+  const bad = scopes.filter((s) => !ADMISSIBLE_KEY_ADD_SCOPES.includes(s));
+  if (bad.length) throw new Error(`these message types cannot be app key scopes: ${bad.join(", ")}`);
+  if (!(Number.isInteger(ttl) && ttl > 0 && ttl <= MAX_KEY_TTL_SECONDS)) throw new Error(`ttl must be a whole number of seconds between 1 and 90 days`);
   if (opts.requestFid !== undefined && opts.requestFid !== opts.fid && !opts.requestSigner) {
     throw new Error("a different requestFid needs that app's custody signer");
   }
@@ -130,17 +135,20 @@ export async function buildSelfRevoke(key: AppKey, nonce: number, now = farcaste
 }
 
 // Adds a key end to end: read the nonce, sign, submit, then wait until the node shows it.
+// `onSubmitted` runs right after the node accepts the message, before waiting, so the caller
+// can save the key: a key that merges late must not be lost.
 export async function addAppKey(
   hub: Hub,
   opts: Omit<KeyAddOptions, "nonce">,
   wait: { timeoutMs?: number; intervalMs?: number } = {},
-): Promise<AppKey> {
+  onSubmitted?: (key: AppKey) => void | Promise<void>,
+): Promise<{ key: AppKey; confirmed: boolean }> {
   const signers = await hub.signersByFid(opts.fid);
   const { message, key } = await buildKeyAdd({ ...opts, nonce: signers.currentUserNonce + 1 });
   await hub.submit(message);
+  await onSubmitted?.(key);
   const seen = await waitFor(() => hub.signer(key.fid, key.publicKey), wait);
-  if (!seen) throw new Error("the node accepted the key but it has not appeared yet. Run the same command again in a minute.");
-  return key;
+  return { key, confirmed: !!seen };
 }
 
 export async function revokeAppKey(hub: Hub, key: AppKey, wait: { timeoutMs?: number; intervalMs?: number } = {}): Promise<void> {

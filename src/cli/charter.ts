@@ -72,7 +72,6 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
         name: "My Society",
         description: "One or two sentences on what this society is for.",
         codeOfConduct: "https://example.org/code-of-conduct",
-        issuer: { fid: 1 },
         members: [],
         moderators: [],
         clients: { include: [], exclude: [] },
@@ -98,7 +97,9 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
       const signed = await signCharter(body, account);
       writeFileSync(b, JSON.stringify(signed, null, 2) + "\n");
       console.log(`signed by ${account.address}. Wrote ${b}.`);
-      console.log(describeVerification(signed, await verifyCharter(signed, hub)));
+      const v = await verifyCharter(signed, hub);
+      console.log(describeVerification(signed, v));
+      if (!v.ok) process.exitCode = 1;
       return;
     }
     case "verify": {
@@ -111,6 +112,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
     case "census": {
       const c = await loadVerified(hub, a);
       const days = b ? Number(b) : 7;
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("days must be 1 to 90");
       const t0 = Date.now();
       const result = await census(hub, c, { days });
       const feed = new FeedBuilder(hub);
@@ -123,7 +125,9 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
     }
     case "feed": {
       const c = await loadVerified(hub, a);
-      const items = await charterFeed(new FeedBuilder(hub), c, { limit: b ? Number(b) : 20 });
+      const limit = b ? Number(b) : 20;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("limit must be 1 to 500");
+      const items = await charterFeed(new FeedBuilder(hub), c, { limit });
       console.log(`"${c.name}" feed, ${items.length} casts, through its lens:`);
       for (const it of items) {
         console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${it.author?.username ? "@" + it.author.username : "fid:" + it.fid}`);

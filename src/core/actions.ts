@@ -109,10 +109,17 @@ export interface WriteResult {
 
 type Wait = { timeoutMs?: number; intervalMs?: number };
 
-async function submitAndConfirm(hub: Hub, msg: Message, probe: () => Promise<unknown>, wait?: Wait): Promise<WriteResult> {
+// Adds are confirmed when the node returns this exact message (same hash), not just any
+// earlier like or follow of the same target. Removes are confirmed when the target is gone.
+async function submitAndConfirm(hub: Hub, msg: Message, probe: () => Promise<HubMessage | true | undefined>, wait?: Wait): Promise<WriteResult> {
   await hub.submit(msg);
-  const seen = await waitFor(async () => ((await probe()) ? true : undefined), wait);
-  return { hash: hashOf(msg), confirmed: !!seen };
+  const hash = hashOf(msg);
+  const seen = await waitFor(async () => {
+    const r = await probe();
+    if (r === true) return true;
+    return r && r.hash.toLowerCase() === hash ? true : undefined;
+  }, wait);
+  return { hash, confirmed: !!seen };
 }
 
 export async function cast(hub: Hub, key: AppKey, input: CastInput, wait?: Wait): Promise<WriteResult> {

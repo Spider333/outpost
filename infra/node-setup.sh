@@ -64,14 +64,20 @@ if [ -z "$DATA_DIR" ]; then
 fi
 log "data directory: $DATA_DIR ($(free_gb "$DATA_DIR") GB free)"
 
-if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
-  log "installing docker"
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -q
-  apt-get install -y -q docker.io docker-compose-v2 jq curl
+export DEBIAN_FRONTEND=noninteractive
+# On a fresh server unattended-upgrades often holds the dpkg lock for a few minutes.
+APT=(apt-get -q -o DPkg::Lock::Timeout=600)
+pkgs=()
+command -v docker >/dev/null 2>&1 || pkgs+=(docker.io)
+docker compose version >/dev/null 2>&1 || pkgs+=(docker-compose-v2)
+command -v jq >/dev/null 2>&1 || pkgs+=(jq)
+command -v curl >/dev/null 2>&1 || pkgs+=(curl)
+if [ "${#pkgs[@]}" -gt 0 ]; then
+  log "installing ${pkgs[*]}"
+  "${APT[@]}" update
+  "${APT[@]}" install -y "${pkgs[@]}"
   systemctl enable --now docker
 fi
-command -v jq >/dev/null 2>&1 || apt-get install -y -q jq
 
 DIR="$DATA_DIR/snapchain"
 mkdir -p "$DIR"

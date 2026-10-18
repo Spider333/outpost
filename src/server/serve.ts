@@ -6,7 +6,7 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -14,7 +14,7 @@ const root = resolve(process.env.KIT_WEB_ROOT ?? join(here, "web"));
 const node = new URL(process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381");
 const nodeAuth = process.env.KIT_NODE_USER ? "Basic " + Buffer.from(`${process.env.KIT_NODE_USER}:${process.env.KIT_NODE_PASSWORD ?? ""}`).toString("base64") : undefined;
 const host = process.env.KIT_BIND ?? "127.0.0.1";
-const port = Number(process.env.KIT_PORT ?? 8080);
+const port = Number(process.env.KIT_PORT ?? 8381);
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -54,9 +54,15 @@ function proxy(req: IncomingMessage, res: ServerResponse) {
 }
 
 async function serveStatic(req: IncomingMessage, res: ServerResponse) {
-  const path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  } catch {
+    res.writeHead(400, { "content-type": "text/plain" }).end("bad request");
+    return;
+  }
   let file = normalize(join(root, path === "/" ? "index.html" : path));
-  if (!file.startsWith(root)) {
+  if (file !== root && !file.startsWith(root + sep)) {
     res.writeHead(403).end();
     return;
   }

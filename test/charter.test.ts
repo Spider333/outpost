@@ -34,7 +34,16 @@ const BODY: CharterBody = {
 const hubWithCustody = (custody: string) =>
   new Hub({
     url: "http://node.test",
-    fetch: async () => new Response(JSON.stringify({ events: [{ blockNumber: 1, logIndex: 0, idRegisterEventBody: { to: custody } }] })),
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          events: [
+            { blockNumber: 1, logIndex: 0, idRegisterEventBody: { to: custody, eventType: "Register" } },
+            // A later recovery-address change has an empty `to` and must not count as custody.
+            { blockNumber: 2, logIndex: 0, idRegisterEventBody: { to: "0x", eventType: "ChangeRecovery" } },
+          ],
+        }),
+      ),
   });
 
 test("canonical JSON ignores key order and whitespace", () => {
@@ -156,4 +165,21 @@ test("census counts match a manual count", async () => {
   assert.deepEqual(mix, { 9152: 2, self: 1, 777: 1 });
   assert.equal(c.perMember.find((m) => m.fid === 300)!.casts, 0);
   assert.equal(c.perMember.find((m) => m.fid === 100)!.lastCast, now - 43_200_000);
+});
+
+test("custodyOf follows transfers and skips recovery changes", async () => {
+  const hub = new Hub({
+    url: "http://node.test",
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          events: [
+            { blockNumber: 5, logIndex: 1, idRegisterEventBody: { to: OTHER.address, eventType: "Transfer" } },
+            { blockNumber: 1, logIndex: 0, idRegisterEventBody: { to: ISSUER.address, eventType: "Register" } },
+            { blockNumber: 9, logIndex: 0, idRegisterEventBody: { to: "0x", eventType: "ChangeRecovery" } },
+          ],
+        }),
+      ),
+  });
+  assert.equal(await hub.custodyOf(500), OTHER.address);
 });

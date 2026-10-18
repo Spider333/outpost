@@ -34,7 +34,6 @@ import {
 
 const KEY_STORAGE = "kit.appkey";
 const CHARTER_STORAGE = "kit.charter";
-const NODE_STORAGE = "kit.node";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -104,9 +103,9 @@ function ago(ms: number): string {
 // ---- state
 
 const params = new URLSearchParams(location.search);
-const nodeUrl = params.get("node") ?? store<string>(NODE_STORAGE) ?? location.origin;
-if (params.get("node")) store(NODE_STORAGE, params.get("node"));
-const hub = new Hub({ url: nodeUrl });
+// Always the page's own origin: `kit client` forwards /v1/* to your node. The node is never
+// taken from the URL, so a link cannot point this client at someone else's node.
+const hub = new Hub({ url: location.origin });
 const feed = new FeedBuilder(hub);
 
 let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
@@ -191,11 +190,12 @@ function wireConnect() {
   $("authorize").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node...", async () => {
       if (!pendingCustody || !pendingAccount) return;
-      const k = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer }, { timeoutMs: 60_000 });
+      const { key: k, confirmed } = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer }, { timeoutMs: 60_000 }, (added) => {
+        store(KEY_STORAGE, added); // saved as soon as the node accepts it, so a slow merge cannot lose it
+      });
       pendingCustody = undefined; // drop the custody signer; only the app key is kept
       key = k;
-      store(KEY_STORAGE, k);
-      say(`App key added for FID ${k.fid}. Your node shows it as active.`);
+      say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
       renderAccount();
       await loadFeed(k.fid);
     }),
@@ -514,12 +514,18 @@ function wireCharter() {
       const k = key;
       const todo = charter.members.filter((m) => m !== k.fid && !myFollowing.has(m));
       let n = 0;
+      let unconfirmed = 0;
       for (const m of todo) {
         say(`Following member ${++n} of ${todo.length} (FID ${m})...`);
-        await follow(hub, k, m, { timeoutMs: 15_000 });
-        myFollowing.add(m);
+        const r = await follow(hub, k, m, { timeoutMs: 15_000 });
+        if (r.confirmed) myFollowing.add(m);
+        else unconfirmed++;
       }
-      say(`Joined "${charter.name}": now following all ${charter.members.length} members.`);
+      say(
+        unconfirmed
+          ? `Joined "${charter.name}": ${todo.length - unconfirmed} follows confirmed, ${unconfirmed} sent but not seen yet.`
+          : `Joined "${charter.name}": you follow all ${charter.members.length} members.`,
+      );
     }),
   );
   $("ch-census-btn").addEventListener("click", (e) =>

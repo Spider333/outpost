@@ -6,7 +6,7 @@ that reads from it and posts through it. No API keys from anyone.
 ```
 ./kit provision   # rent a server with a 2 TB disk (DigitalOcean or Hetzner), billed by the hour
 ./kit node        # start a Snapchain read node on it; first sync takes 2 to 6 hours
-./kit client      # open http://127.0.0.1:8080
+./kit client      # open http://127.0.0.1:8381
 ```
 
 When you are done:
@@ -41,7 +41,7 @@ expiring app key and keeps no copy.
   node. The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone
   submit messages through it. It does not use the official installer, which needs a terminal
   and can stop before starting the node (snapchain issue #1030).
-- **client**: opens an SSH tunnel to the node and serves the web client on 127.0.0.1:8080.
+- **client**: opens an SSH tunnel to the node and serves the web client on 127.0.0.1:8381.
   The client:
   - connects an account with a wallet signature, or a test account's recovery phrase;
   - adds a gasless app key (`KEY_ADD`) that can only cast, react and follow, and expires

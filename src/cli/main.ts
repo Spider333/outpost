@@ -148,7 +148,7 @@ async function cmdLogin(hub: Hub, ttlDays: number) {
   console.log(WARNING);
   if (!(await confirm("Is this a test account, and do you accept the above?"))) return;
 
-  let phrase = process.env.KIT_TEST_PHRASE ?? (await askHidden("Recovery phrase (input hidden): "));
+  let phrase = await askHidden("Recovery phrase (input hidden): ");
   const custody = custodyFromSeedPhrase(phrase);
   phrase = ""; // JS strings cannot be wiped; we drop the reference and keep no copy.
 
@@ -160,9 +160,15 @@ async function cmdLogin(hub: Hub, ttlDays: number) {
   console.log(`app key          can cast, react and follow; expires ${ttlDays} days after last use`);
   if (!(await confirm("Sign the app key authorization for this FID?"))) return;
 
-  const key = await addAppKey(hub, { fid: account.fid, custody: custody.signer, ttl: ttlDays * 86400 }, { timeoutMs: 60_000 });
-  const path = saveKey(key);
-  console.log(`\napp key ${key.publicKey} is live. Saved to ${path}.`);
+  let path = "";
+  const { key, confirmed } = await addAppKey(hub, { fid: account.fid, custody: custody.signer, ttl: ttlDays * 86400 }, { timeoutMs: 60_000 }, (k) => {
+    path = saveKey(k); // saved as soon as the node accepts it, so a slow merge cannot lose it
+  });
+  console.log(
+    confirmed
+      ? `\napp key ${key.publicKey} is live. Saved to ${path}.`
+      : `\napp key ${key.publicKey} was accepted but your node does not show it yet. Saved to ${path}. Check with: kit-client whoami`,
+  );
   console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall");
 }
 
@@ -183,6 +189,7 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   const list = (s?: string) => (s ? s.split(",").map((x) => parseAppSelector(x.trim())) : undefined);
   const filter: AppFilter = { include: list(v.include), exclude: list(v.exclude) };
   const limit = v.limit ? Number(v.limit) : 30;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("--limit must be 1 to 500");
   const feed = new FeedBuilder(hub);
   const t0 = Date.now();
   const items = v.channel ? await feed.channel(v.channel, { limit, filter }) : await feed.following(fid, { limit, filter });

@@ -15,7 +15,7 @@ KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${KIT_STATE_DIR:-$KIT_DIR/.kit}"
 STATE_FILE="$STATE_DIR/state"
 TUNNEL_PORT="${KIT_TUNNEL_PORT:-13381}"
-CLIENT_PORT="${KIT_PORT:-8080}"
+CLIENT_PORT="${KIT_PORT:-8381}"
 
 DRY_RUN=0
 ASSUME_YES=0
@@ -73,8 +73,15 @@ ssh_key_path() {
   fi
   if [ -z "$k" ]; then
     k="$HOME/.ssh/kit_ed25519"
-    say "creating SSH key $k"
-    run ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k"
+    # This function's stdout is the key path, so messages go to stderr.
+    say "creating SSH key $k" >&2
+    if [ "$DRY_RUN" -eq 1 ]; then
+      run ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k" >&2
+    else
+      mkdir -p "$HOME/.ssh"
+      chmod 700 "$HOME/.ssh"
+      ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k" >&2
+    fi
   fi
   echo "$k"
 }
@@ -85,9 +92,13 @@ node_host() {
   echo "$ip"
 }
 
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=30)
+# Host keys are kept per project, so a new server that reuses an old IP (common after
+# destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts.
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=30)
 
 node_ssh() {
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
   local key host
   key="$(ssh_key_path)"
   host="$(node_host)"
@@ -352,7 +363,67 @@ ensure_build() {
   fi
 }
 
+# Firewall rule for HTTPS (443/tcp), only used by --phone.
+phone_firewall() {
+  local action="$1" provider name
+  provider="$(state_get PROVIDER)"
+  name="$(state_get NAME)"
+  if [ -z "$provider" ] || [ -n "${KIT_HOST:-}" ]; then
+    say "open (or close) 443/tcp in your server's firewall yourself; kit did not create this server."
+    return 0
+  fi
+  case "$provider" in
+    "do")
+      local fw
+      fw="$(doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
+      [ -n "$fw" ] || die "firewall $name-fw not found"
+      run doctl compute firewall "$action-rules" "$fw" --inbound-rules "protocol:tcp,ports:443,address:0.0.0.0/0,address:::/0" || true
+      ;;
+    hetzner)
+      run hcloud firewall "$action-rule" "$name-fw" --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0 || true
+      ;;
+  esac
+}
+
+# Serves the client from the server over HTTPS with a password, for use on a phone.
+cmd_phone() {
+  local mode="${1:-on}" host ip pwfile pw hash
+  ip="$(node_host)"
+  if [ "$mode" = "off" ]; then
+    node_ssh 'KIT_PHONE_OFF=1 bash -s' <"$KIT_DIR/infra/phone-setup.sh"
+    phone_firewall remove
+    say "phone access is off"
+    return 0
+  fi
+  ensure_build
+  host="${ip//./-}.sslip.io"
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+  pwfile="$STATE_DIR/phone-password"
+  if [ ! -s "$pwfile" ]; then
+    (umask 077; node -e 'process.stdout.write(require("crypto").randomBytes(18).toString("base64url"))' >"$pwfile")
+  fi
+  pw="$(cat "$pwfile")"
+  say "copying the client to the server"
+  tar -C "$KIT_DIR/dist/web" -czf - . | node_ssh 'mkdir -p /srv/kit-web && rm -f /srv/kit-web/*.js /srv/kit-web/*.map && tar -xzf - -C /srv/kit-web'
+  # The password travels over SSH stdin, never as a command-line argument.
+  hash="$(printf '%s\n%s\n' "$pw" "$pw" | node_ssh 'docker run --rm -i caddy:2.10.2 caddy hash-password')"
+  [[ "$hash" == \$2* ]] || die "could not hash the password on the server"
+  phone_firewall add
+  node_ssh "KIT_PHONE_HOST='$host' KIT_PHONE_HASH='$hash' bash -s" <"$KIT_DIR/infra/phone-setup.sh"
+  say ""
+  say "open https://$host on your phone"
+  say "user: kit   password: $pw   (saved in $pwfile)"
+  say "the first visit can take a minute while the certificate is issued."
+  say "turn it off with: ./kit client --phone off"
+}
+
 cmd_client() {
+  if [ "${1:-}" = "--phone" ]; then
+    shift
+    cmd_phone "$@"
+    return
+  fi
   ensure_build
   tunnel_up
   trap tunnel_down EXIT
@@ -413,7 +484,12 @@ cmd_destroy() {
       if [ "$DRY_RUN" -eq 1 ] || [ -n "$id" ]; then run doctl compute droplet delete "$name" --force; else say "droplet $name: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ] || [ -n "$vol" ]; then
         # A volume can only be deleted once the droplet has released it.
-        [ "$DRY_RUN" -eq 1 ] || sleep 20
+        if [ "$DRY_RUN" -eq 0 ]; then
+          for _ in $(seq 1 30); do
+            [ -z "$(doctl compute volume get "$vol" --format DropletIDs --no-header | tr -d '[] ')" ] && break
+            sleep 5
+          done
+        fi
         run doctl compute volume delete "${vol:-<volume-id>}" --force
       else say "volume $name-data: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ]; then
@@ -432,7 +508,10 @@ cmd_destroy() {
       ;;
   esac
   if [ "$DRY_RUN" -eq 0 ]; then
-    rm -f "$STATE_FILE"
+    # Forget the server only if it is the one in our state.
+    if [ "$name" = "$(state_get NAME)" ]; then
+      rm -f "$STATE_FILE" "$STATE_DIR/known_hosts" "$STATE_DIR/phone-password"
+    fi
     say "done. Billing for these resources has stopped."
   fi
 }

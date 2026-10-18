@@ -186,12 +186,15 @@ export class Hub {
 
   // FID -> current custody address, from the latest ID registry event for that FID.
   async custodyOf(fid: number): Promise<HexString | undefined> {
-    const res = await this.request<{ events: Array<{ blockNumber: number; logIndex: number; idRegisterEventBody?: { to: HexString } }> }>(
-      "GET",
-      "/v1/onChainEventsByFid",
-      { fid, event_type: "EVENT_TYPE_ID_REGISTER" },
-    );
-    const evs = res.events.filter((e) => e.idRegisterEventBody);
+    const res = await this.request<{
+      events: Array<{ blockNumber: number; logIndex: number; idRegisterEventBody?: { to: HexString; eventType: string | number } }>;
+    }>("GET", "/v1/onChainEventsByFid", { fid, event_type: "EVENT_TYPE_ID_REGISTER" });
+    // Only Register and Transfer events set the custody address. ChangeRecovery events
+    // have an empty `to` and must be skipped.
+    const evs = res.events.filter((e) => {
+      const b = e.idRegisterEventBody;
+      return b && /^0x[0-9a-fA-F]{40}$/.test(b.to) && ["Register", "Transfer", "ID_REGISTER_EVENT_TYPE_REGISTER", "ID_REGISTER_EVENT_TYPE_TRANSFER", 1, 2].includes(b.eventType);
+    });
     evs.sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
     return evs.at(-1)?.idRegisterEventBody?.to;
   }

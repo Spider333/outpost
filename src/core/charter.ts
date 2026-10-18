@@ -137,7 +137,8 @@ export interface Verification {
 export async function verifyCharter(c: unknown, hub?: Hub): Promise<Verification> {
   const problems = checkShape(c);
   const ch = c as Charter;
-  if (!ch?.signature || ch.signature.type !== "eip712" || !/^0x[0-9a-fA-F]{130}$/.test(ch.signature.value ?? "")) {
+  const sig = ch?.signature as { type?: unknown; signer?: unknown; value?: unknown } | undefined;
+  if (!sig || sig.type !== "eip712" || typeof sig.value !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(sig.value) || typeof sig.signer !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(sig.signer)) {
     problems.push("missing or malformed signature");
   }
   if (problems.length) return { ok: false, issuerCheck: "not-checked", problems };
