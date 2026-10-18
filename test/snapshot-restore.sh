@@ -37,14 +37,18 @@ for _ in $(seq 1 50); do curl -fs "http://127.0.0.1:$PORT/" >/dev/null && break;
 
 # shellcheck disable=SC2016 # expanded when the fake setup runs
 printf '#!/bin/sh\necho "setup ran with KIT_DATA_DIR=$KIT_DATA_DIR KIT_FROM_RESTORE=$KIT_FROM_RESTORE" >>"%s/setup.log"\n' "$T" >"$T/fake-setup.sh"
+# Runs 1-2 buffer chunks in a separate folder and keep at most 3 ahead; 3-4 use the defaults.
+BUF="$T/buf"
 run() {
-  KIT_SNAPSHOT_URL="http://127.0.0.1:$PORT" KIT_SHARDS="1 0" KIT_DOWNLOAD_JOBS=4 \
+  KIT_BUFFER_DIR="$BUF" KIT_MAX_AHEAD="${AHEAD:-1500}" \
+    KIT_SNAPSHOT_URL="http://127.0.0.1:$PORT" KIT_SHARDS="1 0" KIT_DOWNLOAD_JOBS=4 \
     KIT_STATE="$T/state" KIT_RESTORE_LOG="$T/log" KIT_SETUP="$T/fake-setup.sh" \
     bash "$ROOT/infra/snapshot-restore.sh" "$T/data/snapchain"
 }
 
 # 1. Clean load.
-run || fail "clean load exited non-zero"
+AHEAD=3 run || fail "clean load exited non-zero"
+[ ! -e "$BUF" ] || fail "chunk buffer left behind"
 for s in 1 0; do diff -r "$T/src/shard-$s" "$T/data/snapchain/.rocks/shard-$s" >/dev/null || fail "shard $s differs from the source"; done
 [ ! -e "$T/data/snapchain/.restore" ] || fail ".restore left behind"
 grep -q "^done: snapshot loaded" "$T/state/restore.progress" || fail "progress does not say done"
@@ -58,6 +62,7 @@ echo "ok: rerun skips loaded shards"
 
 # 3. A chunk that cannot be downloaded: fails, and leaves no half shard in .rocks.
 mv "$T/data" "$T/data.first"
+BUF=""
 kb1="$T/bucket/FARCASTER_NETWORK_MAINNET/1/snapshot-test.tar.gz"
 mv "$kb1/chunk_0010.bin" "$T/chunk_0010.bin"
 if run; then fail "load with a missing chunk succeeded"; fi
