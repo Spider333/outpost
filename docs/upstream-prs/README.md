@@ -10,9 +10,10 @@ snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requ
 | # | Repo / branch | Change | Tested |
 |---|---|---|---|
 | 1 | snapchain `docs/castsbyfid-pagination-example` | httpapi.md pagination example: `/v1/casts` (no such route) -> `/v1/castsByFid` | route list read from code; live 404/200 check pending sync |
-| 2 | snapchain `docs/signer-endpoints` | document `/v1/signer`, `/v1/signersByFid` (HTTP + gRPC), mark `onChainSignersByFid` deprecated | not started: needs real responses from our node |
+| 2 | snapchain `docs/signer-endpoints` | document `/v1/signer`, `/v1/signersByFid` (HTTP + gRPC) with the `requesterFids[0]=` syntax (#5 folded in), mark `onChainSigner*` deprecated, fix the http_server.rs doc comment | written; example responses are real, from a local 0.14.3 devnet (one onchain and one gasless key on one FID). Re-check the examples on our mainnet node; site build not run |
 | 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | typechecks with hub-nodejs 0.17.0; the example as written (constants and network swapped) adds a key on a local 0.14.3 devnet: docs/evidence/upstream-examples-devnet.txt. Mainnet run pending test account |
 | 5 | snapchain (issue first, then PR) | `/v1/signersByFid` `requesterFids`: the doc comment says repeat the key (`?requesterFids=1&requesterFids=2`), which the node rejects ("Multiple values for one key"); a single `requesterFids=5` is rejected too ("expected a sequence"); percent-encoded `requesterFids%5B0%5D=5` (what browsers' URLSearchParams send) is silently ignored, so `requesterFidNonces` is missing with no error. Only literal `requesterFids[0]=5` works. Fix options: serde_qs non-strict config, or accept single/repeated values; at minimum fix the comment and docs | reproduced on 0.14.3, see docs/evidence/requesterFids-query-parsing.txt |
+| 6 | snapchain (tiny) | HTTP JSON for onchain events has `"tier_purchase_event_body": null` (snake_case, never skipped) next to camelCase fields; `http_server.rs` `OnChainEvent.tier_purchase_event_body` lacks `#[serde(rename = "tierPurchaseEventBody", skip_serializing_if = "Option::is_none")]` like its siblings. Changing it renames a JSON field, so it needs a maintainer's call; open as an issue first | seen in /v1/signersByFid output on 0.14.3 |
 | 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; new signer step adds a key and a USER_DATA_ADD merges on a local 0.14.3 devnet (docs/evidence/upstream-examples-devnet.txt). yarn.lock not regenerated yet. Mainnet run pending test account |
 
 ## PR text
@@ -29,6 +30,32 @@ PENDING: curl outputs for both URLs
 ```
 
 AI disclosure: found while building a tutorial with an AI coding assistant; checked by hand.
+
+### 2. docs: document /v1/signer and /v1/signersByFid; mark onChainSigner* deprecated
+
+The HTTP and gRPC reference pages document only `onChainSignersByFid` /
+`GetOnChainSigner(sByFid)`. `rpc.proto` marks those deprecated ("gasless / off-chain keys
+are not surfaced"), and the unified `signer` / `signersByFid` endpoints that replace them
+are not documented anywhere except one line of the writing-messages guide.
+
+This adds both endpoints to both pages, with the response fields and which source sets
+them, and marks the old ones deprecated. It also documents how to pass `requesterFids`:
+the doc comment in `http_server.rs` says to repeat the key, but the node parses queries
+with serde_qs in strict mode, so on v0.14.3:
+
+```
+PENDING: paste docs/evidence/requesterFids-query-parsing.txt output, re-run on mainnet node
+```
+
+I fixed that comment too. Changing the parser (non-strict serde_qs, or accepting a single
+value) would be friendlier for browsers, whose URLSearchParams always percent-encodes
+brackets; happy to do that in a separate PR if you want it.
+
+Tested: example responses are real output from a v0.14.3 node (a local devnet with one
+onchain and one gasless key on the same FID). PENDING: same calls on a mainnet read node.
+
+AI disclosure: drafted with an AI coding assistant; every response was produced by running
+the node, and checked by a person.
 
 ### 3. guides: add gasless account keys (KEY_ADD) to create-account-key
 
