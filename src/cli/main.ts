@@ -2,7 +2,7 @@
 // Command-line client. Every read and write goes to your own node.
 
 import { parseArgs } from "node:util";
-import { MessageData, ViemLocalEip712Signer, type Message } from "@farcaster/core";
+import { FarcasterNetwork, MessageData, ViemLocalEip712Signer, type Message } from "@farcaster/core";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   addAppKey,
@@ -134,7 +134,7 @@ async function cmdStatus(hub: Hub) {
   console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
 }
 
-async function cmdLogin(hub: Hub, ttlDays: number) {
+async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
   const existing = loadKey();
   if (existing) {
     console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
@@ -161,7 +161,7 @@ async function cmdLogin(hub: Hub, ttlDays: number) {
   if (!(await confirm("Sign the app key authorization for this FID?"))) return;
 
   let path = "";
-  const { key, confirmed } = await addAppKey(hub, { fid: account.fid, custody: custody.signer, ttl: ttlDays * 86400 }, { timeoutMs: 60_000 }, (k) => {
+  const { key, confirmed } = await addAppKey(hub, { fid: account.fid, custody: custody.signer, ttl: ttlDays * 86400, network }, { timeoutMs: 60_000 }, (k) => {
     path = saveKey(k); // saved as soon as the node accepts it, so a slow merge cannot lose it
   });
   console.log(
@@ -181,7 +181,7 @@ async function cmdWhoami(hub: Hub) {
     return;
   }
   console.log(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`);
-  if (s.expiresAt) console.log(`expires: ${new Date((s.expiresAt + 1609459200) * 1000).toISOString()} unless used before then`);
+  if (s.expiresAt) console.log(`expires: ${new Date(s.expiresAt * 1000).toISOString()} unless used before then`);
 }
 
 async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: string; exclude?: string; limit?: string }) {
@@ -271,6 +271,8 @@ async function main(argv: string[]) {
       channel: { type: "string" },
       embed: { type: "string", multiple: true },
       "ttl-days": { type: "string", default: "30" },
+      // For testing against a local devnet. Everything real uses mainnet.
+      network: { type: "string", default: "mainnet" },
       fid: { type: "string" },
       include: { type: "string" },
       exclude: { type: "string" },
@@ -294,7 +296,10 @@ async function main(argv: string[]) {
     login: () => {
       const days = Number(values["ttl-days"]);
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("--ttl-days must be 1 to 90");
-      return cmdLogin(hub, days);
+      const nets: Record<string, FarcasterNetwork> = { mainnet: FarcasterNetwork.MAINNET, devnet: FarcasterNetwork.DEVNET };
+      const network = nets[values.network ?? "mainnet"];
+      if (network === undefined) throw new Error("--network must be mainnet or devnet");
+      return cmdLogin(hub, days, network);
     },
     whoami: () => cmdWhoami(hub),
     uninstall: () => cmdUninstall(hub),

@@ -50,7 +50,7 @@ export interface HubSigner {
   addedAt?: number;
   lastUsedAt?: number;
   ttl?: number;
-  expiresAt?: number;
+  expiresAt?: number; // Unix seconds (the node converts from Farcaster time)
   scopes?: string[];
   requestFid?: number;
   nonce?: number;

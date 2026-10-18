@@ -1,0 +1,59 @@
+# kit-client driven through a pseudo-terminal against a local snapchain 0.14.3 devnet, 2026-10-18T04:52:58Z
+# (throwaway FIDs registered via the devnet admin RPC; the generated phrase is not shown)
+$ kit-client login --network devnet
+
+  STOP. Read this before you paste a recovery phrase.
+
+  A recovery phrase is the custody key of an account. Whoever has it can
+  transfer the account, add or remove every app key, and change the username.
+  Pasting it into the wrong program is like running rm -rf / as root: there
+  is no undo.
+
+  - Use a TEST account only. Never your main account.
+  - Only paste it into software whose code you have read, or whose author
+    you trust.
+  - Prefer the web client's "sign with wallet" button. The phrase then never
+    leaves your wallet.
+
+  What this program does with it: derives the custody address in memory,
+  signs ONE authorization for a scoped, expiring app key, and then drops it.
+  It never writes the phrase to disk and never sends it over the network.
+  Only the app key is saved, to ~/.config/kit/appkey.json (mode 600).
+
+Is this a test account, and do you accept the above? [y/N] y
+Recovery phrase (input hidden): 
+
+custody address  0x60f5Ea6C58F61871133C04AD8b9aabC729F8AFbd
+FID              422267
+storage units    1
+app key          can cast, react and follow; expires 30 days after last use
+Sign the app key authorization for this FID? [y/N] y
+
+app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 is live. Saved to ~/.config/kit/appkey.json.
+Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall
+
+phrase not echoed: ok
+$ kit-client cast hello from the kit CLI on a devnet
+cast: 0x77759e8047fd3f44c3754703f7ac5e28072fae79 (confirmed: your node returns it)
+$ kit-client whoami
+FID 422267, app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4
+scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
+expires: 2026-11-17T04:53:11.000Z unless used before then
+$ kit-client follow 422268
+follow: 0x6fbfe1236ddad27cfe6acc4dea8cd19456124ca8 (confirmed: your node returns it)
+$ kit-client like 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79
+like: 0x63511037a5d405e939a04fff8283cc793a2cb7f5 (confirmed: your node returns it)
+$ kit-client recast 422267 0x77759e8047fd3f44c3754703f7ac5e28072fae79
+recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns it)
+$ kit-client feed --fid 422267
+2026-10-18 04:53  fid:422267  via own key
+  hello from the kit CLI on a devnet
+  422267:0x77759e8047fd3f44c3754703f7ac5e28072fae79
+
+1 casts in 0.10 s from http://127.0.0.1:23381
+    1  via own key
+$ kit-client uninstall
+revoked app key 0x5cbcb91837b9b4160f82bed08680c8884911c6af1b83a3f6047b80847260f4f4 for FID 422267. No recovery phrase was needed.
+deleted ~/.config/kit/appkey.json
+$ kit-client whoami
+error: no app key found at ~/.config/kit/appkey.json. Run: kit-client login

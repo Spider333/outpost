@@ -220,7 +220,7 @@ async function renderAccount() {
   try {
     const s = await hub.signer(key.fid, key.publicKey);
     $("k-status").textContent = s
-      ? `active${s.expiresAt ? `, expires ${new Date((s.expiresAt + 1609459200) * 1000).toLocaleDateString()} unless used` : ""}`
+      ? `active${s.expiresAt ? `, expires ${new Date(s.expiresAt * 1000).toLocaleDateString()} unless used` : ""}`
       : "not active (revoked or expired). Revoke to remove it from this browser.";
     myFollowing = new Set(await followingOf(hub, key.fid));
   } catch (e) {
