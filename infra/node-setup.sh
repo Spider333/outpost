@@ -84,7 +84,15 @@ mkdir -p "$DIR"
 cd "$DIR"
 
 BASE="https://raw.githubusercontent.com/farcasterxyz/snapchain/v${SNAPCHAIN_VERSION}"
-if [ ! -f docker-compose.yml ] || ! grep -q "farcasterxyz/snapchain:${SNAPCHAIN_VERSION}" docker-compose.yml; then
+# Rewrite the compose file unless it is already ours: right version and API ports on
+# 127.0.0.1. An install made some other way may publish 3381/3383 to the world.
+compose_ok() {
+  [ -f docker-compose.yml ] &&
+    grep -qF "farcasterxyz/snapchain:${SNAPCHAIN_VERSION}" docker-compose.yml &&
+    grep -qF '"127.0.0.1:3381:3381/tcp"' docker-compose.yml &&
+    grep -qF '"127.0.0.1:3383:3383/tcp"' docker-compose.yml
+}
+if ! compose_ok; then
   log "fetching compose file for snapchain v${SNAPCHAIN_VERSION}"
   curl -fsSLo docker-compose.yml.new "$BASE/docker-compose.mainnet.yml"
   curl -fsSLo validators.toml "$BASE/validators.toml"
@@ -106,4 +114,11 @@ mkdir -p .rocks .rocks.snapshot .onchain-config
 log "starting snapchain ${SNAPCHAIN_VERSION} (read node)"
 docker compose up -d snapchain statsd
 docker compose ps --format '{{.Name}} {{.Status}}'
+for p in 3381 3383; do
+  bound="$(docker compose port snapchain "$p" 2>/dev/null || true)"
+  case "$bound" in
+    127.0.0.1:*) ;;
+    *) die "port $p is published on '${bound:-nothing}', not 127.0.0.1 only. Stop the node and check docker-compose.yml." ;;
+  esac
+done
 log "done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded."
