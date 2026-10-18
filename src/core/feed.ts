@@ -135,16 +135,19 @@ export class FeedBuilder {
   // Latest casts from a set of authors, merged newest first, traced to apps, filtered.
   async fromAuthors(fids: number[], opts: FeedOptions = {}): Promise<FeedItem[]> {
     const { limit = 50, perAuthor = 5, includeReplies = false, filter, concurrency = 24 } = opts;
+    // Without replies, read further back: many accounts mostly reply, and their last few
+    // messages may hold no top-level cast at all.
+    const pageSize = includeReplies ? perAuthor : Math.min(100, perAuthor * 10);
     const pages = await mapLimit(fids, concurrency, (fid) =>
-      this.hub.castsByFid(fid, { reverse: true, pageSize: perAuthor }).then(
-        (p) => p.items,
+      this.hub.castsByFid(fid, { reverse: true, pageSize }).then(
+        (p) =>
+          p.items
+            .filter((m) => m.data.castAddBody && notFuture(m) && (includeReplies || !m.data.castAddBody.parentCastId))
+            .slice(0, perAuthor),
         () => [] as HubMessage[], // one unreachable author should not sink the feed
       ),
     );
-    const casts = pages
-      .flat()
-      .filter((m) => m.data.castAddBody && notFuture(m) && (includeReplies || !m.data.castAddBody.parentCastId))
-      .sort((a, b) => b.data.timestamp - a.data.timestamp);
+    const casts = pages.flat().sort((a, b) => b.data.timestamp - a.data.timestamp);
     return this.hydrate(casts, limit, filter, concurrency);
   }
 

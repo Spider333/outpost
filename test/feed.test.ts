@@ -204,3 +204,9 @@ test("mentions go back into the text at their byte offsets", async () => {
   assert.equal(withMentions(" gm", [3], [0], name), "@dwr gm");
   assert.equal(withMentions("plain", [], [], name), "plain");
 });
+
+test("an author whose latest casts are all replies still shows their last top-level cast", async () => {
+  casts[400] = [castMsg(400, 10, k(4), "top level"), ...[11, 12, 13, 14, 15, 16].map((ts) => castMsg(400, ts, k(4), `reply ${ts}`, true))];
+  const items = await new FeedBuilder(hub).fromAuthors([400], { perAuthor: 5 });
+  assert.deepEqual(items.map((i) => i.text), ["top level"]);
+});

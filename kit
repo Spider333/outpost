@@ -362,8 +362,10 @@ tunnel_up() {
   sock="$(tunnel_socket)"
   host="$(node_host)"
   key="$(ssh_key_path)"
+  # A live master is not enough: its forward can hang while the session stays up.
   if ssh -S "$sock" -O check "root@$host" >/dev/null 2>&1; then
-    return 0
+    curl -fsm 10 -o /dev/null "http://127.0.0.1:$TUNNEL_PORT/v1/info" && return 0
+    ssh -S "$sock" -O exit "root@$host" >/dev/null 2>&1 || true
   fi
   ssh -i "$key" "${SSH_OPTS[@]}" -f -N -M -S "$sock" -o ExitOnForwardFailure=yes \
     -L "127.0.0.1:$TUNNEL_PORT:127.0.0.1:3381" "root@$host"
