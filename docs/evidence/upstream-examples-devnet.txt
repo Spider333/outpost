@@ -1,0 +1,8 @@
+# upstream PR 3 (docs guide example, as written; only constants and network changed) on local devnet 0.14.3, 2026-10-18T04:50:48Z
+registered devnet FID 784037
+key added
+
+# upstream PR 4 (hello-world getOrRegisterSigner, as written) on local devnet 0.14.3; FID registered via admin RPC instead of OP
+registered devnet fid 886402 for 0x2F14d47052ad0C0283019AF0bb475B0Ae00A7BfA
+Registered new signer with public key: 0x4f55f27b6a76e8f3e7bcc6265dea23e11754d6a21b32f20992a2ac4107f96f2f
+user data on node: hello world

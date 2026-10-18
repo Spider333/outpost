@@ -11,9 +11,9 @@ snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requ
 |---|---|---|---|
 | 1 | snapchain `docs/castsbyfid-pagination-example` | httpapi.md pagination example: `/v1/casts` (no such route) -> `/v1/castsByFid` | route list read from code; live 404/200 check pending sync |
 | 2 | snapchain `docs/signer-endpoints` | document `/v1/signer`, `/v1/signersByFid` (HTTP + gRPC), mark `onChainSignersByFid` deprecated | not started: needs real responses from our node |
-| 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | example typechecks with hub-nodejs 0.17.0; live run pending test account |
+| 3 | docs `guides/gasless-account-keys` | create-account-key page: gasless KEY_ADD section first, onchain flow kept below | typechecks with hub-nodejs 0.17.0; the example as written (constants and network swapped) adds a key on a local 0.14.3 devnet: docs/evidence/upstream-examples-devnet.txt. Mainnet run pending test account |
 | 5 | snapchain (issue first, then PR) | `/v1/signersByFid` `requesterFids`: the doc comment says repeat the key (`?requesterFids=1&requesterFids=2`), which the node rejects ("Multiple values for one key"); a single `requesterFids=5` is rejected too ("expected a sequence"); percent-encoded `requesterFids%5B0%5D=5` (what browsers' URLSearchParams send) is silently ignored, so `requesterFidNonces` is missing with no error. Only literal `requesterFids[0]=5` works. Fix options: serde_qs non-strict config, or accept single/repeated values; at minimum fix the comment and docs | reproduced on 0.14.3, see docs/evidence/requesterFids-query-parsing.txt |
-| 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; live run pending test account |
+| 4 | hub-monorepo `examples/hello-world-gasless-key` | hello-world adds its signer with gasless KEY_ADD instead of a KeyGateway tx + 30 s sleep | typechecks with hub-nodejs 0.17.0; new signer step adds a key and a USER_DATA_ADD merges on a local 0.14.3 devnet (docs/evidence/upstream-examples-devnet.txt). yarn.lock not regenerated yet. Mainnet run pending test account |
 
 ## PR text
 
@@ -41,8 +41,9 @@ and keeps the existing onchain flow below under "Onchain account keys". It calls
 two things that trip people up: the `Farcaster KeyAdd` EIP-712 domain (so
 `getSignedKeyRequestMetadata` must not be used), and deadlines in Farcaster time.
 
-Tested: the example typechecks against @farcaster/hub-nodejs 0.17.0 and
-PENDING: ran against a v0.14.3 read node with a test account (output below).
+Tested: the example typechecks against @farcaster/hub-nodejs 0.17.0, and run as written
+(only the constants and network changed) it adds a key on a local snapchain 0.14.3 devnet.
+PENDING: the same run on mainnet with a test account.
 
 AI disclosure: drafted with an AI coding assistant, run and checked by a person.
 
@@ -54,6 +55,8 @@ The hello-world example still adds its signer with a KeyGateway transaction and 
 does, and polls `getSigner` instead of sleeping. FID registration is unchanged (a new FID
 still needs a transaction). Bumps the example to @farcaster/hub-nodejs ^0.17.0.
 
-Tested: typechecks against 0.17.0. PENDING: live run output.
+Tested: typechecks against 0.17.0. On a local snapchain 0.14.3 devnet (FID registered
+through the admin RPC instead of OP) the new signer step adds the key and the example's
+USER_DATA_ADD merges with it. PENDING: mainnet run; regenerate yarn.lock for the version bump.
 
 AI disclosure: drafted with an AI coding assistant, run and checked by a person.
