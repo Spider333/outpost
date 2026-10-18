@@ -190,6 +190,10 @@ provision_do() {
     run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "kit snapchain data"
     [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
+  # DigitalOcean rejects a firewall that names a tag which does not exist yet (HTTP 422).
+  if [ "$DRY_RUN" -eq 1 ] || ! doctl compute tag get "$name" >/dev/null 2>&1; then
+    run doctl compute tag create "$name"
+  fi
   if [ "$DRY_RUN" -eq 1 ] || ! plist doctl compute firewall list --format Name --no-header | grep -qx "$name-fw"; then
     run doctl compute firewall create --name "$name-fw" --tag-names "$name" \
       --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0 protocol:udp,ports:3382,address:0.0.0.0/0,address:::/0" \
