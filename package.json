@@ -25,6 +25,7 @@
     "typecheck": "tsc -p .",
     "kit-client": "tsx src/cli/main.ts",
     "build": "node scripts/build.mjs",
-    "client": "node scripts/build.mjs && node dist/serve.js"
+    "client": "node scripts/build.mjs && node dist/serve.js",
+    "test:kit": "bash test/kit-providers.sh"
   }
 }

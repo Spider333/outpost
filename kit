@@ -126,6 +126,17 @@ require_cli() {
   fi
 }
 
+# Runs a provider lookup. If the provider CLI fails (not logged in, network), say so instead
+# of letting set -e/pipefail end the script without a message.
+plist() {
+  local out
+  if ! out="$("$@" 2>&1)"; then
+    printf 'error: %s failed:\n%s\n' "$*" "$out" >&2
+    return 1
+  fi
+  [ -z "$out" ] || printf '%s\n' "$out"
+}
+
 md5_fingerprint() { ssh-keygen -E md5 -lf "$1" | awk '{print $2}' | sed 's/^MD5://'; }
 
 render_cloud_init() {
@@ -141,7 +152,7 @@ render_cloud_init() {
 }
 
 do_server_ip() {
-  doctl compute droplet list --format Name,PublicIPv4 --no-header 2>/dev/null | awk -v n="$1" '$1==n {print $2; exit}'
+  plist doctl compute droplet list --format Name,PublicIPv4 --no-header | awk -v n="$1" '$1==n {print $2; exit}'
 }
 
 provision_do() {
@@ -165,13 +176,13 @@ provision_do() {
   fi
   local vol_id="<volume-id>"
   if [ "$DRY_RUN" -eq 0 ]; then
-    vol_id="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+    vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
     run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "kit snapchain data"
-    [ "$DRY_RUN" -eq 0 ] && vol_id="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+    [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
-  if [ "$DRY_RUN" -eq 1 ] || ! doctl compute firewall list --format Name --no-header | grep -qx "$name-fw"; then
+  if [ "$DRY_RUN" -eq 1 ] || ! plist doctl compute firewall list --format Name --no-header | grep -qx "$name-fw"; then
     run doctl compute firewall create --name "$name-fw" --tag-names "$name" \
       --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0 protocol:udp,ports:3382,address:0.0.0.0/0,address:::/0" \
       --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
@@ -205,7 +216,7 @@ provision_hetzner() {
   local fp keyname ud
   fp="$(md5_fingerprint "$key.pub")"
   keyname=""
-  [ "$DRY_RUN" -eq 0 ] && keyname="$(hcloud ssh-key list -o noheader -o columns=name,fingerprint | awk -v f="$fp" '$2==f {print $1; exit}')"
+  [ "$DRY_RUN" -eq 0 ] && keyname="$(plist hcloud ssh-key list -o noheader -o columns=name,fingerprint | awk -v f="$fp" '$2==f {print $1; exit}')"
   if [ -z "$keyname" ]; then
     keyname="$name-key"
     run hcloud ssh-key create --name "$keyname" --public-key-from-file "$key.pub"
@@ -249,7 +260,7 @@ wait_for_ssh() {
 }
 
 cmd_provision() {
-  local provider="" name="${KIT_NAME:-kit-node}" region="" size=""
+  local provider="" name="${KIT_NAME:-kit-node}" region="" size="" wait=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --provider) provider="$2"; shift 2 ;;
@@ -258,6 +269,7 @@ cmd_provision() {
       --size|--type) size="$2"; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
+      --no-wait) wait=0; shift ;;
       *) die "unknown option for provision: $1" ;;
     esac
   done
@@ -270,7 +282,7 @@ cmd_provision() {
     "do") provision_do "$name" "$region" "$size" "$key" ;;
     hetzner) provision_hetzner "$name" "$region" "$size" "$key" ;;
   esac
-  wait_for_ssh
+  [ "$wait" -eq 1 ] && wait_for_ssh
   [ "$DRY_RUN" -eq 1 ] || say "next: ./kit node"
 }
 
@@ -375,7 +387,7 @@ phone_firewall() {
   case "$provider" in
     "do")
       local fw
-      fw="$(doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
+      fw="$(plist doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
       [ -n "$fw" ] || die "firewall $name-fw not found"
       run doctl compute firewall "$action-rules" "$fw" --inbound-rules "protocol:tcp,ports:443,address:0.0.0.0/0,address:::/0" || true
       ;;
@@ -478,8 +490,8 @@ cmd_destroy() {
       local id vol
       id=""; vol=""
       if [ "$DRY_RUN" -eq 0 ]; then
-        id="$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$name" '$2==n {print $1; exit}')"
-        vol="$(doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
+        id="$(plist doctl compute droplet list --format ID,Name --no-header | awk -v n="$name" '$2==n {print $1; exit}')"
+        vol="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
       fi
       if [ "$DRY_RUN" -eq 1 ] || [ -n "$id" ]; then run doctl compute droplet delete "$name" --force; else say "droplet $name: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ] || [ -n "$vol" ]; then
@@ -496,7 +508,7 @@ cmd_destroy() {
         run doctl compute firewall delete "<firewall-id of $name-fw>" --force
       else
         local fw
-        fw="$(doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
+        fw="$(plist doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
         if [ -n "$fw" ]; then run doctl compute firewall delete "$fw" --force; else say "firewall $name-fw: already gone"; fi
       fi
       ;;
