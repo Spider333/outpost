@@ -1,0 +1,66 @@
+# kit-client feed --fid 37 --limit 20 (2026-10-18T10:25:57Z, node http://127.0.0.1:13391)
+2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+2026-10-17 02:30  @dwr  via warpcast (app fid 9152)
+    [1 embed]
+  3:0x0256ae66308d546514fa666cda44052abbfea066
+2026-10-17 02:23  @dwr  via warpcast (app fid 9152)
+  Neat
+  3:0xec0c8a227d7f34ad3e2243ae098b46459b7d1847
+2026-10-17 02:00  @balajis.eth  via warpcast (app fid 9152)
+  THE FARCASTER PRIZE With 10,000+ votes counted, we're at 94.4% support for the new Network School Farcaster. Dylan put together a great visualization of this first decentralized digital democratic ele  [1 embed]
+  37:0xf454b8d3e5ee2c9252a0b7574ad4942e9ba502d2
+2026-10-16 21:45  @mazmhussain  via warpcast (app fid 9152)
+  Posting on Farcaster. Test.
+  758919:0x4e645d9213f107dbde4995392a8f9bf14b0ee220
+2026-10-16 21:29  @vrypan.eth  via warpcast (app fid 9152)
+  Command line's best friend.  [1 embed]
+  280:0x794fe34ef22ed42fa9cd2f698815bb90c364c5a1
+2026-10-16 15:57  @0xstark.eth  via warpcast (app fid 9152)
+  logged back in for first time in a while to vote to stay, along for the experiment! was off all social media for a few months, wonder if this new direction will draw me back here
+  368:0x529078699f312ef65f1cbed763811d98315640d9
+2026-10-16 15:14  @tldr  via warpcast (app fid 9152)
+  The name itself tells us – "business services" are meant to be performed by serfs, not free humans. Agents. https://x.com/tldr_x/status/2111112436841345073?s=20  [1 embed]
+  5774:0xcd3e25afd467e9cb23c3fe5da348174e09bdfcc3
+2026-10-16 12:18  @jesse.base.eth  via warpcast (app fid 9152)
+  heck yeah excited for the next chapter and grateful we have a new steward of the decentralized social network vision
+  99:0x5af7eadb18c2feb978780ef0a05aaf96e0b69ce3
+2026-10-16 12:17  @jesse.base.eth  via warpcast (app fid 9152)
+  I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [2 embed]
+  99:0xb9726b0fe611423c04b52fb9ab7557dd07c2885d
+2026-10-16 11:48  @stringtheory69  via warpcast (app fid 9152)
+   create a bounty for a simple one page site
+  191213:0x7f82680841550cecb8e5334b464677b267f7d002
+2026-10-16 10:00  @vrypan.eth  via warpcast (app fid 9152)
+  100% to the point
+  280:0xc0aff85d991080edfbfb9f125cddc3c9d478235f
+2026-10-16 06:31  @monteluna  via own key
+  I don't think Balaji fundemantally understands what the point of a city is. I think he's built great gated communities, but he keeps trying to sell the idea of a city by starting with a gated communit
+  240932:0x5cbe8e2fa3e7ad4e85ffbcaa05fa21a41d255ba7
+2026-10-16 04:21  @monteluna  via own key
+  Now why would rish do such a thing  [1 embed]
+  240932:0xe2cca4d4e7031f267b4d04670b4989949873515f
+2026-10-16 02:59  @hyperbad  via warpcast (app fid 9152)
+  You Can See Everything is best new movie i’ve watched in a very long time broke my curfew and was worth it 10/10 can’t believe it was 3 hrs went by fast I hate and actively avoid doomer/failure porn s
+  238:0x1a74587ff9123c8c0eec77cbcd32354efdc78319
+2026-10-16 01:42  @rish  via warpcast (app fid 9152)
+  he wasn’t joking about rocket thrusters https://youtube.com/shorts/u0oM6hIg0bk?is=lk2Bx4BJXGc6EoUv  [1 embed]
+  194:0xcb2647389d8c89fa396809a9f4fb7914113c815a
+2026-10-16 00:30  @dwr  via warpcast (app fid 9152)
+  Snapchain node wishlist 1. I want to sync only a subset of the network. 2. I don’t want to keep more than 7 days worth of content.
+  3:0x35f104e944de03c93cc4eb513e8b84cef58d9b77
+2026-10-15 22:38  @balajis.eth  via warpcast (app fid 9152)
+  Hello everyone! Network School is acquiring Farcaster. Our goal is to turn this client into a family-friendly place where you can learn technology, earn cryptocurrency, have fun with the community, ac  [1 embed]
+  37:0x83c734e1985ad2b6f28bea2938a750981740a093
+2026-10-15 21:57  @stringtheory69  via warpcast (app fid 9152)
+  I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app,   [1 embed]
+  191213:0xbb48e0e1448dddc1f266e789f95a5100d5adcd92
+2026-10-15 20:19  @fredwilson.eth  via warpcast (app fid 9152)
+  If you know , you know he will be a great steward of this protocol, app, and community.
+  169:0xaef0b7c2b58cf87c443690c4ce1c9b48182a9f44
+
+20 casts in 0.53 s from http://127.0.0.1:13391
+   17  via warpcast (app fid 9152)
+    2  via own key
+    1  via fireflyapp (app fid 16823)

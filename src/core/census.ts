@@ -46,9 +46,11 @@ export async function census(hub: Hub, c: CharterBody, opts: { days?: number; no
     for (;;) {
       const page = await hub.castsByFid(fid, { reverse: true, pageSize: 100, pageToken });
       for (const m of page.items) {
-        if (!m.data.castAddBody) continue;
-        lastCast ??= FARCASTER_EPOCH_MS + m.data.timestamp * 1000;
-        if (m.data.timestamp >= cutoff && m.data.timestamp * 1000 + FARCASTER_EPOCH_MS <= to) recent.push(m);
+        const t = FARCASTER_EPOCH_MS + m.data.timestamp * 1000;
+        // Mainnet has a few old casts dated decades ahead; they are not "recent".
+        if (!m.data.castAddBody || t > to) continue;
+        lastCast ??= t;
+        if (m.data.timestamp >= cutoff) recent.push(m);
       }
       const oldest = page.items.at(-1)?.data.timestamp;
       if (!page.nextPageToken || oldest === undefined || oldest < cutoff) break;

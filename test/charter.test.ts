@@ -126,7 +126,8 @@ test("census counts match a manual count", async () => {
   // 100: 3 casts in the window (2 via app 9152, 1 own key), 1 older.
   // 200: 1 cast in the window via app 777. 300: nothing recent.
   const data: Record<number, HubMessage[]> = {
-    100: [cast(100, 0.5, "0xa1"), cast(100, 2, "0xa1"), cast(100, 6.9, "0xa2"), cast(100, 8, "0xa1")],
+    // A cast dated 35 years ahead (as on mainnet) is neither recent nor the last cast.
+    100: [cast(100, -35 * 365, "0xa1"), cast(100, 0.5, "0xa1"), cast(100, 2, "0xa1"), cast(100, 6.9, "0xa2"), cast(100, 8, "0xa1")],
     200: [cast(200, 1, "0xb1")],
     300: [cast(300, 30, "0xc1")],
   };

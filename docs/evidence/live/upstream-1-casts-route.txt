@@ -1,0 +1,5 @@
+# pagination example (2026-10-18T10:26:00Z, node http://127.0.0.1:13391)
+$ curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:13391/v1/casts?fid=2&pageSize=3'
+404
+$ curl -s 'http://127.0.0.1:13391/v1/castsByFid?fid=2&pageSize=3' | jq '.messages | length'
+3

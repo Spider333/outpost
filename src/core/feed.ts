@@ -27,6 +27,13 @@ export interface FeedItem {
   author?: Profile;
 }
 
+// Nodes keep a few old casts dated far in the future (e.g. 2061 on mainnet). Left in, they
+// would sit at the top of every feed. Allow ten minutes of clock skew, as hubs do.
+const MAX_SKEW_MS = 10 * 60_000;
+export function notFuture(m: HubMessage, now = Date.now()): boolean {
+  return FARCASTER_EPOCH_MS + m.data.timestamp * 1000 <= now + MAX_SKEW_MS;
+}
+
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
@@ -120,7 +127,7 @@ export class FeedBuilder {
     );
     const casts = pages
       .flat()
-      .filter((m) => m.data.castAddBody && (includeReplies || !m.data.castAddBody.parentCastId))
+      .filter((m) => m.data.castAddBody && notFuture(m) && (includeReplies || !m.data.castAddBody.parentCastId))
       .sort((a, b) => b.data.timestamp - a.data.timestamp);
     return this.hydrate(casts, limit, filter, concurrency);
   }
@@ -133,7 +140,7 @@ export class FeedBuilder {
   async channel(parentUrl: string, opts: FeedOptions = {}): Promise<FeedItem[]> {
     const { limit = 50, filter, concurrency = 24 } = opts;
     const page = await this.hub.castsByParentUrl(parentUrl, { reverse: true, pageSize: Math.min(1000, limit * 4) });
-    const casts = page.items.filter((m) => m.data.castAddBody).sort((a, b) => b.data.timestamp - a.data.timestamp);
+    const casts = page.items.filter((m) => m.data.castAddBody && notFuture(m)).sort((a, b) => b.data.timestamp - a.data.timestamp);
     return this.hydrate(casts, limit, filter, concurrency);
   }
 

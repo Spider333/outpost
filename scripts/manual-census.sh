@@ -9,6 +9,7 @@ node="${3:-${KIT_NODE_URL:-http://127.0.0.1:3381}}"
 now=$(date +%s)
 # Farcaster time is seconds since 2021-01-01T00:00:00Z (Unix 1609459200).
 cutoff=$(( now - days * 86400 - 1609459200 ))
+nowfc=$(( now - 1609459200 ))
 total=0
 active=0
 members=0
@@ -18,7 +19,8 @@ for fid in $(jq -r '.members[]' "$charter" | sort -un); do
   token=""
   while :; do
     page=$(curl -gsf "$node/v1/castsByFid?fid=$fid&reverse=true&pageSize=100${token:+&pageToken=$token}")
-    c=$(jq --argjson cut "$cutoff" '[.messages[] | select(.data.type == "MESSAGE_TYPE_CAST_ADD" and .data.timestamp >= $cut)] | length' <<<"$page")
+    # Casts dated in the future (mainnet has a few) do not count.
+    c=$(jq --argjson cut "$cutoff" --argjson now "$nowfc" '[.messages[] | select(.data.type == "MESSAGE_TYPE_CAST_ADD" and .data.timestamp >= $cut and .data.timestamp <= $now)] | length' <<<"$page")
     n=$((n + c))
     oldest=$(jq '.messages[-1].data.timestamp // 0' <<<"$page")
     token=$(jq -r '.nextPageToken // ""' <<<"$page" | jq -sRr @uri | sed 's/%0A$//')

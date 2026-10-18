@@ -1,0 +1,19 @@
+# kit-client feed --fid 37 --limit 20 --include 16823 (2026-10-18T10:25:59Z, node http://127.0.0.1:13391)
+2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
+  Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
+  5650:0x9252885364ac7db01ac427e97dd246b7af619949
+2026-10-15 03:39  @vitalik.eth  via fireflyapp (app fid 16823)
+  Big congratulations to the airbender team for this milestone. At this point, I consider the battle for speed to be definitively won, and the top priority for zkEVMs should shift fully to security. To   [1 embed]
+  5650:0x2939942b565704c087d33fd818fac745551776e6
+2026-10-12 13:31  @vitalik.eth  via fireflyapp (app fid 16823)
+  For anyone who is either a fan of vaccines, or a critic of vaccines but open-minded to the idea that vaccines *could* be great if they were made with a more open-source open-science and public-spirite  [3 embed]
+  5650:0x3328fec2d99c9aebe1a70604b0d67f3f092d162c
+2026-10-07 23:28  @vitalik.eth  via fireflyapp (app fid 16823)
+  I don't recommend anyone scramble to move their funds to new wallets today. But we should take the risks to cryptography from AI-accelerated math seriously, and minimize our exposure to not just quant  [1 embed]
+  5650:0x7a95106ba6368c3359cf995a0d721d6e0ad7d063
+2026-10-06 09:24  @vitalik.eth  via fireflyapp (app fid 16823)
+  Nethermind continues doing excellent work and making Ethereum more efficient and faster. https://firefly.social/post/x/2107387115537338756  [1 embed]
+  5650:0x19a7d263e54029e809c46b0a29968ff7687a90e2
+
+5 casts in 0.58 s from http://127.0.0.1:13391
+    5  via fireflyapp (app fid 16823)

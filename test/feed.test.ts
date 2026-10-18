@@ -57,7 +57,8 @@ function castMsg(fid: number, ts: number, signer: string, text: string, reply = 
 const casts: Record<number, HubMessage[]> = {
   100: [castMsg(100, 50, k(9), "my own")],
   200: [castMsg(200, 40, k(1), "from app 9152"), castMsg(200, 30, k(2), "from app 777"), castMsg(200, 35, k(1), "a reply", true)],
-  300: [castMsg(300, 45, k(3), "self signed")],
+  // 1284259438 Farcaster seconds is 2061-09-12, like a real mainnet cast; it must not show.
+  300: [castMsg(300, 45, k(3), "self signed"), castMsg(300, 1284259438, k(3), "from 2061")],
 };
 
 const calls: string[] = [];
@@ -111,7 +112,7 @@ test("filter: include and exclude by app FID, self and unknown", () => {
   assert.throws(() => parseAppSelector("abc"));
 });
 
-test("following feed merges newest first, skips replies, labels apps and authors", async () => {
+test("following feed merges newest first, skips replies and future-dated casts, labels apps and authors", async () => {
   const feed = new FeedBuilder(hub);
   const items = await feed.following(100);
   assert.deepEqual(

@@ -1,0 +1,36 @@
+# signer endpoints, FID 3 (2026-10-18T10:26:00Z, node http://127.0.0.1:13391)
+$ curl -g 'http://127.0.0.1:13391/v1/signer?fid=3&signer=0xc887f5bf385a4718eaee166481f1832198938cf33e98a82dc81a0b4b81ffe33d'
+{
+  "signer": {
+    "source": "SIGNER_SOURCE_ONCHAIN",
+    "key": "0xc887f5bf385a4718eaee166481f1832198938cf33e98a82dc81a0b4b81ffe33d",
+    "keyType": 1,
+    "fid": 3,
+    "addedAt": 1699395643,
+    "onChainEvent": {
+      "type": "EVENT_TYPE_SIGNER",
+      "chainId": 10,
+      "blockNumber": 111898433,
+      "blockHash": "0x08e4859001ef864754bce4fa0e7d0184455c8069392bf930f387f28e9f70be4b",
+      "blockTimestamp": 1699395643,
+      "transactionHash": "0x721e832c5fa435fcd02e1d2b8430b60ac1689e6dbe59061dedb395e03b54e597",
+      "logIndex": 26,
+      "fid": 3,
+      "signerEventBody": {
+        "key": "0xc887f5bf385a4718eaee166481f1832198938cf33e98a82dc81a0b4b81ffe33d",
+        "keyType": 1,
+        "eventType": "SIGNER_EVENT_TYPE_ADD",
+        "metadataType": 1
+      },
+      "tier_purchase_event_body": null,
+      "txIndex": 4,
+      "version": 0
+    }
+  }
+}
+$ curl -g 'http://127.0.0.1:13391/v1/signersByFid?fid=3&requesterFids=9152&pageSize=1' | jq '{currentUserNonce, requesterFidNonces}'
+Invalid query parameters: invalid type: string "9152", expected a sequence
+$ curl -g 'http://127.0.0.1:13391/v1/signersByFid?fid=3&requesterFids%5B0%5D=9152&pageSize=1' | jq '{currentUserNonce, requesterFidNonces}'
+{"currentUserNonce":0,"requesterFidNonces":null}
+$ curl -g 'http://127.0.0.1:13391/v1/signersByFid?fid=3&requesterFids[0]=9152&pageSize=1' | jq '{currentUserNonce, requesterFidNonces}'
+{"currentUserNonce":0,"requesterFidNonces":{"9152":0}}

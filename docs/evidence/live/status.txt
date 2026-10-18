@@ -1,0 +1,6 @@
+# kit-client status (2026-10-18T10:25:56Z, node http://127.0.0.1:13391)
+node http://127.0.0.1:13391  version 0.14.3
+  shard 0: height 5627, 49727421 blocks behind, 0 messages
+  shard 2: height 48721043, 98483 blocks behind, 455611601 messages
+  shard 1: height 48904213, 79421 blocks behind, 458604542 messages
+synced: no (furthest shard is 49727421 blocks behind)
