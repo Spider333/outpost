@@ -1,0 +1,272 @@
+// Minimal client for a Snapchain node's HTTP API (port 3381).
+// Uses fetch only, so the same code runs in Node 20+ and in the browser.
+// Snapchain does not serve gRPC-web, so @farcaster/hub-web does not work here.
+
+import { Message } from "@farcaster/core";
+
+export type HexString = `0x${string}`;
+
+// JSON shapes returned by snapchain v0.14.x (src/network/http_server.rs).
+export interface HubMessage {
+  data: {
+    type: string; // e.g. "MESSAGE_TYPE_CAST_ADD"
+    fid: number;
+    timestamp: number; // Farcaster seconds
+    network: string;
+    castAddBody?: {
+      text: string;
+      embeds: Array<{ url: string } | { castId: { fid: number; hash: string } }>;
+      embedsDeprecated: string[];
+      mentions: number[];
+      mentionsPositions: number[];
+      parentCastId?: { fid: number; hash: string } | null;
+      parentUrl?: string | null;
+      type: string;
+    };
+    castRemoveBody?: { targetHash: string };
+    reactionBody?: { type: string; targetCastId?: { fid: number; hash: string }; targetUrl?: string };
+    linkBody?: { type: string; targetFid: number; displayTimestamp?: number | null };
+    userDataBody?: { type: string; value: string };
+    keyAddBody?: { key: string; scopes: string[]; ttl: number; nonce: number; deadline: number };
+    keyRemoveBody?: { key: string; signatureType: number; nonce: number; deadline: number };
+  };
+  hash: HexString;
+  hashScheme: string;
+  signature: string; // base64
+  signatureScheme: string;
+  signer: HexString;
+}
+
+export interface Paged<T> {
+  items: T[];
+  nextPageToken?: string;
+}
+
+export interface HubSigner {
+  source: "SIGNER_SOURCE_ONCHAIN" | "SIGNER_SOURCE_OFFCHAIN" | "SIGNER_SOURCE_NONE";
+  key: HexString;
+  keyType: number;
+  fid: number;
+  addedAt?: number;
+  lastUsedAt?: number;
+  ttl?: number;
+  expiresAt?: number;
+  scopes?: string[];
+  requestFid?: number;
+  nonce?: number;
+  onChainEvent?: {
+    fid: number;
+    signerEventBody?: { key: HexString; eventType: string; metadata: string /* base64 */; metadataType: number };
+  };
+}
+
+export interface SignersByFid {
+  signers: HubSigner[];
+  nextPageToken?: string;
+  gaslessSignerCount: number;
+  gaslessSignerLimit: number;
+  currentUserNonce: number;
+  requesterFidNonces?: Record<string, number>;
+}
+
+export interface ShardInfo {
+  shardId: number;
+  maxHeight: number;
+  numMessages: number;
+  blockDelay: number;
+}
+
+export interface HubInfo {
+  version: string;
+  numShards: number;
+  shardInfos: ShardInfo[];
+}
+
+export interface StorageLimits {
+  units: number;
+  limits: Array<{ storeType: string; name?: string; limit: number; used: number }>;
+}
+
+export class HubError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail?: string,
+  ) {
+    super(detail ? `${message}: ${detail}` : message);
+    this.name = "HubError";
+  }
+}
+
+export interface HubOptions {
+  // e.g. "http://127.0.0.1:3381" or "https://node.example.org"
+  url: string;
+  // Optional Basic auth, for a node behind Caddy or with rpc_auth set.
+  username?: string;
+  password?: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+}
+
+type Query = Record<string, string | number | boolean | undefined>;
+
+export class Hub {
+  readonly url: string;
+  private readonly auth?: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+
+  constructor(opts: HubOptions) {
+    this.url = opts.url.replace(/\/+$/, "");
+    if (opts.username !== undefined) {
+      this.auth = "Basic " + btoa(`${opts.username}:${opts.password ?? ""}`);
+    }
+    this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.timeoutMs = opts.timeoutMs ?? 15_000;
+  }
+
+  private headers(extra: Record<string, string> = {}): Record<string, string> {
+    return this.auth ? { ...extra, authorization: this.auth } : extra;
+  }
+
+  private async request<T>(method: "GET" | "POST", path: string, query?: Query, body?: Uint8Array): Promise<T> {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(query ?? {})) {
+      if (v !== undefined) qs.set(k, String(v));
+    }
+    const url = `${this.url}${path}${qs.size ? `?${qs}` : ""}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers: this.headers(body ? { "content-type": "application/octet-stream" } : {}),
+        body: body as BodyInit | undefined,
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw new HubError(`cannot reach node at ${this.url}`, 0, (e as Error).message);
+    } finally {
+      clearTimeout(timer);
+    }
+    const text = await res.text();
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new HubError(`${method} ${path} returned non-JSON (HTTP ${res.status})`, res.status, text.slice(0, 200));
+    }
+    if (!res.ok) {
+      const j = json as { error?: string; error_detail?: string; errCode?: string; details?: string; detail?: string };
+      throw new HubError(j.error ?? `${method} ${path} failed (HTTP ${res.status})`, res.status, j.error_detail ?? j.details ?? j.detail);
+    }
+    return json as T;
+  }
+
+  info(): Promise<HubInfo> {
+    return this.request("GET", "/v1/info");
+  }
+
+  // Custody address -> its ID registry event (gives the FID). No Optimism RPC needed.
+  async fidByCustody(address: HexString): Promise<number | undefined> {
+    try {
+      const ev = await this.request<{ fid: number }>("GET", "/v1/onChainIdRegistryEventByAddress", { address });
+      return ev.fid || undefined;
+    } catch (e) {
+      if (e instanceof HubError && e.status >= 400 && e.status < 500) return undefined;
+      throw e;
+    }
+  }
+
+  // FID -> current custody address, from the latest ID registry event for that FID.
+  async custodyOf(fid: number): Promise<HexString | undefined> {
+    const res = await this.request<{ events: Array<{ blockNumber: number; logIndex: number; idRegisterEventBody?: { to: HexString } }> }>(
+      "GET",
+      "/v1/onChainEventsByFid",
+      { fid, event_type: "EVENT_TYPE_ID_REGISTER" },
+    );
+    const evs = res.events.filter((e) => e.idRegisterEventBody);
+    evs.sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
+    return evs.at(-1)?.idRegisterEventBody?.to;
+  }
+
+  storageLimits(fid: number): Promise<StorageLimits> {
+    return this.request("GET", "/v1/storageLimitsByFid", { fid });
+  }
+
+  signersByFid(fid: number, requesterFid?: number): Promise<SignersByFid> {
+    return this.request("GET", "/v1/signersByFid", { fid, requesterFids: requesterFid });
+  }
+
+  async signer(fid: number, key: HexString): Promise<HubSigner | undefined> {
+    try {
+      const res = await this.request<{ signer: HubSigner }>("GET", "/v1/signer", { fid, signer: key });
+      return res.signer;
+    } catch (e) {
+      if (e instanceof HubError && e.status === 400 && /not ?found/i.test(e.message)) return undefined;
+      throw e;
+    }
+  }
+
+  private async paged(path: string, query: Query): Promise<Paged<HubMessage>> {
+    const res = await this.request<{ messages: HubMessage[]; nextPageToken?: string }>("GET", path, query);
+    return { items: res.messages ?? [], nextPageToken: res.nextPageToken || undefined };
+  }
+
+  castsByFid(fid: number, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
+    return this.paged("/v1/castsByFid", { fid, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse });
+  }
+
+  castsByParentUrl(url: string, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
+    return this.paged("/v1/castsByParent", { url, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse });
+  }
+
+  linksByFid(fid: number, opts: { linkType?: string; pageSize?: number; pageToken?: string } = {}) {
+    return this.paged("/v1/linksByFid", { fid, link_type: opts.linkType ?? "follow", pageSize: opts.pageSize, pageToken: opts.pageToken });
+  }
+
+  userDataByFid(fid: number) {
+    return this.paged("/v1/userDataByFid", { fid });
+  }
+
+  async castById(fid: number, hash: HexString): Promise<HubMessage | undefined> {
+    return this.optional(() => this.request<HubMessage>("GET", "/v1/castById", { fid, hash }));
+  }
+
+  async linkById(fid: number, targetFid: number, linkType = "follow"): Promise<HubMessage | undefined> {
+    return this.optional(() => this.request<HubMessage>("GET", "/v1/linkById", { fid, target_fid: targetFid, link_type: linkType }));
+  }
+
+  async reactionById(fid: number, type: "Like" | "Recast", target: { fid: number; hash: HexString }): Promise<HubMessage | undefined> {
+    return this.optional(() =>
+      this.request<HubMessage>("GET", "/v1/reactionById", { fid, reaction_type: type, target_fid: target.fid, target_hash: target.hash }),
+    );
+  }
+
+  private async optional<T>(fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof HubError && e.status === 400) return undefined;
+      throw e;
+    }
+  }
+
+  // Stateless check: signature, hash and body rules. Does not check custody or storage.
+  validate(msg: Message): Promise<{ valid: boolean; message?: HubMessage }> {
+    return this.request("POST", "/v1/validateMessage", undefined, Message.encode(msg).finish());
+  }
+
+  // Success means "accepted for relay", not "in a block". Read it back to confirm.
+  submit(msg: Message): Promise<HubMessage> {
+    return this.request("POST", "/v1/submitMessage", undefined, Message.encode(msg).finish());
+  }
+}
+
+// A node is usable when every shard is within a few blocks of the chain tip.
+export function syncState(info: HubInfo): { synced: boolean; maxDelay: number } {
+  const shards = info.shardInfos;
+  const maxDelay = Math.max(0, ...shards.map((s) => s.blockDelay));
+  return { synced: shards.length > 0 && maxDelay < 10, maxDelay };
+}

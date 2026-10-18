@@ -1,0 +1,27 @@
+{
+  "name": "fc-prize",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@farcaster/core": "0.20.0",
+    "viem": "2.57.1"
+  },
+  "devDependencies": {
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
+    "@types/node": "24.19.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p .",
+    "kit-client": "tsx src/cli/main.ts"
+  }
+}

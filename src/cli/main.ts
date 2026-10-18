@@ -1,0 +1,285 @@
+#!/usr/bin/env node
+// Command-line client. Every read and write goes to your own node.
+
+import { parseArgs } from "node:util";
+import { MessageData, ViemLocalEip712Signer, type Message } from "@farcaster/core";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  addAppKey,
+  buildCast,
+  buildCastRemove,
+  buildFollow,
+  buildKeyAdd,
+  buildReaction,
+  buildReactionRemove,
+  buildSelfRevoke,
+  buildUnfollow,
+  cast,
+  custodyFromSeedPhrase,
+  deleteCast,
+  follow,
+  Hub,
+  HubError,
+  react,
+  resolveAccount,
+  revokeAppKey,
+  syncState,
+  unfollow,
+  unreact,
+  type AppKey,
+  type HexString,
+  type Reaction,
+} from "../core/index.js";
+import { askHidden, confirm } from "./prompt.js";
+import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
+
+const WARNING = `
+  STOP. Read this before you paste a recovery phrase.
+
+  A recovery phrase is the custody key of an account. Whoever has it can
+  transfer the account, add or remove every app key, and change the username.
+  Pasting it into the wrong program is like running rm -rf / as root: there
+  is no undo.
+
+  - Use a TEST account only. Never your main account.
+  - Only paste it into software whose code you have read, or whose author
+    you trust.
+  - Prefer the web client's "sign with wallet" button. The phrase then never
+    leaves your wallet.
+
+  What this program does with it: derives the custody address in memory,
+  signs ONE authorization for a scoped, expiring app key, and then drops it.
+  It never writes the phrase to disk and never sends it over the network.
+  Only the app key is saved, to ${keyPath()} (mode 600).
+`;
+
+const USAGE = `usage: kit-client <command> [options]
+
+  status                         node sync state
+  login                          import a TEST account's phrase, add a gasless app key
+  whoami                         show the saved app key and its expiry
+  cast <text> [--reply fid:0xhash] [--channel url] [--embed url]
+  delete <0xhash>                remove one of your casts
+  follow <fid> | unfollow <fid>
+  like <fid> <0xhash> | unlike <fid> <0xhash>
+  recast <fid> <0xhash> | unrecast <fid> <0xhash>
+  uninstall                      revoke the app key (no phrase needed) and delete it
+  selftest                       sign every message type with throwaway keys and
+                                 ask the node to validate them (sends nothing)
+
+options:
+  --node <url>      node HTTP API (default $KIT_NODE_URL or http://127.0.0.1:3381)
+  --ttl-days <n>    app key expiry after last use, 1-90 (default 30)
+`;
+
+function hubFromEnv(url?: string): Hub {
+  return new Hub({
+    url: url ?? process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381",
+    username: process.env.KIT_NODE_USER,
+    password: process.env.KIT_NODE_PASSWORD,
+  });
+}
+
+function requireKey(): AppKey {
+  const key = loadKey();
+  if (!key) throw new Error(`no app key found at ${keyPath()}. Run: kit-client login`);
+  return key;
+}
+
+function parseFid(s: string | undefined): number {
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`not an FID: ${s}`);
+  return n;
+}
+
+function parseHash(s: string | undefined): HexString {
+  if (!s || !/^0x[0-9a-fA-F]{40}$/.test(s)) throw new Error(`not a cast hash (0x + 40 hex chars): ${s}`);
+  return s.toLowerCase() as HexString;
+}
+
+function parseCastRef(s: string): { fid: number; hash: HexString } {
+  const [fid, hash] = s.split(":");
+  return { fid: parseFid(fid), hash: parseHash(hash) };
+}
+
+function report(what: string, r: { hash: HexString; confirmed: boolean }) {
+  console.log(
+    r.confirmed
+      ? `${what}: ${r.hash} (confirmed: your node returns it)`
+      : `${what}: ${r.hash} (accepted for relay, not seen yet. Check again in a minute.)`,
+  );
+}
+
+async function cmdStatus(hub: Hub) {
+  const info = await hub.info();
+  const { synced, maxDelay } = syncState(info);
+  console.log(`node ${hub.url}  version ${info.version}`);
+  for (const s of info.shardInfos) {
+    console.log(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages`);
+  }
+  console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
+}
+
+async function cmdLogin(hub: Hub, ttlDays: number) {
+  const existing = loadKey();
+  if (existing) {
+    console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
+    console.log("Run `kit-client uninstall` first if you want a new one.");
+    return;
+  }
+  const info = await hub.info();
+  if (!syncState(info).synced) {
+    throw new Error("your node is still syncing. Run `kit-client status` and try again when it says synced: yes.");
+  }
+  console.log(WARNING);
+  if (!(await confirm("Is this a test account, and do you accept the above?"))) return;
+
+  let phrase = process.env.KIT_TEST_PHRASE ?? (await askHidden("Recovery phrase (input hidden): "));
+  const custody = custodyFromSeedPhrase(phrase);
+  phrase = ""; // JS strings cannot be wiped; we drop the reference and keep no copy.
+
+  const account = await resolveAccount(hub, custody.address);
+  console.log(`\ncustody address  ${account.custody}`);
+  console.log(`FID              ${account.fid}`);
+  console.log(`storage units    ${account.storageUnits}`);
+  if (account.storageUnits === 0) throw new Error("this account has no storage, so the network will reject its messages.");
+  console.log(`app key          can cast, react and follow; expires ${ttlDays} days after last use`);
+  if (!(await confirm("Sign the app key authorization for this FID?"))) return;
+
+  const key = await addAppKey(hub, { fid: account.fid, custody: custody.signer, ttl: ttlDays * 86400 }, { timeoutMs: 60_000 });
+  const path = saveKey(key);
+  console.log(`\napp key ${key.publicKey} is live. Saved to ${path}.`);
+  console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall");
+}
+
+async function cmdWhoami(hub: Hub) {
+  const key = requireKey();
+  const s = await hub.signer(key.fid, key.publicKey);
+  console.log(`FID ${key.fid}, app key ${key.publicKey}`);
+  if (!s) {
+    console.log("status: NOT active on your node (revoked, expired, or not merged yet)");
+    return;
+  }
+  console.log(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`);
+  if (s.expiresAt) console.log(`expires: ${new Date((s.expiresAt + 1609459200) * 1000).toISOString()} unless used before then`);
+}
+
+async function cmdUninstall(hub: Hub) {
+  const key = requireKey();
+  const active = await hub.signer(key.fid, key.publicKey);
+  if (active) {
+    await revokeAppKey(hub, key, { timeoutMs: 60_000 });
+    console.log(`revoked app key ${key.publicKey} for FID ${key.fid}. No recovery phrase was needed.`);
+  } else {
+    console.log("the key is not active on your node any more; nothing to revoke.");
+  }
+  deleteKey();
+  console.log(`deleted ${keyPath()}`);
+}
+
+// Builds one of every message type with a throwaway custody key and app key, then asks the
+// node's stateless validator about each. A tampered copy must fail. Nothing is submitted.
+async function cmdSelftest(hub: Hub) {
+  const throwaway = privateKeyToAccount(("0x" + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")) as HexString);
+  const custody = new ViemLocalEip712Signer(throwaway);
+  const fid = 1;
+  const target = { fid: 37, hash: "0x50184b62b4c52fd76628713562e1eda3dccaf63d" as HexString };
+  const { message: keyAdd, key } = await buildKeyAdd({ fid, custody, nonce: 1 });
+  const cases: Array<[string, Message, boolean]> = [
+    ["KEY_ADD (gasless, scoped, 30-day TTL)", keyAdd, true],
+    ["CAST_ADD", await buildCast(key, { text: "selftest" }), true],
+    ["CAST_REMOVE", await buildCastRemove(key, target.hash), true],
+    ["LINK_ADD follow", await buildFollow(key, 37), true],
+    ["LINK_REMOVE follow", await buildUnfollow(key, 37), true],
+    ["REACTION_ADD like", await buildReaction(key, "like", target), true],
+    ["REACTION_ADD recast", await buildReaction(key, "recast", target), true],
+    ["REACTION_REMOVE like", await buildReactionRemove(key, "like", target), true],
+    ["KEY_REMOVE (self-revoke)", await buildSelfRevoke(key, 1), true],
+  ];
+  // Tampering: change the signed bytes but keep the original hash and signature.
+  const reencode = (m: Message) => ((m.dataBytes = MessageData.encode(m.data!).finish()), m);
+  const tampered = await buildCast(key, { text: "original" });
+  tampered.data!.castAddBody!.text = "tampered";
+  cases.push(["CAST_ADD with text changed after signing", reencode(tampered), false]);
+  const widened = await buildKeyAdd({ fid, custody, nonce: 1, ttl: 86400 });
+  widened.message.data!.keyAddBody!.ttl = 90 * 86400;
+  cases.push(["KEY_ADD with TTL widened after signing", reencode(widened.message), false]);
+
+  let failures = 0;
+  for (const [name, msg, expected] of cases) {
+    const res = await hub.validate(msg);
+    const ok = res.valid === expected;
+    if (!ok) failures++;
+    console.log(`${ok ? "PASS" : "FAIL"}  ${name}: node says valid=${res.valid}, expected ${expected}`);
+  }
+  console.log(failures ? `\n${failures} check(s) failed` : `\nall ${cases.length} checks passed against ${hub.url}`);
+  if (failures) process.exitCode = 1;
+}
+
+async function main(argv: string[]) {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      node: { type: "string" },
+      reply: { type: "string" },
+      channel: { type: "string" },
+      embed: { type: "string", multiple: true },
+      "ttl-days": { type: "string", default: "30" },
+      help: { type: "boolean", short: "h" },
+    },
+  });
+  const [cmd, ...args] = positionals;
+  if (!cmd || values.help) {
+    console.log(USAGE);
+    return;
+  }
+  const hub = hubFromEnv(values.node);
+  const reaction = (r: Reaction, add: boolean) => async () => {
+    const key = requireKey();
+    const target = { fid: parseFid(args[0]), hash: parseHash(args[1]) };
+    report(`${add ? "" : "un"}${r}`, await (add ? react : unreact)(hub, key, r, target));
+  };
+  const commands: Record<string, () => Promise<void>> = {
+    status: () => cmdStatus(hub),
+    login: () => {
+      const days = Number(values["ttl-days"]);
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("--ttl-days must be 1 to 90");
+      return cmdLogin(hub, days);
+    },
+    whoami: () => cmdWhoami(hub),
+    uninstall: () => cmdUninstall(hub),
+    selftest: () => cmdSelftest(hub),
+    cast: async () => {
+      const text = args.join(" ");
+      report(
+        "cast",
+        await cast(hub, requireKey(), {
+          text,
+          embeds: values.embed,
+          replyTo: values.reply ? parseCastRef(values.reply) : undefined,
+          channelUrl: values.channel,
+        }),
+      );
+    },
+    delete: async () => report("delete", await deleteCast(hub, requireKey(), parseHash(args[0]))),
+    follow: async () => report("follow", await follow(hub, requireKey(), parseFid(args[0]))),
+    unfollow: async () => report("unfollow", await unfollow(hub, requireKey(), parseFid(args[0]))),
+    like: reaction("like", true),
+    unlike: reaction("like", false),
+    recast: reaction("recast", true),
+    unrecast: reaction("recast", false),
+  };
+  const run = commands[cmd];
+  if (!run) {
+    console.error(`unknown command: ${cmd}\n\n${USAGE}`);
+    process.exitCode = 2;
+    return;
+  }
+  await run();
+}
+
+main(process.argv.slice(2)).catch((e: unknown) => {
+  console.error(`error: ${e instanceof HubError || e instanceof Error ? e.message : String(e)}`);
+  process.exitCode = 1;
+});
