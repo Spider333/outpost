@@ -30,8 +30,8 @@ const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
-  // Scripts only from this origin. Images may come from anywhere (profile pictures).
-  "content-security-policy": "default-src 'self'; img-src * data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  // Scripts only from this origin. Charters may be fetched from any https URL.
+  "content-security-policy": "default-src 'self'; img-src * data:; style-src 'self'; script-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'none'",
 };
 
 function proxy(req: IncomingMessage, res: ServerResponse) {

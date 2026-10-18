@@ -19,6 +19,10 @@ import {
   syncState,
   unfollow,
   unreact,
+  census,
+  charterFeed,
+  verifyCharter,
+  type Charter,
   type AccountInfo,
   type AppFilter,
   type AppKey,
@@ -29,6 +33,7 @@ import {
 } from "../core/index.js";
 
 const KEY_STORAGE = "kit.appkey";
+const CHARTER_STORAGE = "kit.charter";
 const NODE_STORAGE = "kit.node";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -114,6 +119,7 @@ let replyTo: { fid: number; hash: HexString } | undefined;
 let myFollowing = new Set<number>();
 const chipState = new Map<string, "include" | "exclude">();
 let appNames = new Map<number, string>();
+let charter: Charter | undefined = store<Charter>(CHARTER_STORAGE);
 
 // ---- node status
 
@@ -382,14 +388,21 @@ function renderFeed() {
   const shown = items.filter((it) => passesFilter(it.app, filter));
   $("feed").replaceChildren(...shown.map(castCard));
   $("more").hidden = items.length === 0;
-  if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid}: ${shown.length} of ${items.length} casts shown`;
+  if (charter) $("feed-title").textContent = `Society feed of "${charter.name}" through its lens: ${shown.length} of ${items.length} casts shown`;
+  else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid}: ${shown.length} of ${items.length} casts shown`;
+  else $("feed-title").textContent = "";
 }
 
-async function loadFeed(fid: number) {
-  viewFid = fid;
-  say(`Loading the feed for FID ${fid} from your node...`);
+async function loadFeed(fid?: number) {
+  if (fid) viewFid = fid;
   const t0 = performance.now();
-  items = await feed.following(fid, { limit: 100, perAuthor });
+  if (charter) {
+    say(`Loading the "${charter.name}" society feed from your node...`);
+    items = await charterFeed(feed, charter, { limit: 100, perAuthor });
+  } else if (viewFid) {
+    say(`Loading the feed for FID ${viewFid} from your node...`);
+    items = await feed.following(viewFid, { limit: 100, perAuthor });
+  } else return;
   appNames = await feed.appNames(items);
   renderFeed();
   say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
@@ -403,14 +416,125 @@ function wireFeed() {
       const fid = /^\d+$/.test(v) ? Number(v) : await hub.fidByUsername(v);
       if (!fid) throw new Error(`No FID found for "${v}". Plain usernames only; .eth names need an Ethereum RPC on the node.`);
       perAuthor = 5;
+      if (charter) leaveCharter();
       await loadFeed(fid);
     });
   });
   $("more").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Loading...", async () => {
-      if (!viewFid) return;
       perAuthor *= 2;
-      await loadFeed(viewFid);
+      await loadFeed();
+    }),
+  );
+}
+
+// ---- society (charter)
+
+async function showCharter(c: unknown, source: string) {
+  const v = await verifyCharter(c, hub);
+  const verdict = $("charter-verdict");
+  $("charter-view").hidden = false;
+  if (!v.ok) {
+    verdict.className = "verdict-bad";
+    verdict.textContent = `Rejected (${source}): ${v.problems.join("; ")}`;
+    for (const id of ["ch-name", "ch-desc", "ch-coc", "ch-members", "ch-rules"]) $(id).textContent = "";
+    ($("ch-join") as HTMLButtonElement).disabled = true;
+    $("ch-details").hidden = true;
+    // Never keep an earlier society's lens active behind a rejected file.
+    charter = undefined;
+    store(CHARTER_STORAGE, null);
+    $("ch-census").hidden = true;
+    items = [];
+    renderFeed();
+    return;
+  }
+  const ch = c as Charter;
+  $("ch-details").hidden = false;
+  verdict.className = "verdict-ok";
+  verdict.textContent =
+    v.issuerCheck === "custody"
+      ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked on your node.`
+      : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`;
+  $("ch-name").textContent = ch.name;
+  $("ch-desc").textContent = ch.description ?? "";
+  const coc = $("ch-coc");
+  coc.replaceChildren(ch.codeOfConduct && /^https?:\/\//.test(ch.codeOfConduct) ? h("a", { href: ch.codeOfConduct, target: "_blank", rel: "noopener noreferrer" }, ch.codeOfConduct) : "none");
+  $("ch-members").textContent = `${ch.members.length} members${ch.moderators?.length ? `, ${ch.moderators.length} moderators` : ""}`;
+  const rules: string[] = [];
+  if (ch.feed?.channels?.length) rules.push(`channels: ${ch.feed.channels.join(", ")}`);
+  if (ch.feed?.keywords?.length) rules.push(`must mention: ${ch.feed.keywords.join(", ")}`);
+  if (ch.feed?.excludeKeywords?.length) rules.push(`hides: ${ch.feed.excludeKeywords.join(", ")}`);
+  if (ch.clients?.include?.length) rules.push(`only apps: ${ch.clients.include.join(", ")}`);
+  if (ch.clients?.exclude?.length) rules.push(`hides apps: ${ch.clients.exclude.join(", ")}`);
+  $("ch-rules").textContent = rules.join("; ") || "members' casts, no other rules";
+  ($("ch-join") as HTMLButtonElement).disabled = !key;
+  charter = ch;
+  store(CHARTER_STORAGE, ch);
+  chipState.clear();
+  perAuthor = 5;
+  await loadFeed();
+}
+
+function leaveCharter() {
+  charter = undefined;
+  store(CHARTER_STORAGE, null);
+  $("charter-view").hidden = true;
+  $("ch-census").hidden = true;
+}
+
+function wireCharter() {
+  $("charter-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    void busy(null, "", async () => {
+      const url = $<HTMLInputElement>("charter-url").value.trim();
+      if (!/^https?:\/\//.test(url)) throw new Error("Enter an http(s) URL of a charter file.");
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Could not fetch the charter: HTTP ${r.status}`);
+      await showCharter(await r.json(), url);
+    });
+  });
+  $("charter-file").addEventListener("change", (e) => {
+    const f = (e.target as HTMLInputElement).files?.[0];
+    if (!f) return;
+    void busy(null, "", async () => showCharter(JSON.parse(await f.text()), f.name));
+  });
+  $("ch-leave").addEventListener("click", () =>
+    busy(null, "", async () => {
+      const name = charter?.name;
+      leaveCharter();
+      say(`Left "${name}". Your keys, follows and posts are unchanged.`);
+      items = [];
+      renderFeed();
+      if (viewFid ?? key?.fid) await loadFeed(viewFid ?? key?.fid);
+    }),
+  );
+  $("ch-join").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Following...", async () => {
+      if (!key || !charter) return;
+      const k = key;
+      const todo = charter.members.filter((m) => m !== k.fid && !myFollowing.has(m));
+      let n = 0;
+      for (const m of todo) {
+        say(`Following member ${++n} of ${todo.length} (FID ${m})...`);
+        await follow(hub, k, m, { timeoutMs: 15_000 });
+        myFollowing.add(m);
+      }
+      say(`Joined "${charter.name}": now following all ${charter.members.length} members.`);
+    }),
+  );
+  $("ch-census-btn").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Counting...", async () => {
+      if (!charter) return;
+      const c = await census(hub, charter, { days: 7 });
+      const names = await feed.appNames(items);
+      $("cs-members").textContent = String(c.members);
+      $("cs-active").textContent = `${c.active} posted in the last ${c.days} days`;
+      $("cs-perday").textContent = `${c.castsPerDay} (${c.casts} casts)`;
+      $("cs-apps").textContent =
+        c.apps
+          .map((a) => `${a.app.kind === "app" ? names.get(a.app.requestFid!) ?? `app ${a.app.requestFid}` : a.app.kind === "self" ? "own key" : "unknown"}: ${a.casts}`)
+          .join(", ") || "no casts";
+      $("ch-census").hidden = false;
     }),
   );
 }
@@ -422,10 +546,12 @@ async function main() {
   wireKey();
   wireCompose();
   wireFeed();
+  wireCharter();
   await renderAccount();
   if (await checkNode()) {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
-    if (start) await loadFeed(start).catch((e) => say(errText(e), true));
+    if (charter) await showCharter(charter, "saved in this browser").catch((e) => say(errText(e), true));
+    else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
     else say("Enter an FID or username to read a feed, or connect an account to post.");
   }
   setInterval(checkNode, 60_000);

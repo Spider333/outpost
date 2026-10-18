@@ -35,6 +35,7 @@ import {
   type Reaction,
 } from "../core/index.js";
 import { askHidden, confirm } from "./prompt.js";
+import { cmdCharter } from "./charter.js";
 import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
 
 const WARNING = `
@@ -70,6 +71,12 @@ const USAGE = `usage: kit-client <command> [options]
   feed [--fid n] [--channel url] [--include apps] [--exclude apps] [--limit n]
                                  following feed (or a channel) from your node. apps is a
                                  comma list of app FIDs, "self" or "unknown"
+  charter new <file>             start a charter file
+  charter sign <in> <out>        sign it with the society's key ($CHARTER_PRIVATE_KEY or phrase)
+  charter verify <file|url>      check the signature and the issuer's custody on your node
+  charter census <file|url> [days]   members, active members, casts per day, app mix
+  charter feed <file|url>        the society's feed through its lens
+  charter join <file|url>        follow its members with your app key
   uninstall                      revoke the app key (no phrase needed) and delete it
   selftest                       sign every message type with throwaway keys and
                                  ask the node to validate them (sends nothing)
@@ -286,6 +293,7 @@ async function main(argv: string[]) {
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
+    charter: () => cmdCharter(hub, args, requireKey),
     cast: async () => {
       const text = args.join(" ");
       report(

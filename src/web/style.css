@@ -158,3 +158,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 }
 
 footer { padding-top: 8px; padding-bottom: 32px; }
+
+h3 { font-size: 15px; margin: 16px 0 4px; }
+.verdict-ok { color: var(--ok); }
+.verdict-bad { color: var(--bad); }
+input[type="file"] { min-height: 0; padding: 8px; }

@@ -66,6 +66,45 @@
       </div>
     </section>
 
+    <section id="charter" class="card" aria-labelledby="charter-h">
+      <h2 id="charter-h">Society</h2>
+      <p class="muted small">A society is a signed charter file: its members, its rules for the feed, and a link to its code of conduct. Load one to see the feed through its lens. Leaving drops the lens; your keys, follows and posts stay yours.</p>
+      <form id="charter-form" class="inline">
+        <label for="charter-url" class="sr-only">Charter URL</label>
+        <input id="charter-url" placeholder="https://.../charter.json" inputmode="url" autocomplete="off">
+        <button type="submit">Load</button>
+      </form>
+      <label for="charter-file">or open a charter file</label>
+      <input id="charter-file" type="file" accept="application/json,.json">
+      <div id="charter-view" hidden>
+        <p id="charter-verdict"></p>
+        <div id="ch-details">
+        <dl class="facts">
+          <dt>Name</dt><dd id="ch-name"></dd>
+          <dt>About</dt><dd id="ch-desc"></dd>
+          <dt>Code of conduct</dt><dd id="ch-coc"></dd>
+          <dt>Members</dt><dd id="ch-members"></dd>
+          <dt>Rules</dt><dd id="ch-rules"></dd>
+        </dl>
+        <div class="row wrap">
+          <button id="ch-join" class="primary" type="button">Join (follow members)</button>
+          <button id="ch-leave" type="button">Leave</button>
+          <button id="ch-census-btn" type="button">Run census</button>
+        </div>
+        <div id="ch-census" hidden>
+          <h3>Census, last 7 days, from your node</h3>
+          <dl class="facts">
+            <dt>Members</dt><dd id="cs-members"></dd>
+            <dt>Active</dt><dd id="cs-active"></dd>
+            <dt>Casts per day</dt><dd id="cs-perday"></dd>
+            <dt>Apps used</dt><dd id="cs-apps"></dd>
+          </dl>
+          <p class="muted small">Anyone with a node and this file gets the same numbers. Active means posted at least once in the window.</p>
+        </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card" aria-labelledby="feed-h">
       <div class="row wrap">
         <h2 id="feed-h">Feed</h2>
