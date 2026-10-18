@@ -1,5 +1,5 @@
 {
-  "name": "fc-prize",
+  "name": "outpost",
   "private": true,
   "version": "0.1.0",
   "license": "MIT",
@@ -23,9 +23,9 @@
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p .",
-    "kit-client": "tsx src/cli/main.ts",
+    "outpost-cli": "tsx src/cli/main.ts",
     "build": "node scripts/build.mjs",
     "client": "node scripts/build.mjs && node dist/serve.js",
-    "test:kit": "bash test/kit-providers.sh"
+    "test:providers": "bash test/providers.sh"
   }
 }

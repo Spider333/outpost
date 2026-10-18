@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import type { AppKey } from "../core/index.js";
 
 export function stateDir(): string {
-  return process.env.KIT_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "kit");
+  return process.env.OUTPOST_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "outpost");
 }
 
 export function keyPath(): string {

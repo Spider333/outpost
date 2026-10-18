@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Independent census count for a charter, using only curl and jq against the node's HTTP
-# API (none of kit's code). Used to check `kit-client charter census`.
+# API (none of Outpost's code). Used to check `./outpost cli charter census`.
 #   scripts/manual-census.sh examples/network-states.charter.json [days] [node-url]
 set -euo pipefail
 charter="$1"
 days="${2:-7}"
-node="${3:-${KIT_NODE_URL:-http://127.0.0.1:3381}}"
+node="${3:-${OUTPOST_NODE_URL:-http://127.0.0.1:3381}}"
 now=$(date +%s)
 # Farcaster time is seconds since 2021-01-01T00:00:00Z (Unix 1609459200).
 cutoff=$(( now - days * 86400 - 1609459200 ))

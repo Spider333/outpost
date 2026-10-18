@@ -21,7 +21,7 @@ const OTHER = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88
 const BODY: CharterBody = {
   charter: 1,
   name: "Test Society",
-  description: "A society for testing kit.",
+  description: "A society for testing Outpost.",
   codeOfConduct: "https://example.org/conduct",
   issuer: { fid: 500 },
   members: [100, 200, 300],

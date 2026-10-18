@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# kit: from zero to your own read node and client, in three commands.
+# Outpost: from zero to your own read node and client, in three commands.
 #
-#   ./kit provision   rent a server (DigitalOcean or Hetzner) with a 2 TB disk
-#   ./kit node        start a Snapchain read node on it; no API keys
-#   ./kit client      run the web client on your machine, talking to your node
+#   ./outpost provision   rent a server (DigitalOcean or Hetzner) with a 2 TB disk
+#   ./outpost node        start a Snapchain read node on it; no API keys
+#   ./outpost client      run the web client on your machine, talking to your node
 #
-# Also: ./kit status, ./kit cli <args>, ./kit uninstall, ./kit destroy
+# Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy
 # Every command is safe to run twice. Add --dry-run to provision/destroy to see the
 # exact provider commands without running them.
 
 set -euo pipefail
 
-KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="${KIT_STATE_DIR:-$KIT_DIR/.kit}"
+OUTPOST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="${OUTPOST_STATE_DIR:-$OUTPOST_DIR/.outpost}"
 STATE_FILE="$STATE_DIR/state"
-TUNNEL_PORT="${KIT_TUNNEL_PORT:-13381}"
-CLIENT_PORT="${KIT_PORT:-8381}"
+TUNNEL_PORT="${OUTPOST_TUNNEL_PORT:-13381}"
+CLIENT_PORT="${OUTPOST_PORT:-8381}"
+
+# This tool used to be called kit. Carry its server state and app key over once.
+[ -n "${OUTPOST_STATE_DIR:-}" ] || [ ! -d "$OUTPOST_DIR/.kit" ] || [ -e "$STATE_DIR" ] || mv "$OUTPOST_DIR/.kit" "$STATE_DIR"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+[ ! -d "$CONFIG_HOME/kit" ] || [ -e "$CONFIG_HOME/outpost" ] || mv "$CONFIG_HOME/kit" "$CONFIG_HOME/outpost"
 
 DRY_RUN=0
 ASSUME_YES=0
@@ -65,30 +70,30 @@ state_set() {
 # ---- SSH
 
 ssh_key_path() {
-  local k="${KIT_SSH_KEY:-$(state_get SSH_KEY)}"
+  local k="${OUTPOST_SSH_KEY:-$(state_get SSH_KEY)}"
   if [ -z "$k" ]; then
-    for c in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/kit_ed25519"; do
+    for c in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/outpost_ed25519"; do
       [ -f "$c" ] && [ -f "$c.pub" ] && { k="$c"; break; }
     done
   fi
   if [ -z "$k" ]; then
-    k="$HOME/.ssh/kit_ed25519"
+    k="$HOME/.ssh/outpost_ed25519"
     # This function's stdout is the key path, so messages go to stderr.
     say "creating SSH key $k" >&2
     if [ "$DRY_RUN" -eq 1 ]; then
-      run ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k" >&2
+      run ssh-keygen -q -t ed25519 -N "" -C "outpost" -f "$k" >&2
     else
       mkdir -p "$HOME/.ssh"
       chmod 700 "$HOME/.ssh"
-      ssh-keygen -q -t ed25519 -N "" -C "kit" -f "$k" >&2
+      ssh-keygen -q -t ed25519 -N "" -C "outpost" -f "$k" >&2
     fi
   fi
   echo "$k"
 }
 
 node_host() {
-  local ip="${KIT_HOST:-$(state_get IP)}"
-  [ -n "$ip" ] || die "no server yet. Run ./kit provision first, or set KIT_HOST=<ip> for a server you already have."
+  local ip="${OUTPOST_HOST:-$(state_get IP)}"
+  [ -n "$ip" ] || die "no server yet. Run ./outpost provision first, or set OUTPOST_HOST=<ip> for a server you already have."
   echo "$ip"
 }
 
@@ -115,8 +120,8 @@ pick_provider() {
     elif [ "$DRY_RUN" -eq 1 ]; then p="do"; warn "neither doctl nor hcloud is installed; showing DigitalOcean (use --provider hetzner for Hetzner)"
     else die "neither doctl (DigitalOcean) nor hcloud (Hetzner) is installed. Install one and log in:
   DigitalOcean: https://docs.digitalocean.com/reference/doctl/how-to/install/ then doctl auth init
-  Hetzner:      https://github.com/hetznercloud/cli then hcloud context create kit
-Or use a server you already have (Ubuntu 24.04, root SSH, 2 TB disk): KIT_HOST=<ip> ./kit node"
+  Hetzner:      https://github.com/hetznercloud/cli then hcloud context create outpost
+Or use a server you already have (Ubuntu 24.04, root SSH, 2 TB disk): OUTPOST_HOST=<ip> ./outpost node"
     fi
   fi
   case "$p" in "do"|digitalocean) echo "do" ;; hetzner|hcloud) echo hetzner ;; *) die "unknown provider: $p (use do or hetzner)" ;; esac
@@ -151,7 +156,7 @@ render_cloud_init() {
   local pub="$1" out="$2"
   local key
   if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$pub" ]; then key="<contents of $pub>"; else key="$(cat "$pub")"; fi
-  sed "s#__SSH_PUBLIC_KEY__#${key}#" "$KIT_DIR/infra/cloud-init.yml" >"$out"
+  sed "s#__SSH_PUBLIC_KEY__#${key}#" "$OUTPOST_DIR/infra/cloud-init.yml" >"$out"
   if [ "$DRY_RUN" -eq 1 ]; then
     say "--- user data that would be sent ($out):"
     cat "$out"
@@ -187,7 +192,7 @@ provision_do() {
     vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
-    run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "kit snapchain data"
+    run doctl compute volume create "$name-data" --region "$region" --size 2048GiB --fs-type ext4 --desc "outpost snapchain data"
     [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   # DigitalOcean rejects a firewall that names a tag which does not exist yet (HTTP 422).
@@ -206,13 +211,13 @@ provision_do() {
   rm -f "$ud"
   [ "$DRY_RUN" -eq 1 ] && return 0
   ip="$(do_server_ip "$name")"
-  [ -n "$ip" ] || die "droplet created but has no public IP yet; run ./kit provision again in a minute"
+  [ -n "$ip" ] || die "droplet created but has no public IP yet; run ./outpost provision again in a minute"
   state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
 }
 
 provision_hetzner() {
   local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4"
-  require_cli hcloud "See https://github.com/hetznercloud/cli then run: hcloud context create kit"
+  require_cli hcloud "See https://github.com/hetznercloud/cli then run: hcloud context create outpost"
   local ip=""
   [ "$DRY_RUN" -eq 0 ] && ip="$(hcloud server ip "$name" 2>/dev/null || true)"
   if [ -n "$ip" ]; then
@@ -262,7 +267,7 @@ wait_for_ssh() {
   [ "$DRY_RUN" -eq 1 ] && return 0
   say "waiting for the server to accept SSH and finish first boot..."
   for _ in $(seq 1 60); do
-    if node_ssh 'test -f /var/lib/kit-ready || cloud-init status --wait >/dev/null 2>&1; test -f /var/lib/kit-ready' 2>/dev/null; then
+    if node_ssh 'test -f /var/lib/outpost-ready || cloud-init status --wait >/dev/null 2>&1; test -f /var/lib/outpost-ready' 2>/dev/null; then
       say "server ready: $(node_host)"
       return 0
     fi
@@ -272,7 +277,7 @@ wait_for_ssh() {
 }
 
 cmd_provision() {
-  local provider="" name="${KIT_NAME:-kit-node}" region="" size="" wait=1
+  local provider="" name="${OUTPOST_NAME:-outpost-node}" region="" size="" wait=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --provider) provider="$2"; shift 2 ;;
@@ -295,7 +300,7 @@ cmd_provision() {
     hetzner) provision_hetzner "$name" "$region" "$size" "$key" ;;
   esac
   [ "$wait" -eq 1 ] && wait_for_ssh
-  [ "$DRY_RUN" -eq 1 ] || say "next: ./kit node"
+  [ "$DRY_RUN" -eq 1 ] || say "next: ./outpost node"
 }
 
 # ---- node
@@ -311,20 +316,20 @@ cmd_node() {
   local host
   host="$(node_host)"
   say "setting up the read node on $host"
-  node_ssh 'bash -s' <"$KIT_DIR/infra/node-setup.sh"
-  [ "$wait" -eq 1 ] || { say "started. Check progress with ./kit status"; return 0; }
+  node_ssh 'bash -s' <"$OUTPOST_DIR/infra/node-setup.sh"
+  [ "$wait" -eq 1 ] || { say "started. Check progress with ./outpost status"; return 0; }
   say ""
   say "The node downloads a snapshot of the network (about 560 GB), loads it, then catches up"
   say "on the blocks since. On our test server loading took about 7 hours and catching up"
   say "about 6.5 more. The client works once loading is done; the newest casts appear as it"
   say "catches up. You can press Ctrl-C at any time; the node keeps going."
-  say "Check later with ./kit status."
+  say "Check later with ./outpost status."
   local last=""
   while true; do
     local line
     line="$(node_progress)"
     if [ "$line" != "$last" ]; then say "$(date -u +%H:%M) $line"; last="$line"; fi
-    case "$line" in synced*) say "next: ./kit client"; return 0 ;; esac
+    case "$line" in synced*) say "next: ./outpost client"; return 0 ;; esac
     sleep 60
   done
 }
@@ -353,7 +358,7 @@ node_progress() {
 
 # Unix sockets paths are limited to ~104 bytes, so keep this short; %C is ssh's hash of
 # user, host and port.
-tunnel_socket() { echo "$HOME/.ssh/kit-%C"; }
+tunnel_socket() { echo "$HOME/.ssh/outpost-%C"; }
 
 tunnel_up() {
   mkdir -p "$STATE_DIR"
@@ -375,7 +380,7 @@ tunnel_down() {
   local sock
   sock="$(tunnel_socket)"
   local host
-  host="${KIT_HOST:-$(state_get IP)}"
+  host="${OUTPOST_HOST:-$(state_get IP)}"
   [ -n "$host" ] || return 0
   ssh -S "$sock" -O exit "root@$host" >/dev/null 2>&1 || true
 }
@@ -385,12 +390,12 @@ ensure_build() {
   local major
   major="$(node -p 'process.versions.node.split(".")[0]')"
   [ "$major" -ge 20 ] || die "Node.js $major is too old; install 20 or newer"
-  if [ ! -d "$KIT_DIR/node_modules" ]; then
+  if [ ! -d "$OUTPOST_DIR/node_modules" ]; then
     say "installing client dependencies (npm ci)"
-    (cd "$KIT_DIR" && npm ci --no-audit --no-fund)
+    (cd "$OUTPOST_DIR" && npm ci --no-audit --no-fund)
   fi
-  if [ ! -f "$KIT_DIR/dist/serve.js" ] || [ -n "$(find "$KIT_DIR/src" -newer "$KIT_DIR/dist/serve.js" -print -quit)" ]; then
-    (cd "$KIT_DIR" && node scripts/build.mjs)
+  if [ ! -f "$OUTPOST_DIR/dist/serve.js" ] || [ -n "$(find "$OUTPOST_DIR/src" -newer "$OUTPOST_DIR/dist/serve.js" -print -quit)" ]; then
+    (cd "$OUTPOST_DIR" && node scripts/build.mjs)
   fi
 }
 
@@ -399,8 +404,8 @@ phone_firewall() {
   local action="$1" provider name
   provider="$(state_get PROVIDER)"
   name="$(state_get NAME)"
-  if [ -z "$provider" ] || [ -n "${KIT_HOST:-}" ]; then
-    say "open (or close) 443/tcp in your server's firewall yourself; kit did not create this server."
+  if [ -z "$provider" ] || [ -n "${OUTPOST_HOST:-}" ]; then
+    say "open (or close) 443/tcp in your server's firewall yourself; Outpost did not create this server."
     return 0
   fi
   case "$provider" in
@@ -421,7 +426,7 @@ cmd_phone() {
   local mode="${1:-on}" host ip pwfile pw hash
   ip="$(node_host)"
   if [ "$mode" = "off" ]; then
-    node_ssh 'KIT_PHONE_OFF=1 bash -s' <"$KIT_DIR/infra/phone-setup.sh"
+    node_ssh 'OUTPOST_PHONE_OFF=1 bash -s' <"$OUTPOST_DIR/infra/phone-setup.sh"
     phone_firewall remove
     say "phone access is off"
     return 0
@@ -436,17 +441,17 @@ cmd_phone() {
   fi
   pw="$(cat "$pwfile")"
   say "copying the client to the server"
-  tar -C "$KIT_DIR/dist/web" -czf - . | node_ssh 'mkdir -p /srv/kit-web && rm -f /srv/kit-web/*.js /srv/kit-web/*.map && tar -xzf - -C /srv/kit-web'
+  tar -C "$OUTPOST_DIR/dist/web" -czf - . | node_ssh 'mkdir -p /srv/outpost-web && rm -f /srv/outpost-web/*.js /srv/outpost-web/*.map && tar -xzf - -C /srv/outpost-web'
   # The password travels over SSH stdin, never as a command-line argument.
   hash="$(printf '%s\n%s\n' "$pw" "$pw" | node_ssh 'docker run --rm -i caddy:2.10.2 caddy hash-password')"
   [[ "$hash" == \$2* ]] || die "could not hash the password on the server"
   phone_firewall add
-  node_ssh "KIT_PHONE_HOST='$host' KIT_PHONE_HASH='$hash' bash -s" <"$KIT_DIR/infra/phone-setup.sh"
+  node_ssh "OUTPOST_PHONE_HOST='$host' OUTPOST_PHONE_HASH='$hash' bash -s" <"$OUTPOST_DIR/infra/phone-setup.sh"
   say ""
   say "open https://$host on your phone"
-  say "user: kit   password: $pw   (saved in $pwfile)"
+  say "user: outpost   password: $pw   (saved in $pwfile)"
   say "the first visit can take a minute while the certificate is issued."
-  say "turn it off with: ./kit client --phone off"
+  say "turn it off with: ./outpost client --phone off"
 }
 
 cmd_client() {
@@ -460,21 +465,21 @@ cmd_client() {
   trap tunnel_down EXIT
   say "your node is reachable through an SSH tunnel on 127.0.0.1:$TUNNEL_PORT (no port opened on the server)"
   say "open http://127.0.0.1:$CLIENT_PORT in your browser. Ctrl-C stops the client."
-  KIT_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" KIT_PORT="$CLIENT_PORT" node "$KIT_DIR/dist/serve.js"
+  OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" OUTPOST_PORT="$CLIENT_PORT" node "$OUTPOST_DIR/dist/serve.js"
 }
 
 cmd_cli() {
   ensure_build
   # Help needs no server.
-  case "${1:-}" in ""|-h|--help|help) node "$KIT_DIR/dist/cli.js" --help; return ;; esac
+  case "${1:-}" in ""|-h|--help|help) node "$OUTPOST_DIR/dist/cli.js" --help; return ;; esac
   tunnel_up
-  KIT_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$KIT_DIR/dist/cli.js" "$@"
+  OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" "$@"
 }
 
 cmd_status() {
-  [ -n "$(state_get IP)${KIT_HOST:-}" ] || { say "no server yet. Run ./kit provision"; return 0; }
-  if [ -n "${KIT_HOST:-}" ]; then
-    say "server: $KIT_HOST (KIT_HOST)"
+  [ -n "$(state_get IP)${OUTPOST_HOST:-}" ] || { say "no server yet. Run ./outpost provision"; return 0; }
+  if [ -n "${OUTPOST_HOST:-}" ]; then
+    say "server: $OUTPOST_HOST (OUTPOST_HOST)"
   else
     say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: $(state_get IP)"
   fi
@@ -493,14 +498,14 @@ cmd_destroy() {
     case "$1" in
       --dry-run) DRY_RUN=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
-      --name) KIT_NAME="$2"; shift 2 ;;
-      --provider) KIT_PROVIDER="$2"; shift 2 ;;
+      --name) OUTPOST_NAME="$2"; shift 2 ;;
+      --provider) OUTPOST_PROVIDER="$2"; shift 2 ;;
       *) die "unknown option for destroy: $1" ;;
     esac
   done
-  provider="$(pick_provider "${KIT_PROVIDER:-}")"
-  name="${KIT_NAME:-$(state_get NAME)}"
-  name="${name:-kit-node}"
+  provider="$(pick_provider "${OUTPOST_PROVIDER:-}")"
+  name="${OUTPOST_NAME:-$(state_get NAME)}"
+  name="${name:-outpost-node}"
   say "This deletes server $name, its 2 TB volume (all chain data) and its firewall on $provider."
   say "Your account, follows and casts are not affected; they live on the network, not on this server."
   if [ "$DRY_RUN" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ]; then
@@ -543,7 +548,7 @@ cmd_destroy() {
       if [ "$DRY_RUN" -eq 1 ] || [ -n "$key_id" ]; then run doctl compute ssh-key delete "${key_id:-<key-id of $name-key>}" --force; fi
       ;;
     hetzner)
-      require_cli hcloud "Install hcloud and run hcloud context create kit"
+      require_cli hcloud "Install hcloud and run hcloud context create outpost"
       if [ "$DRY_RUN" -eq 1 ] || hcloud server describe "$name" >/dev/null 2>&1; then run hcloud server delete "$name"; else say "server $name: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ] || hcloud volume describe "$name-data" >/dev/null 2>&1; then run hcloud volume delete "$name-data"; else say "volume $name-data: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ] || hcloud firewall describe "$name-fw" >/dev/null 2>&1; then run hcloud firewall delete "$name-fw"; else say "firewall $name-fw: already gone"; fi

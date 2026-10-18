@@ -38,8 +38,8 @@ import {
   type HexString,
 } from "../src/core/index.js";
 
-const HTTP = process.env.KIT_E2E_HTTP ?? "http://127.0.0.1:23381";
-const GRPC = process.env.KIT_E2E_GRPC ?? "127.0.0.1:23383";
+const HTTP = process.env.OUTPOST_E2E_HTTP ?? "http://127.0.0.1:23381";
+const GRPC = process.env.OUTPOST_E2E_GRPC ?? "127.0.0.1:23383";
 const hub = new Hub({ url: HTTP });
 const network = FarcasterNetwork.DEVNET;
 
@@ -151,7 +151,7 @@ async function main() {
   const fc = await cast(hub, friend, { text: "hello from the friend, via another app" }, { timeoutMs: 15_000, intervalMs: 500 });
   check(fc.confirmed, "friend cast merged");
 
-  const c1 = await cast(hub, key, { text: "first cast from kit e2e" }, { timeoutMs: 15_000, intervalMs: 500 });
+  const c1 = await cast(hub, key, { text: "first cast from outpost e2e" }, { timeoutMs: 15_000, intervalMs: 500 });
   check(c1.confirmed, "cast merged");
   log(`cast ${c1.hash} merged (read back by hash)`);
 
@@ -171,7 +171,7 @@ async function main() {
   const ms = Date.now() - t;
   const byText = Object.fromEntries(all.map((i) => [i.text, i]));
   check(all.length === 2, `feed has 2 casts (got ${all.length})`);
-  check(byText["first cast from kit e2e"]?.app.requestFid === APP, "own cast attributed to the app FID (gasless)");
+  check(byText["first cast from outpost e2e"]?.app.requestFid === APP, "own cast attributed to the app FID (gasless)");
   check(byText["hello from the friend, via another app"]?.app.requestFid === OTHER_APP, "friend cast attributed via onchain metadata");
   const onlyApp = await feed.following(USER, { filter: { include: [APP] } });
   const noApp = await feed.following(USER, { filter: { exclude: [APP] } });

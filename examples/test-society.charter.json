@@ -1,8 +1,8 @@
 {
   "charter": 1,
-  "name": "kit test society",
-  "description": "The society people join while testing kit. Members are the testers who vouched for it.",
-  "codeOfConduct": "https://github.com/Spider333/fc-prize/blob/main/examples/test-society-conduct.md",
+  "name": "Outpost test society",
+  "description": "The society people join while testing Outpost. Members are the testers who vouched for it.",
+  "codeOfConduct": "https://github.com/Spider333/outpost/blob/main/examples/test-society-conduct.md",
   "members": [],
   "moderators": [],
   "clients": {
@@ -13,10 +13,10 @@
       "airdrop"
     ]
   },
-  "issuedAt": "2026-10-18T10:33:08.223Z",
+  "issuedAt": "2026-10-18T22:48:47.693Z",
   "signature": {
     "type": "eip712",
     "signer": "0x71bFF431251Afc3E941f6f606B9016Ff3660D6F4",
-    "value": "0x85cff0057b7c4cea0d33cf4980889d7599fd637bfd1602593463eeec1d914edb36aa9fcda88571346bfab4e226ca0fb173bb51d62d60ff10aabb93a48a111cf51b"
+    "value": "0xbcf4fb7df03bf868c5a51bfdba4229a6d5432d049489917397c770530b6bb56d224aa6c9644ec3eb02c3d9a41271299ab4a319addd4fa42883ce41231e68117a1c"
   }
 }

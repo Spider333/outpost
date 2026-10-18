@@ -1,4 +1,4 @@
-// kit-client charter <new|sign|verify|census|feed|join> ...
+// ./outpost cli charter <new|sign|verify|census|feed|join> ...
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
@@ -79,7 +79,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
         issuedAt: new Date().toISOString(),
       };
       writeFileSync(a, JSON.stringify(body, null, 2) + "\n");
-      console.log(`wrote ${a}. Edit it, then: kit-client charter sign ${a} ${a.replace(/\.json$/, "")}.signed.json`);
+      console.log(`wrote ${a}. Edit it, then: ./outpost cli charter sign ${a} ${a.replace(/\.json$/, "")}.signed.json`);
       return;
     }
     case "sign": {

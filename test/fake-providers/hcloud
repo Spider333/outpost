@@ -12,7 +12,7 @@ case "$1 $2" in
   "firewall create") n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done; touch "$S/hz.fw.$n" ;;
   "firewall delete") rm "$S/hz.fw.$3" ;;
   "ssh-key list") [ -e "$S/hz.key" ] && cat "$S/hz.key"; exit 0 ;;
-  "ssh-key create") echo "kit-node-key f8:bd:a4:3c:12:ca:0b:e4:bb:d7:65:b8:21:30:5e:0a" > "$S/hz.key" ;;
+  "ssh-key create") echo "outpost-node-key f8:bd:a4:3c:12:ca:0b:e4:bb:d7:65:b8:21:30:5e:0a" > "$S/hz.key" ;;
   "ssh-key describe") [ -e "$S/hz.key" ] || exit 1 ;;
   "ssh-key delete") rm -f "$S/hz.key" ;;
   *) echo "fake hcloud: unhandled $*" >&2; exit 3 ;;

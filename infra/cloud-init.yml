@@ -1,6 +1,6 @@
 #cloud-config
-# Minimal first-boot setup for a kit node server. `kit provision` fills in the SSH key.
-# The node itself is installed by `kit node` (infra/node-setup.sh), so the same steps
+# Minimal first-boot setup for an Outpost node server. `./outpost provision` fills in the SSH key.
+# The node itself is installed by `./outpost node` (infra/node-setup.sh), so the same steps
 # also work on a server you rented by hand.
 ssh_pwauth: false
 disable_root: false
@@ -14,4 +14,4 @@ packages:
   - curl
 runcmd:
   - [systemctl, enable, --now, docker]
-  - [sh, -c, "echo kit-cloud-init-done > /var/lib/kit-ready"]
+  - [sh, -c, "echo outpost-cloud-init-done > /var/lib/outpost-ready"]

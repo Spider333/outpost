@@ -1,6 +1,6 @@
-// `kit client` server: serves the static web client and forwards /v1/* to your node.
+// `./outpost client` server: serves the static web client and forwards /v1/* to your node.
 // Same origin for page and API, so the browser needs no CORS and the node's API port
-// never has to face the internet. Binds to 127.0.0.1 unless KIT_BIND says otherwise.
+// never has to face the internet. Binds to 127.0.0.1 unless OUTPOST_BIND says otherwise.
 // No dependencies beyond Node itself.
 
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
@@ -10,11 +10,11 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const root = resolve(process.env.KIT_WEB_ROOT ?? join(here, "web"));
-const node = new URL(process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381");
-const nodeAuth = process.env.KIT_NODE_USER ? "Basic " + Buffer.from(`${process.env.KIT_NODE_USER}:${process.env.KIT_NODE_PASSWORD ?? ""}`).toString("base64") : undefined;
-const host = process.env.KIT_BIND ?? "127.0.0.1";
-const port = Number(process.env.KIT_PORT ?? 8381);
+const root = resolve(process.env.OUTPOST_WEB_ROOT ?? join(here, "web"));
+const node = new URL(process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381");
+const nodeAuth = process.env.OUTPOST_NODE_USER ? "Basic " + Buffer.from(`${process.env.OUTPOST_NODE_USER}:${process.env.OUTPOST_NODE_PASSWORD ?? ""}`).toString("base64") : undefined;
+const host = process.env.OUTPOST_BIND ?? "127.0.0.1";
+const port = Number(process.env.OUTPOST_PORT ?? 8381);
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -77,10 +77,10 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
 }
 
 // Which network this client talks to. Mainnet unless testing against a local devnet.
-const network = process.env.KIT_NETWORK === "devnet" ? "devnet" : "mainnet";
+const network = process.env.OUTPOST_NETWORK === "devnet" ? "devnet" : "mainnet";
 
 const server = createServer((req, res) => {
-  if (req.url === "/kit-config.json") {
+  if (req.url === "/outpost-config.json") {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ network }));
   } else if (req.url?.startsWith("/v1/")) proxy(req, res);
   else if (req.method === "GET" || req.method === "HEAD") void serveStatic(req, res);

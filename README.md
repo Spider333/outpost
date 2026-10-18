@@ -1,19 +1,19 @@
-# kit (working name)
+# Outpost
 
 Three commands from nothing to your own Snapchain read node and a client for Farcaster
 that reads from it and posts through it. No API keys from anyone.
 
 ```
-./kit provision   # rent a server with a 2 TB disk (DigitalOcean or Hetzner), billed by the hour
-./kit node        # start a Snapchain read node on it; first sync took about 13 hours on our test server
-./kit client      # open http://127.0.0.1:8381
+./outpost provision   # rent a server with a 2 TB disk (DigitalOcean or Hetzner), billed by the hour
+./outpost node        # start a Snapchain read node on it; first sync took about 13 hours on our test server
+./outpost client      # open http://127.0.0.1:8381
 ```
 
 When you are done:
 
 ```
-./kit uninstall   # revoke the app key; no recovery phrase needed
-./kit destroy     # delete the server and stop paying
+./outpost uninstall   # revoke the app key; no recovery phrase needed
+./outpost destroy     # delete the server and stop paying
 ```
 
 The tutorial is in [site/index.html](site/index.html).
@@ -23,13 +23,13 @@ The tutorial is in [site/index.html](site/index.html).
 A recovery phrase is the custody key of an account. Whoever has it can transfer the account,
 add or remove every app key and change the username. Treat pasting it like running
 `rm -rf /` as root. Use a test account only, prefer the wallet path, and revoke the key when
-you are done. kit uses the phrase in memory to sign one authorization for a scoped,
+you are done. Outpost uses the phrase in memory to sign one authorization for a scoped,
 expiring app key and keeps no copy.
 
 ## What you need
 
 - A DigitalOcean (`doctl`) or Hetzner (`hcloud`) account, logged in. Or any Ubuntu 24.04
-  server with root SSH and 2 TB of disk: `KIT_HOST=<ip> ./kit node`.
+  server with root SSH and 2 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
 - Node.js 20 or newer, for the client.
 - A test account for Farcaster that already has storage.
 
@@ -56,19 +56,19 @@ expiring app key and keeps no copy.
   posts. A census panel shows members, active members, casts per day and the apps members
   post from, all computed from your node.
 
-The command-line client has the same features: `./kit cli --help`.
+The command-line client has the same features: `./outpost cli --help`.
 
 Settings, as environment variables:
 
-- `KIT_HOST=<ip>`: use a server you already have instead of the one `provision` made.
-- `KIT_SSH_KEY=<path>`: the SSH key for that server.
-- `KIT_TUNNEL_PORT` (default 13381): the local end of the SSH tunnel to the node.
+- `OUTPOST_HOST=<ip>`: use a server you already have instead of the one `provision` made.
+- `OUTPOST_SSH_KEY=<path>`: the SSH key for that server.
+- `OUTPOST_TUNNEL_PORT` (default 13381): the local end of the SSH tunnel to the node.
   Change it if something on your machine already uses that port.
-- `KIT_PORT` (default 8381): where the web client is served.
+- `OUTPOST_PORT` (default 8381): where the web client is served.
 
-To use the client from a phone, `./kit client --phone` serves it from your server over HTTPS
+To use the client from a phone, `./outpost client --phone` serves it from your server over HTTPS
 (a certificate for `<ip>.sslip.io`, no domain needed) behind a password, and opens 443/tcp.
-`./kit client --phone off` closes it again.
+`./outpost client --phone off` closes it again.
 
 ## Shard 0 did not load
 
@@ -76,7 +76,7 @@ Snapchain loads its snapshot one shard after another, shard 0 last, and only whe
 database folder is empty. If the node is restarted during the load, it starts with whatever
 it has, and shard 0 stays empty. Feeds still work, because casts live on shards 1 and 2,
 but shard 0 is where app keys are checked, so logging in fails with `unknown fid`.
-`./kit status` and `./kit node` say so when this happens.
+`./outpost status` and `./outpost node` say so when this happens.
 
 To fix it, replace shard 0 with the official snapshot. On the server, in the folder that
 holds `docker-compose.yml`, these are the steps we ran, minus our retry loop for slow
@@ -95,12 +95,12 @@ docker compose start snapchain
 ```
 
 Shard 0 then catches up from the snapshot's date. Delete `../s0` and `../rocks-snapshot.old`
-once `./kit status` says synced.
+once `./outpost status` says synced.
 
 ## Layout
 
 ```
-kit                  the three commands, plus status, cli, uninstall, destroy
+outpost              the three commands, plus status, cli, uninstall, destroy
 infra/               cloud-init and the node setup script
 src/core/            protocol code: node HTTP client, accounts, app keys, writes,
                      feed, app attribution, charters, census (runs in Node and browsers)
@@ -122,12 +122,12 @@ npm run build        # dist/web, dist/serve.js, dist/cli.js
 ```
 
 `@farcaster/core` includes test-data factories that depend on `@faker-js/faker`, which has a
-published advisory. kit never calls those factories, and the browser and CLI builds replace
+published advisory. Outpost never calls those factories, and the browser and CLI builds replace
 faker with a small stand-in (`src/web/faker-stub.ts`).
 
 ## Licence and credits
 
-MIT. Snapchain is GPL-3.0; kit only runs its official Docker image and includes none of its
+MIT. Snapchain is GPL-3.0; Outpost only runs its official Docker image and includes none of its
 code. Uses `@farcaster/core` and `viem` (both MIT).
 
 An AI coding assistant helped write this code and its documentation.

@@ -5,7 +5,7 @@ coverage/
 .env
 .env.*
 # local secrets and state
-.kit/
+.outpost/
 *.key
 # handover and infra notes stay out of the repo
 HANDOVER.md

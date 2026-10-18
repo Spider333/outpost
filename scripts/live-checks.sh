@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Mainnet checks to run once the node is synced. Writes outputs to docs/evidence/live/.
-#   KIT_NODE_URL=http://<node>:3381 scripts/live-checks.sh
+#   OUTPOST_NODE_URL=http://<node>:3381 scripts/live-checks.sh
 set -uo pipefail
-NODE="${KIT_NODE_URL:-http://127.0.0.1:3381}"
+NODE="${OUTPOST_NODE_URL:-http://127.0.0.1:3381}"
 OUT="docs/evidence/live"
 mkdir -p "$OUT"
 cli() { node dist/cli.js "$@" --node "$NODE"; }
 stamp() { echo "# $* ($(date -u +%FT%TZ), node $NODE)"; }
 
-{ stamp "kit-client status"; cli status; } >"$OUT/status.txt" 2>&1
+{ stamp "./outpost cli status"; cli status; } >"$OUT/status.txt" 2>&1
 
 # Step 3: following feed for a public FID, timing, and the app filter.
-{ stamp "kit-client feed --fid 37 --limit 20"; cli feed --fid 37 --limit 20; } >"$OUT/feed-37.txt" 2>&1
+{ stamp "./outpost cli feed --fid 37 --limit 20"; cli feed --fid 37 --limit 20; } >"$OUT/feed-37.txt" 2>&1
 top_app=$(grep -oE "app fid [0-9]+" "$OUT/feed-37.txt" | head -1 | grep -oE "[0-9]+$")
 if [ -n "$top_app" ]; then
-  { stamp "kit-client feed --fid 37 --limit 20 --exclude $top_app"; cli feed --fid 37 --limit 20 --exclude "$top_app"; } >"$OUT/feed-37-exclude.txt" 2>&1
-  { stamp "kit-client feed --fid 37 --limit 20 --include $top_app"; cli feed --fid 37 --limit 20 --include "$top_app"; } >"$OUT/feed-37-include.txt" 2>&1
+  { stamp "./outpost cli feed --fid 37 --limit 20 --exclude $top_app"; cli feed --fid 37 --limit 20 --exclude "$top_app"; } >"$OUT/feed-37-exclude.txt" 2>&1
+  { stamp "./outpost cli feed --fid 37 --limit 20 --include $top_app"; cli feed --fid 37 --limit 20 --include "$top_app"; } >"$OUT/feed-37-include.txt" 2>&1
 fi
 
 # Upstream PR 1: /v1/casts does not exist, /v1/castsByFid does.

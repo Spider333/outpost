@@ -1,6 +1,6 @@
-# kit test society: code of conduct
+# Outpost test society: code of conduct
 
-This society exists so people testing kit have something real to join.
+This society exists so people testing Outpost have something real to join.
 
 1. Post as yourself. One account per person.
 2. Say what you ran and what broke. Be specific.

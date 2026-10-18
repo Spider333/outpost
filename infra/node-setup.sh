@@ -16,8 +16,8 @@
 set -euo pipefail
 
 SNAPCHAIN_VERSION="${SNAPCHAIN_VERSION:-0.14.3}"
-DATA_DIR="${KIT_DATA_DIR:-}"
-MIN_FREE_GB="${KIT_MIN_FREE_GB:-1500}"
+DATA_DIR="${OUTPOST_DATA_DIR:-}"
+MIN_FREE_GB="${OUTPOST_MIN_FREE_GB:-1500}"
 
 log() { printf '[node-setup] %s\n' "$*"; }
 die() { printf '[node-setup] error: %s\n' "$*" >&2; exit 1; }
@@ -116,7 +116,7 @@ fi
 if [ -f .rocks.snapshot/metadata.json ] && [ -n "$(ls -A .rocks 2>/dev/null)" ]; then
   if [ -n "$(docker compose ps -q snapchain 2>/dev/null)" ] && ! curl -fsm 5 http://127.0.0.1:3381/v1/info >/dev/null 2>&1; then
     compose_ok || log "warning: until it finishes, this node's API ports are open as its old compose file says."
-    log "the node is still loading its snapshot; not restarting it. Run this again when ./kit status shows synced or catching up."
+    log "the node is still loading its snapshot; not restarting it. Run this again when ./outpost status shows synced or catching up."
     exit 0
   fi
   die "an earlier snapshot load on this server was interrupted, so some shards are missing. See \"Shard 0 did not load\" in the README."

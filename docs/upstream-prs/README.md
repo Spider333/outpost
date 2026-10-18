@@ -20,14 +20,14 @@ Seen on mainnet, already being handled upstream, so no draft from us:
 - `castsByParent` (all-shard reads) always returns a `nextPageToken`; the last one decodes to
   `[null,null]`, and sending it back restarts every shard from page 1, so a client that follows
   tokens loops forever. A shard that runs out before the others restarts too, which repeats its
-  casts. Open PR #720 fixes the first part. kit treats an all-null token as the end
+  casts. Open PR #720 fixes the first part. Outpost treats an all-null token as the end
   (`liveToken` in src/core/hub.ts). Checked 2026-10-18.
 - Corrected 2026-10-18: the snapshot does include shard 0, loaded last. Our node's shard 0
   was empty because we restarted the container mid-load, and snapchain skips the snapshot
   once `.rocks` has data. With shard 0 behind, `KEY_ADD` is rejected as "unknown fid" (keys
   are routed to and checked on shard 0), and the data shards fail to replay shard 0's key
   events into their replicas (90 failed on our node). Possible upstream issue: a partial load
-  is not detected on restart. kit now guards against the restart and counts shard 0 in "synced".
+  is not detected on restart. Outpost now guards against the restart and counts shard 0 in "synced".
 
 ## PR text
 

@@ -1,7 +1,7 @@
 // Builds and signs the two example charters in examples/ from live node data.
-//   npx tsx scripts/example-charters.ts            (needs KIT_NODE_URL and an example key)
+//   npx tsx scripts/example-charters.ts            (needs OUTPOST_NODE_URL and an example key)
 // The example key is a throwaway signing key kept outside the repo
-// (~/.config/kit/example-charter.key). The examples name no issuer FID, because no real
+// (~/.config/outpost/example-charter.key). The examples name no issuer FID, because no real
 // society signed them; the charter says so in its description.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -10,12 +10,12 @@ import { join } from "node:path";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { FARCASTER_EPOCH_MS, Hub, notFuture, signCharter, verifyCharter, type CharterBody, type HexString } from "../src/core/index.js";
 
-const hub = new Hub({ url: process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381" });
-const keyFile = join(homedir(), ".config/kit/example-charter.key");
+const hub = new Hub({ url: process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381" });
+const keyFile = join(homedir(), ".config/outpost/example-charter.key");
 
 function exampleKey() {
   if (!existsSync(keyFile)) {
-    mkdirSync(join(homedir(), ".config/kit"), { recursive: true, mode: 0o700 });
+    mkdirSync(join(homedir(), ".config/outpost"), { recursive: true, mode: 0o700 });
     writeFileSync(keyFile, generatePrivateKey() + "\n", { mode: 0o600 });
   }
   return privateKeyToAccount(readFileSync(keyFile, "utf8").trim() as HexString);
@@ -66,7 +66,7 @@ async function main() {
   const networkStates: CharterBody = {
     charter: 1,
     name: "network-states channel (example)",
-    description: `Unofficial example built by kit from public data: the ${ch.members.length} accounts that posted most in /network-states in the ${days} days before ${now.slice(0, 10)}. Not signed by the channel's moderators.`,
+    description: `Unofficial example built by Outpost from public data: the ${ch.members.length} accounts that posted most in /network-states in the ${days} days before ${now.slice(0, 10)}. Not signed by the channel's moderators.`,
     members: ch.members,
     moderators: [],
     feed: { channels: [ch.url] },
@@ -76,9 +76,9 @@ async function main() {
   const testMembers = (process.env.TEST_SOCIETY_MEMBERS ?? "").split(",").map(Number).filter((n) => Number.isSafeInteger(n) && n > 0);
   const testSociety: CharterBody = {
     charter: 1,
-    name: "kit test society",
-    description: "The society people join while testing kit. Members are the testers who vouched for it.",
-    codeOfConduct: "https://github.com/Spider333/fc-prize/blob/main/examples/test-society-conduct.md",
+    name: "Outpost test society",
+    description: "The society people join while testing Outpost. Members are the testers who vouched for it.",
+    codeOfConduct: "https://github.com/Spider333/outpost/blob/main/examples/test-society-conduct.md",
     members: testMembers,
     moderators: testMembers.slice(0, 1),
     clients: { exclude: [] },

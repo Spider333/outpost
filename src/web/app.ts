@@ -1,5 +1,5 @@
 // Web client. Static page; every request goes to your own node's HTTP API.
-// By default the page and the node share an origin: `kit client` serves this page and
+// By default the page and the node share an origin: `./outpost client` serves this page and
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
 import type { EIP1193Provider } from "viem";
@@ -33,8 +33,8 @@ import {
   type HexString,
 } from "../core/index.js";
 
-const KEY_STORAGE = "kit.appkey";
-const CHARTER_STORAGE = "kit.charter";
+const KEY_STORAGE = "outpost.appkey";
+const CHARTER_STORAGE = "outpost.charter";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -104,7 +104,7 @@ function ago(ms: number): string {
 // ---- state
 
 const params = new URLSearchParams(location.search);
-// Always the page's own origin: `kit client` forwards /v1/* to your node. The node is never
+// Always the page's own origin: `./outpost client` forwards /v1/* to your node. The node is never
 // taken from the URL, so a link cannot point this client at someone else's node.
 const hub = new Hub({ url: location.origin });
 const feed = new FeedBuilder(hub);
@@ -552,10 +552,10 @@ function wireCharter() {
 
 async function main() {
   try {
-    const cfg = (await (await fetch("/kit-config.json")).json()) as { network?: string };
+    const cfg = (await (await fetch("/outpost-config.json")).json()) as { network?: string };
     if (cfg.network === "devnet") network = FarcasterNetwork.DEVNET;
   } catch {
-    // Served without kit's server (e.g. Caddy for phones): mainnet.
+    // Served without Outpost's server (e.g. Caddy for phones): mainnet.
   }
   wireConnect();
   wireKey();

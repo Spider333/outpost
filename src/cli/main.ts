@@ -58,7 +58,7 @@ const WARNING = `
   Only the app key is saved, to ${keyPath()} (mode 600).
 `;
 
-const USAGE = `usage: kit-client <command> [options]
+const USAGE = `usage: ./outpost cli <command> [options]
 
   status                         node sync state
   login                          import a TEST account's phrase, add a gasless app key
@@ -82,21 +82,21 @@ const USAGE = `usage: kit-client <command> [options]
                                  ask the node to validate them (sends nothing)
 
 options:
-  --node <url>      node HTTP API (default $KIT_NODE_URL or http://127.0.0.1:3381)
+  --node <url>      node HTTP API (default $OUTPOST_NODE_URL or http://127.0.0.1:3381)
   --ttl-days <n>    app key expiry after last use, 1-90 (default 30)
 `;
 
 function hubFromEnv(url?: string): Hub {
   return new Hub({
-    url: url ?? process.env.KIT_NODE_URL ?? "http://127.0.0.1:3381",
-    username: process.env.KIT_NODE_USER,
-    password: process.env.KIT_NODE_PASSWORD,
+    url: url ?? process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381",
+    username: process.env.OUTPOST_NODE_USER,
+    password: process.env.OUTPOST_NODE_PASSWORD,
   });
 }
 
 function requireKey(): AppKey {
   const key = loadKey();
-  if (!key) throw new Error(`no app key found at ${keyPath()}. Run: kit-client login`);
+  if (!key) throw new Error(`no app key found at ${keyPath()}. Run: ./outpost cli login`);
   return key;
 }
 
@@ -139,12 +139,12 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
   const existing = loadKey();
   if (existing) {
     console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
-    console.log("Run `kit-client uninstall` first if you want a new one.");
+    console.log("Run `./outpost cli uninstall` first if you want a new one.");
     return;
   }
   const info = await hub.info();
   if (!syncState(info).synced) {
-    throw new Error("your node is still syncing. Run `kit-client status` and try again when it says synced: yes.");
+    throw new Error("your node is still syncing. Run `./outpost cli status` and try again when it says synced: yes.");
   }
   console.log(WARNING);
   if (!(await confirm("Is this a test account, and do you accept the above?"))) return;
@@ -168,9 +168,9 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
   console.log(
     confirmed
       ? `\napp key ${key.publicKey} is live. Saved to ${path}.`
-      : `\napp key ${key.publicKey} was accepted but your node does not show it yet. Saved to ${path}. Check with: kit-client whoami`,
+      : `\napp key ${key.publicKey} was accepted but your node does not show it yet. Saved to ${path}. Check with: ./outpost cli whoami`,
   );
-  console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: kit-client uninstall");
+  console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: ./outpost cli uninstall");
 }
 
 async function cmdWhoami(hub: Hub) {
