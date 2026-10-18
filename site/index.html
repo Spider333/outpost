@@ -125,6 +125,8 @@ Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list p
 <h3 id="t-login">3. Connect an account</h3>
 <pre class="cmd">./kit client</pre>
 <pre class="out pending" data-pending="client-start">PENDING: ./kit client output (tunnel line, URL).</pre>
+<p>On a phone, run <code>./kit client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
+<pre class="out pending" data-pending="phone">PENDING: ./kit client --phone output (needs a provider token to open 443).</pre>
 <p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./kit cli login</code>.</p>
 
 <div class="concept">

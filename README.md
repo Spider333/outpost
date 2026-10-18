@@ -58,6 +58,10 @@ expiring app key and keeps no copy.
 
 The command-line client has the same features: `./kit cli --help`.
 
+To use the client from a phone, `./kit client --phone` serves it from your server over HTTPS
+(a certificate for `<ip>.sslip.io`, no domain needed) behind a password, and opens 443/tcp.
+`./kit client --phone off` closes it again.
+
 ## Layout
 
 ```
