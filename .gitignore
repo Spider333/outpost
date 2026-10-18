@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+# local secrets and state
+.kit/
+*.key
+# handover and infra notes stay out of the repo
+HANDOVER.md
+node-user-data.yml
