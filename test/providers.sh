@@ -32,4 +32,9 @@ FAKE_SKIP_ATTACH=1 "$ROOT/outpost" provision --provider "do" --yes --no-wait >/d
 grep -q "compute volume-action attach" "$FAKE_STATE/calls.log" || fail "do: no attach call"
 "$ROOT/outpost" destroy --yes >/dev/null
 echo "ok: do provision attaches a volume left detached"
+
+# DigitalOcean still listing a volume it has just deleted: a second destroy must not fail.
+out="$(FAKE_STALE_VOLUME=outpost-node-data "$ROOT/outpost" destroy --provider "do" --yes 2>&1)" || fail "do: destroy failed on a volume that was already gone: $out"
+[[ "$out" == *"volume outpost-node-data: already gone"* ]] || fail "do: destroy did not report the stale volume as gone"
+echo "ok: do destroy accepts a volume that is listed but already gone"
 find "$WORK" -type f -delete

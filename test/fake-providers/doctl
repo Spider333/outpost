@@ -11,11 +11,15 @@ case "$1 $2 $3" in
     # Like DigitalOcean on a bad day: --volumes is accepted but nothing is attached.
     [ -n "${FAKE_SKIP_ATTACH:-}" ] || : > "$S/attached" ;;
   "compute droplet delete") rm -f "$S/droplet.$4" "$S/attached" ;;
-  "compute volume list") list volume ;;
+  "compute volume list") list volume
+    # Like DigitalOcean just after a delete: still listed, but gone.
+    if [ -n "${FAKE_STALE_VOLUME:-}" ]; then case "$fmt" in ID,Name) echo "vol-ghost $FAKE_STALE_VOLUME";; *) echo "$FAKE_STALE_VOLUME";; esac; fi ;;
   "compute volume create") echo "vol-123 $4" > "$S/volume.$4" ;;
-  "compute volume get") if [ -e "$S/attached" ]; then echo "[d-1]"; else echo "[]"; fi ;;
+  "compute volume get") [ "$4" != vol-ghost ] || exit 1
+    if [ -e "$S/attached" ]; then echo "[d-1]"; else echo "[]"; fi ;;
   "compute volume-action attach") : > "$S/attached" ;;
-  "compute volume delete") for f in "$S"/volume.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
+  "compute volume delete") [ "$4" != vol-ghost ] || { echo "Error: 404 allocation not found" >&2; exit 1; }
+    for f in "$S"/volume.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
   "compute firewall list") list fw ;;
   "compute firewall create") # like DigitalOcean: HTTP 422 when the tag does not exist yet
     [ -e "$S/tag.$tag" ] || { echo "Error: tag $tag does not exist (422)" >&2; exit 1; }

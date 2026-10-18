@@ -517,6 +517,15 @@ cmd_uninstall() {
   say "keys added in the web client are revoked from its 'Your app key' panel."
 }
 
+# DigitalOcean can still list a resource for a few seconds after deleting it (seen 2026-10-18:
+# a second destroy got 404 on the volume). A failed delete is fine if the resource is gone.
+do_delete() {
+  local kind="$1" rid="$2" label="$3"
+  run doctl compute "$kind" delete "$rid" --force && return 0
+  if doctl compute "$kind" get "$rid" >/dev/null 2>&1; then die "could not delete $kind $label"; fi
+  say "$kind $label: already gone"
+}
+
 cmd_destroy() {
   local provider name
   while [ $# -gt 0 ]; do
@@ -557,20 +566,20 @@ cmd_destroy() {
             sleep 5
           done
         fi
-        run doctl compute volume delete "${vol:-<volume-id>}" --force
+        do_delete volume "${vol:-<volume-id>}" "$name-data"
       else say "volume $name-data: already gone"; fi
       if [ "$DRY_RUN" -eq 1 ]; then
         run doctl compute firewall delete "<firewall-id of $name-fw>" --force
       else
         local fw
         fw="$(plist doctl compute firewall list --format ID,Name --no-header | awk -v n="$name-fw" '$2==n {print $1; exit}')"
-        if [ -n "$fw" ]; then run doctl compute firewall delete "$fw" --force; else say "firewall $name-fw: already gone"; fi
+        if [ -n "$fw" ]; then do_delete firewall "$fw" "$name-fw"; else say "firewall $name-fw: already gone"; fi
       fi
       # provision also creates the tag and, when your key is new to the account, "$name-key".
       if [ "$DRY_RUN" -eq 1 ] || doctl compute tag get "$name" >/dev/null 2>&1; then run doctl compute tag delete "$name" --force; fi
       local key_id=""
       [ "$DRY_RUN" -eq 0 ] && key_id="$(plist doctl compute ssh-key list --format ID,Name --no-header | awk -v n="$name-key" '$2==n {print $1; exit}')"
-      if [ "$DRY_RUN" -eq 1 ] || [ -n "$key_id" ]; then run doctl compute ssh-key delete "${key_id:-<key-id of $name-key>}" --force; fi
+      if [ "$DRY_RUN" -eq 1 ] || [ -n "$key_id" ]; then do_delete ssh-key "${key_id:-<key-id of $name-key>}" "$name-key"; fi
       ;;
     hetzner)
       require_cli hcloud "Install hcloud and run hcloud context create outpost"
