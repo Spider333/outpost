@@ -270,19 +270,19 @@ recast: 0x393567ce0425717647cf18876507d4b65cc43264 (confirmed: your node returns
 <pre class="out">"network-states channel (example)"
 census 2026-10-11 to 2026-10-18 (7 days), from your node
   members            24
-  active (posted)    22
-  casts              818  (116.9 per day)
+  active (posted)    23
+  casts              985  (140.7 per day)
   apps members posted from:
-      785  warpcast (app fid 9152)
-       22  own key
-       11  fireflyapp (app fid 16823)
-computed in 0.5 s</pre>
+      940  warpcast (app fid 9152)
+       30  own key
+       15  fireflyapp (app fid 16823)
+computed in 0.6 s</pre>
 <p>To check it, <code>scripts/manual-census.sh</code> counts the same thing with only <code>curl</code> and <code>jq</code>, none of kit's code. Run a few seconds later, it agreed:</p>
 <pre class="cmd">scripts/manual-census.sh examples/network-states.charter.json 7</pre>
 <pre class="out">members 24
-active 22
-casts 818
-casts_per_day 116.9</pre>
+active 23
+casts 985
+casts_per_day 140.7</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
 
 <h3 id="t-cleanup">8. Clean up</h3>
