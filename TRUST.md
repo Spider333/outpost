@@ -66,9 +66,10 @@ the member switch.
 
 ## What the host can still do
 
-- **See what members read, and their IP addresses.** TLS ends at the host's server. The gate as
-  published logs only hourly counts per member (`report` in `src/server/gate.ts`), but a member
-  cannot see what a host actually runs.
+- **See what members read, and their IP addresses.** TLS ends at the host's server. As published,
+  the gate logs only hourly counts per member (`report` in `src/server/gate.ts`), and the web
+  server's config turns off its request and error logs, which would otherwise record addresses
+  and requested URLs (`infra/society.sh`). But a member cannot see what a host actually runs.
 - **Change what runs on the server.** The gate is one file, `src/server/gate.ts` (about 200
   lines, Node built-ins only), copied to the server unchanged, so a host can easily audit their
   own setup. A member cannot check it from outside.
