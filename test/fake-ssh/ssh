@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Fake ssh for the watchdog test: every remote command answers with the progress line in
+# $FAKE_STATE/progress, or fails like an unreachable server while $FAKE_STATE/ssh-down exists.
+S="${FAKE_STATE:?}"
+for a in "$@"; do [ "$a" = "-O" ] && exit 0; done # tunnel control (check, exit)
+[ -e "$S/ssh-down" ] && exit 255
+cat "$S/progress"

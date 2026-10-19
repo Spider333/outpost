@@ -4,7 +4,7 @@ Three commands from nothing to your own Snapchain read node and a client for Far
 that reads from it and posts through it. No API keys from anyone.
 
 ```
-./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean or Hetzner), billed by the hour
+./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean; 1 TB on Hetzner), billed by the hour
 ./outpost node        # start a Snapchain read node on it; first sync took about 6 hours on our test server
 ./outpost client      # open http://127.0.0.1:8381
 ```
@@ -15,6 +15,10 @@ When you are done:
 ./outpost uninstall   # revoke the app key; no recovery phrase needed
 ./outpost destroy     # delete the server and stop paying
 ```
+
+Just trying it? `./outpost provision --watchdog 24` deletes the server for you after 24 hours,
+or after 2 hours with no progress. Ran it? [VOUCHER.md](VOUCHER.md) has a checklist and a
+draft cast.
 
 The tutorial is at https://spider333.github.io/outpost/ (source: [site/index.html](site/index.html)).
 
@@ -29,14 +33,21 @@ expiring app key and keeps no copy.
 ## What you need
 
 - A DigitalOcean (`doctl`) or Hetzner (`hcloud`) account, logged in. Or any Ubuntu 24.04
-  server with root SSH and 1.2 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
+  server with root SSH and at least 1 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
 - Node.js 20 or newer, for the client.
 - A test account for Farcaster that already has storage.
 
 ## What it does
 
 - **provision**: creates a server, a 1.2 TB volume (`--disk` to change) and a firewall that opens only SSH (22/tcp)
-  and gossip (3382/udp). `--dry-run` prints the exact provider commands.
+  and gossip (3382/udp). `--dry-run` prints the exact provider commands. On Hetzner the volume is
+  1 TB, because new Hetzner accounts can hold at most 1024 GB of volumes; the data fits, since
+  Outpost never keeps the snapshot and the database on the volume at once.
+- **watchdog**: `provision --watchdog <hours>`, or `./outpost watchdog start --hours <n>` later,
+  deletes the server, volume and firewall when the time is up, or when the node shows the same
+  progress for 2 hours (`--stall-hours`) once it has started. It runs on your computer, because
+  deleting needs your provider login, which never goes to the server. If the computer sleeps,
+  it acts when it wakes. `./outpost watchdog stop` keeps the server; `./outpost status` shows it.
 - **node**: runs the official `farcasterxyz/snapchain` image, pinned to 0.14.3, as a read
   node. The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone
   submit messages through it. It does not use the official installer, which needs a terminal
@@ -109,7 +120,8 @@ once `./outpost status` says synced.
 ## Layout
 
 ```
-outpost              the three commands, plus status, cli, uninstall, destroy
+outpost              the three commands, plus status, cli, uninstall, destroy, watchdog
+VOUCHER.md           checklist and draft cast for people who vouch for a run
 infra/               cloud-init and the node setup script
 src/core/            protocol code: node HTTP client, accounts, app keys, writes,
                      feed, app attribution, charters, census (runs in Node and browsers)
@@ -126,6 +138,9 @@ docs/evidence/       saved outputs from real runs
 ```
 npm ci
 npm test             # unit tests, including known test vectors
+npm run test:providers   # provision and destroy against fake doctl and hcloud
+npm run test:watchdog    # the watchdog, with a one-second hour
+npm run test:restore     # the snapshot loader
 npx tsc -p .         # typecheck
 npm run build        # dist/web, dist/serve.js, dist/cli.js
 ```

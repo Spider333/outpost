@@ -27,6 +27,7 @@
     "build": "node scripts/build.mjs",
     "client": "node scripts/build.mjs && node dist/serve.js",
     "test:providers": "bash test/providers.sh",
+    "test:watchdog": "bash test/watchdog.sh",
     "test:restore": "bash test/snapshot-restore.sh"
   }
 }

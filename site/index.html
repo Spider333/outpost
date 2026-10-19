@@ -51,7 +51,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <p>You need a DigitalOcean or Hetzner account with its command line tool logged in, Node.js 20 or newer, and a <strong>test</strong> account for Farcaster that already has storage.</p>
 <pre class="cmd">git clone https://github.com/Spider333/outpost
 cd outpost
-# rent a server with a 1.2 TB disk, billed by the hour
+# rent a server with a 1.2 TB disk (1 TB on Hetzner), billed by the hour
 ./outpost provision
 # start a read node; the first sync took about 6 hours on our test server
 ./outpost node
@@ -63,6 +63,7 @@ cd outpost
 # delete the server and stop paying
 ./outpost destroy</pre>
 <p class="muted">Every command is safe to run twice. <code>./outpost provision --dry-run</code> prints the exact provider commands without running them.</p>
+<p class="muted">Just trying it? <code>./outpost provision --watchdog 24</code> deletes the server for you after 24 hours, or after 2 hours with no progress, so a forgotten server cannot keep billing you. It runs on your computer; <code>./outpost watchdog stop</code> keeps the server.</p>
 
 <section class="danger" aria-labelledby="warn-h">
   <h2 id="warn-h">Before you paste a recovery phrase</h2>
@@ -91,7 +92,7 @@ cd outpost
 </nav>
 
 <h3 id="t-provision">1. Rent a server</h3>
-<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a snapshot of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a snapshot of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). On Hetzner it asks for 1 TB, because new Hetzner accounts can hold at most 1024 GB of volumes. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
 <pre class="cmd">./outpost provision --provider do
 # or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
@@ -317,6 +318,7 @@ keys added in the web client are revoked from its 'Your app key' panel.</pre>
 <h2 id="about">About this project</h2>
 <p>Code: <a href="https://github.com/Spider333/outpost">github.com/Spider333/outpost</a>, MIT licence. Snapchain is GPL-3.0; Outpost only runs its official Docker image and contains none of its code.</p>
 <p>How it was made: an AI coding assistant helped write the code and this page. People ran it and tested it: <span class="pending" data-pending="testers">PENDING: names of the human testers</span>. Every output on this page comes from a real run; where it was run somewhere other than a fresh node, the page says so.</p>
+<p>Ran it yourself? The <a href="https://github.com/Spider333/outpost/blob/main/VOUCHER.md">voucher checklist</a> has a list to fill in as you go and a draft cast.</p>
 
 <footer>
 <p>Not affiliated with Farcaster, Snapchain or their maintainers.</p>

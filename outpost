@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Outpost: from zero to your own read node and client, in three commands.
 #
-#   ./outpost provision   rent a server (DigitalOcean or Hetzner) with a 1.2 TB disk
+#   ./outpost provision   rent a server (DigitalOcean or Hetzner) with a 1.2 TB disk (1 TB on Hetzner)
 #   ./outpost node        start a Snapchain read node on it; no API keys
 #   ./outpost client      run the web client on your machine, talking to your node
 #
-# Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy
+# Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
+# ./outpost watchdog start|stop|status (deletes a trial server for you)
 # Every command is safe to run twice. Add --dry-run to provision/destroy to see the
 # exact provider commands without running them.
 
@@ -121,7 +122,7 @@ pick_provider() {
     else die "neither doctl (DigitalOcean) nor hcloud (Hetzner) is installed. Install one and log in:
   DigitalOcean: https://docs.digitalocean.com/reference/doctl/how-to/install/ then doctl auth init
   Hetzner:      https://github.com/hetznercloud/cli then hcloud context create outpost
-Or use a server you already have (Ubuntu 24.04, root SSH, 1.2 TB disk): OUTPOST_HOST=<ip> ./outpost node"
+Or use a server you already have (Ubuntu 24.04, root SSH, at least 1 TB of disk): OUTPOST_HOST=<ip> ./outpost node"
     fi
   fi
   case "$p" in "do"|digitalocean) echo "do" ;; hetzner|hcloud) echo hetzner ;; *) die "unknown provider: $p (use do or hetzner)" ;; esac
@@ -243,7 +244,10 @@ provision_hetzner() {
   fi
   say "Hetzner: server $name ($type) in $location with a $disk GB volume."
   say "Billed by the hour while it exists. Check current prices for $type and volumes before you go on."
-  say "Note: new Hetzner accounts can have a volume size limit below $disk GB. Ask support to raise it if create fails."
+  # Seen 2026-10-18: a new account's 2000 GB create failed with "volumes size limit exceeded".
+  if [ "$disk" -gt 1024 ]; then
+    warn "new Hetzner accounts can hold at most 1024 GB of volumes in total, so this create may fail. 1000 GB is enough."
+  fi
   confirm "Create it now?" || die "cancelled"
 
   local fp keyname ud
@@ -293,7 +297,7 @@ wait_for_ssh() {
 }
 
 cmd_provision() {
-  local provider="" name="${OUTPOST_NAME:-outpost-node}" region="" size="" disk="${OUTPOST_DISK_GB:-1200}" wait=1
+  local provider="" name="${OUTPOST_NAME:-outpost-node}" region="" size="" disk="${OUTPOST_DISK_GB:-}" wait=1 watch=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --provider) provider="$2"; shift 2 ;;
@@ -301,6 +305,7 @@ cmd_provision() {
       --region|--location) region="$2"; shift 2 ;;
       --size|--type) size="$2"; shift 2 ;;
       --disk) disk="$2"; shift 2 ;;
+      --watchdog) watch="$2"; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       --no-wait) wait=0; shift ;;
@@ -308,11 +313,16 @@ cmd_provision() {
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || die "server name must be lowercase letters, digits and dashes"
+  [ -z "$watch" ] || check_hours --watchdog "$watch"
+  provider="$(pick_provider "$provider")"
+  # New Hetzner accounts can hold at most 1024 GB of volumes, so Hetzner gets 1000 GB.
+  if [ -z "$disk" ]; then
+    if [ "$provider" = hetzner ]; then disk=1000; else disk=1200; fi
+  fi
   # The chain data was 557 GB on 2026-10-18 and grows; below 1 TB leaves no room.
   if ! [[ "$disk" =~ ^[0-9]+$ ]] || [ "$disk" -lt 1000 ]; then
-    die "--disk is the volume size in GB, at least 1000 (default 1200)"
+    die "--disk is the volume size in GB, at least 1000 (default 1200, 1000 on Hetzner)"
   fi
-  provider="$(pick_provider "$provider")"
   local key
   key="$(ssh_key_path)"
   state_set SSH_KEY "$key"
@@ -320,6 +330,14 @@ cmd_provision() {
     "do") provision_do "$name" "$region" "$size" "$key" "$disk" ;;
     hetzner) provision_hetzner "$name" "$region" "$size" "$key" "$disk" ;;
   esac
+  # Armed before waiting for SSH, so a server that never comes up is deleted too.
+  if [ -n "$watch" ]; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+      say "watchdog: would delete $name, its volume and its firewall after $watch hours, or after 2 hours with no progress"
+    else
+      watchdog_start "$watch" 2
+    fi
+  fi
   [ "$wait" -eq 1 ] && wait_for_ssh
   [ "$DRY_RUN" -eq 1 ] || say "next: ./outpost node"
 }
@@ -509,6 +527,7 @@ cmd_status() {
     say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: $(state_get IP)"
   fi
   say "node: $(node_progress)"
+  if [ -z "${OUTPOST_HOST:-}" ]; then watchdog_status; fi
 }
 
 cmd_uninstall() {
@@ -598,6 +617,129 @@ cmd_destroy() {
   fi
 }
 
+# ---- watchdog
+
+# Runs on this computer, not on the server: deleting needs your provider login, which never
+# goes to the server. While the computer sleeps it waits; on waking it acts on the clock.
+HOUR_SECS="${OUTPOST_HOUR_SECS:-3600}" # tests shorten the hour
+WATCHDOG_PID="$STATE_DIR/watchdog.pid"
+WATCHDOG_LOG="$STATE_DIR/watchdog.log"
+
+check_hours() {
+  [[ "$2" =~ ^[0-9]+$ ]] && [ "$2" -ge 1 ] || die "$1 takes a whole number of hours, at least 1"
+}
+
+fmt_time() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -r "$1" '+%Y-%m-%d %H:%M UTC'; }
+
+watchdog_running() {
+  local pid
+  pid="$(cat "$WATCHDOG_PID" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+watchdog_start() {
+  local hours="$1" stall="$2" deadline
+  check_hours --hours "$hours"
+  check_hours --stall-hours "$stall"
+  if [ -n "${OUTPOST_HOST:-}" ] || [ -z "$(state_get NAME)" ] || [ -z "$(state_get PROVIDER)" ]; then
+    die "the watchdog only deletes a server made here by ./outpost provision"
+  fi
+  if watchdog_running; then kill "$(cat "$WATCHDOG_PID")" 2>/dev/null || true; fi
+  deadline=$(($(date +%s) + hours * HOUR_SECS))
+  state_set WATCHDOG_DEADLINE "$deadline"
+  state_set WATCHDOG_STALL_HOURS "$stall"
+  nohup "$OUTPOST_DIR/outpost" watchdog run >>"$WATCHDOG_LOG" 2>&1 </dev/null &
+  echo $! >"$WATCHDOG_PID"
+  say "watchdog on: it deletes $(state_get NAME), its volume and its firewall at $(fmt_time "$deadline"),"
+  say "or sooner if the node makes no progress for $stall hours once it has started."
+  say "It runs on this computer; if the computer sleeps, it acts when it wakes. Log: $WATCHDOG_LOG"
+  say "To keep the server: ./outpost watchdog stop"
+}
+
+watchdog_stop() {
+  if watchdog_running; then kill "$(cat "$WATCHDOG_PID")" 2>/dev/null || true; fi
+  rm -f "$WATCHDOG_PID"
+  if [ -f "$STATE_FILE" ]; then state_set WATCHDOG_DEADLINE ""; fi
+  say "watchdog off: the server stays until you run ./outpost destroy"
+}
+
+watchdog_status() {
+  local deadline
+  deadline="$(state_get WATCHDOG_DEADLINE)"
+  if [ -z "$deadline" ]; then
+    say "watchdog: off"
+  elif watchdog_running; then
+    say "watchdog: deletes the server at $(fmt_time "$deadline"), or after $(state_get WATCHDOG_STALL_HOURS) hours with no progress"
+  else
+    say "watchdog: set for $(fmt_time "$deadline") but not running (did this computer restart?). Start it again: ./outpost watchdog start --hours <n>"
+  fi
+}
+
+watchdog_run() {
+  local interval="${OUTPOST_WATCHDOG_INTERVAL:-300}" last="" started=0 since now deadline stall line reason
+  since="$(date +%s)"
+  while true; do
+    if [ ! -f "$STATE_FILE" ]; then
+      say "$(date -u +%H:%M) the server is gone; watchdog done"
+      rm -f "$WATCHDOG_PID"
+      return 0
+    fi
+    deadline="$(state_get WATCHDOG_DEADLINE)"
+    [ -n "$deadline" ] || { say "$(date -u +%H:%M) watchdog turned off"; return 0; }
+    stall="$(state_get WATCHDOG_STALL_HOURS)"
+    stall="${stall:-2}"
+    now="$(date +%s)"
+    reason=""
+    if [ "$now" -ge "$deadline" ]; then
+      reason="time limit reached"
+    else
+      line="$(node_progress)"
+      case "$line" in
+        # Offline here is not a stall there; the time limit still applies.
+        "cannot reach the server over SSH") ;;
+        # Before ./outpost node has run, only the time limit applies.
+        "node container is not running") [ "$started" -eq 0 ] || [ "$line" = "$last" ] || { last="$line"; since="$now"; } ;;
+        synced*) started=1; last="$line"; since="$now" ;;
+        *) started=1
+          if [ "$line" != "$last" ]; then last="$line"; since="$now"; fi ;;
+      esac
+      if [ "$started" -eq 1 ] && [ $((now - since)) -ge $((stall * HOUR_SECS)) ]; then
+        reason="no progress for $stall hours ($last)"
+      fi
+    fi
+    if [ -n "$reason" ]; then
+      say "$(date -u +%H:%M) $reason: deleting the server"
+      if "$OUTPOST_DIR/outpost" destroy --yes; then
+        rm -f "$WATCHDOG_PID"
+        return 0
+      fi
+      say "$(date -u +%H:%M) destroy failed; trying again in $interval seconds"
+    fi
+    sleep "$interval"
+  done
+}
+
+cmd_watchdog() {
+  local sub="${1:-status}" hours=24 stall=2
+  [ $# -gt 0 ] && shift
+  case "$sub" in
+    start)
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --hours) hours="$2"; shift 2 ;;
+          --stall-hours) stall="$2"; shift 2 ;;
+          *) die "unknown option for watchdog start: $1" ;;
+        esac
+      done
+      watchdog_start "$hours" "$stall"
+      ;;
+    stop) watchdog_stop ;;
+    status) watchdog_status ;;
+    run) watchdog_run ;;
+    *) die "use: ./outpost watchdog start [--hours 24] [--stall-hours 2] | stop | status" ;;
+  esac
+}
+
 usage() {
   sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
@@ -613,6 +755,7 @@ main() {
     status) cmd_status "$@" ;;
     uninstall) cmd_uninstall "$@" ;;
     destroy) cmd_destroy "$@" ;;
+    watchdog) cmd_watchdog "$@" ;;
     ""|-h|--help|help) usage ;;
     *) usage; die "unknown command: $cmd" ;;
   esac

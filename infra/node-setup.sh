@@ -21,7 +21,9 @@ set -euo pipefail
 
 SNAPCHAIN_VERSION="${SNAPCHAIN_VERSION:-0.14.3}"
 DATA_DIR="${OUTPOST_DATA_DIR:-}"
-MIN_FREE_GB="${OUTPOST_MIN_FREE_GB:-1000}"
+# 900, not 1000: a new 1000 GB volume shows less than 1000 GB free after formatting, and new
+# Hetzner accounts cannot have a bigger one.
+MIN_FREE_GB="${OUTPOST_MIN_FREE_GB:-900}"
 RESTORE=/usr/local/lib/outpost/snapshot-restore.sh
 
 log() { printf '[node-setup] %s\n' "$*"; }
@@ -65,7 +67,7 @@ find_data_dir() {
 }
 
 if [ -z "$DATA_DIR" ]; then
-  DATA_DIR="$(find_data_dir)" || die "no disk with ${MIN_FREE_GB} GB free. The chain data is about 600 GB and growing. Attach a 1.2 TB volume."
+  DATA_DIR="$(find_data_dir)" || die "no disk with ${MIN_FREE_GB} GB free. The chain data is about 600 GB and growing. Attach a volume of 1 TB or more."
 fi
 log "data directory: $DATA_DIR ($(free_gb "$DATA_DIR") GB free)"
 

@@ -37,4 +37,17 @@ echo "ok: do provision attaches a volume left detached"
 out="$(FAKE_STALE_VOLUME=outpost-node-data "$ROOT/outpost" destroy --provider "do" --yes 2>&1)" || fail "do: destroy failed on a volume that was already gone: $out"
 [[ "$out" == *"volume outpost-node-data: already gone"* ]] || fail "do: destroy did not report the stale volume as gone"
 echo "ok: do destroy accepts a volume that is listed but already gone"
+
+# Disk defaults: new Hetzner accounts can hold at most 1024 GB of volumes.
+find "$FAKE_STATE" -type f -delete
+"$ROOT/outpost" provision --provider hetzner --yes --no-wait >/dev/null
+grep -q "hcloud volume create .*--size 1000 " "$FAKE_STATE/calls.log" || fail "hetzner: default volume is not 1000 GB"
+"$ROOT/outpost" destroy --yes >/dev/null
+"$ROOT/outpost" provision --provider "do" --yes --no-wait >/dev/null
+grep -q "doctl compute volume create .*--size 1200GiB" "$FAKE_STATE/calls.log" || fail "do: default volume is not 1200 GiB"
+"$ROOT/outpost" destroy --yes >/dev/null
+! "$ROOT/outpost" provision --provider hetzner --disk 900 --yes --no-wait >/dev/null 2>&1 || fail "--disk 900 accepted"
+out="$("$ROOT/outpost" provision --provider hetzner --disk 1200 --dry-run 2>&1)"
+[[ "$out" == *"at most 1024 GB"* ]] || fail "hetzner: no warning for a volume over 1024 GB"
+echo "ok: default disk 1000 GB on Hetzner, 1200 GB on DigitalOcean"
 find "$WORK" -type f -delete
