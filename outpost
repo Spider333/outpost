@@ -343,9 +343,9 @@ cmd_node() {
   [ "$wait" -eq 1 ] || { say "started. Check progress with ./outpost status"; return 0; }
   say ""
   say "The node downloads a snapshot of the network (about 560 GB), loads it, then catches up"
-  say "on the blocks since. On our test server loading took about 7 hours and catching up"
-  say "about 6.5 more. The client works once loading is done; the newest casts appear as it"
-  say "catches up. You can press Ctrl-C at any time; the node keeps going."
+  say "on the blocks since. On our test server loading took about 1 hour 45 minutes and"
+  say "catching up about 4 hours more. The client works once loading is done; the newest casts"
+  say "appear as it catches up. You can press Ctrl-C at any time; the node keeps going."
   say "Check later with ./outpost status."
   local last=""
   while true; do

@@ -51,9 +51,9 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <p>You need a DigitalOcean or Hetzner account with its command line tool logged in, Node.js 20 or newer, and a <strong>test</strong> account for Farcaster that already has storage.</p>
 <pre class="cmd">git clone https://github.com/Spider333/outpost
 cd outpost
-# rent a server with a 2 TB disk, billed by the hour
+# rent a server with a 1.2 TB disk, billed by the hour
 ./outpost provision
-# start a read node; the first sync took about 13 hours on our test server
+# start a read node; the first sync took about 6 hours on our test server
 ./outpost node
 # then open http://127.0.0.1:8381
 ./outpost client</pre>
@@ -91,14 +91,15 @@ cd outpost
 </nav>
 
 <h3 id="t-provision">1. Rent a server</h3>
-<p>A node keeps a full copy of the network's data. Today that is a snapshot of about 400 GB compressed, and the node needs about 1.5 TB of free disk while it unpacks it, so Outpost asks for a 2 TB volume. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a snapshot of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
 <pre class="cmd">./outpost provision --provider do
 # or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
-<pre class="out">DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 2 TiB volume.
-Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list prices; check yours).
+<pre class="out">DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 1200 GB volume.
+Billed by the hour while it exists: the volume about $0.16/h, plus the droplet
+(s-8vcpu-32gb-amd is $0.25/h). October 2026 list prices; check yours.
 + doctl compute ssh-key import outpost-node-key --public-key-file /home/you/.ssh/id_ed25519.pub
-+ doctl compute volume create outpost-node-data --region fra1 --size 2048GiB --fs-type ext4 --desc outpost\ snapchain\ data
++ doctl compute volume create outpost-node-data --region fra1 --size 1200GiB --fs-type ext4 --desc outpost\ snapchain\ data
 + doctl compute tag create outpost-node
 + doctl compute firewall create --name outpost-node-fw --tag-names outpost-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
 + doctl compute droplet create outpost-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.6oiXwl8gsl --volumes \&lt;volume-id\&gt; --tag-name outpost-node --wait</pre>
@@ -108,25 +109,25 @@ Billed by the hour while it exists: about $0.53/h (droplet + volume, 2025 list p
 <h3 id="t-node">2. Start a read node</h3>
 <pre class="cmd">./outpost node</pre>
 <pre class="out">setting up the read node on 142.93.168.228
-[node-setup] data directory: /mnt/snap (1357 GB free)
+[node-setup] data directory: /mnt/snap (1356 GB free)
 [node-setup] starting snapchain 0.14.3 (read node)
- Container snapchain-statsd-1  Running
  Container snapchain-snapchain-1  Running
-snapchain-snapchain-1 Up 4 hours
-snapchain-statsd-1 Up 19 hours (healthy)
+ Container snapchain-statsd-1  Running
+snapchain-snapchain-1 Up 9 hours
+snapchain-statsd-1 Up 24 hours (healthy)
 [node-setup] done. HTTP API on 127.0.0.1:3381 once the snapshot has loaded.
 
 The node downloads a snapshot of the network (about 560 GB), loads it, then catches up
-on the blocks since. On our test server loading took about 7 hours and catching up
-about 6.5 more. The client works once loading is done; the newest casts appear as it
-catches up. You can press Ctrl-C at any time; the node keeps going.
+on the blocks since. On our test server loading took about 1 hour 45 minutes and
+catching up about 4 hours more. The client works once loading is done; the newest casts
+appear as it catches up. You can press Ctrl-C at any time; the node keeps going.
 Check later with ./outpost status.
-22:50 synced: every shard is within 3 blocks of the tip
+03:50 synced: every shard is within 0 blocks of the tip
 next: ./outpost client</pre>
 <p class="muted">This is a second run on our already synced node, so it found the node running and returned at once. On a new server the last lines show download and loading progress until the node is synced.</p>
 <p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
-<p>The first sync downloads the snapshot (about 560 GB), unpacks it, then catches up on the blocks since. On our test server (DigitalOcean, 8 vCPU, 32 GB RAM, 2 TB volume) download and unpacking took 6 hours 40 minutes, and catching up took another 6 hours 27 minutes: about 13 hours in all. The node answers reads as soon as unpacking is done; the newest casts appear as it catches up. <code>./outpost status</code> shows where it is:</p>
-<pre class="out">node: downloading snapshot: Progress: 1312/5689 chunks (23%) (ETA: 2h35m)</pre>
+<p>The first sync downloads the snapshot (about 560 GB), loads it, then catches up on the blocks since. On our test server (DigitalOcean, 8 vCPU, 32 GB RAM, 1.2 TB volume, 18 to 19 October 2026) loading took 1 hour 43 minutes and catching up 4 hours 11 minutes: about 6 hours in all. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. The node answers reads once loading is done; the newest casts appear as it catches up. <code>./outpost status</code> shows where it is:</p>
+<pre class="out">node: loading snapshot: shard 1: 200 of 2672 chunks loaded, 20 GB on disk</pre>
 <p>Once it has caught up:</p>
 <pre class="cmd">./outpost status</pre>
 <pre class="out">server: 142.93.168.228 (OUTPOST_HOST)

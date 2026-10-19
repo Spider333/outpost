@@ -4,8 +4,8 @@ Three commands from nothing to your own Snapchain read node and a client for Far
 that reads from it and posts through it. No API keys from anyone.
 
 ```
-./outpost provision   # rent a server with a 2 TB disk (DigitalOcean or Hetzner), billed by the hour
-./outpost node        # start a Snapchain read node on it; first sync took about 13 hours on our test server
+./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean or Hetzner), billed by the hour
+./outpost node        # start a Snapchain read node on it; first sync took about 6 hours on our test server
 ./outpost client      # open http://127.0.0.1:8381
 ```
 
@@ -29,18 +29,23 @@ expiring app key and keeps no copy.
 ## What you need
 
 - A DigitalOcean (`doctl`) or Hetzner (`hcloud`) account, logged in. Or any Ubuntu 24.04
-  server with root SSH and 2 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
+  server with root SSH and 1.2 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
 - Node.js 20 or newer, for the client.
 - A test account for Farcaster that already has storage.
 
 ## What it does
 
-- **provision**: creates a server, a 2 TB volume and a firewall that opens only SSH (22/tcp)
+- **provision**: creates a server, a 1.2 TB volume (`--disk` to change) and a firewall that opens only SSH (22/tcp)
   and gossip (3382/udp). `--dry-run` prints the exact provider commands.
 - **node**: runs the official `farcasterxyz/snapchain` image, pinned to 0.14.3, as a read
   node. The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone
   submit messages through it. It does not use the official installer, which needs a terminal
   and can stop before starting the node (snapchain issue #1030).
+  On a new server it loads the network snapshot itself, 8 chunks at a time, streamed
+  straight into the database: about 4 times faster than Snapchain's own loader, which goes
+  one chunk at a time, and it never needs room for the snapshot and the database at once.
+  Each shard goes into the database only when it is complete, and `./outpost node` resumes
+  an interrupted load. `OUTPOST_FAST_RESTORE=0` uses Snapchain's loader instead.
 - **client**: opens an SSH tunnel to the node and serves the web client on 127.0.0.1:8381.
   The client:
   - connects an account with a wallet signature, or a test account's recovery phrase;
@@ -71,6 +76,10 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 `./outpost client --phone off` closes it again.
 
 ## Shard 0 did not load
+
+This can only happen to a node that loaded its snapshot with Snapchain's own loader, as
+nodes set up before 19 October 2026 did. Outpost's loader moves each shard into place only
+when it is complete.
 
 Snapchain loads its snapshot one shard after another, shard 0 last, and only when its
 database folder is empty. If the node is restarted during the load, it starts with whatever
