@@ -631,10 +631,11 @@ check_hours() {
 
 fmt_time() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -r "$1" '+%Y-%m-%d %H:%M UTC'; }
 
+# Checks the command line too: after a restart the saved pid can belong to another program.
 watchdog_running() {
   local pid
   pid="$(cat "$WATCHDOG_PID" 2>/dev/null || true)"
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+  [ -n "$pid" ] && ps -p "$pid" -o command= 2>/dev/null | grep -q "outpost watchdog run"
 }
 
 watchdog_start() {
@@ -695,8 +696,8 @@ watchdog_run() {
     else
       line="$(node_progress)"
       case "$line" in
-        # Offline here is not a stall there; the time limit still applies.
-        "cannot reach the server over SSH") ;;
+        # Offline here is not a stall there: the stall clock restarts, the time limit still applies.
+        "cannot reach the server over SSH") since="$now" ;;
         # Before ./outpost node has run, only the time limit applies.
         "node container is not running") [ "$started" -eq 0 ] || [ "$line" = "$last" ] || { last="$line"; since="$now"; } ;;
         synced*) started=1; last="$line"; since="$now" ;;

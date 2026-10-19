@@ -79,12 +79,17 @@ server_exists || fail "deleted after watchdog stop"
 "$OP" destroy --yes >/dev/null
 echo "ok: leaves a moving node alone; watchdog stop keeps the server"
 
-# 5. SSH down is not a stall; a manual destroy ends the watchdog.
+# 5. SSH down, after the node has started, for longer than the stall limit is not a stall;
+# progress after it comes back keeps the server; a manual destroy ends the watchdog.
 start 100 "catching up: furthest shard is 500 blocks behind"
+sleep 2
 : >"$FAKE_STATE/ssh-down"
 sleep 5
 server_exists || fail "deleted while SSH was down"
+echo "catching up: furthest shard is 400 blocks behind" >"$FAKE_STATE/progress"
 rm -f "$FAKE_STATE/ssh-down"
+sleep 2
+server_exists || fail "deleted right after SSH came back with new progress"
 finish "ssh down"
 echo "ok: SSH down is not a stall; manual destroy ends the watchdog"
 
@@ -95,7 +100,17 @@ server_exists || fail "deleted a synced node"
 finish synced
 echo "ok: leaves a synced node alone"
 
-# 7. Bad values and servers Outpost did not make are refused before anything is created.
+# 7. A saved pid that now belongs to another program (after a restart) is left alone.
+sleep 1000 &
+other=$!
+echo "$other" >"$OUTPOST_STATE_DIR/watchdog.pid"
+"$OP" watchdog stop >/dev/null
+kill -0 "$other" 2>/dev/null || fail "watchdog stop killed an unrelated process"
+kill "$other"
+wait "$other" 2>/dev/null || true
+echo "ok: a stale pid of another program is not killed"
+
+# 8. Bad values and servers Outpost did not make are refused before anything is created.
 find "$FAKE_STATE" -type f -delete
 ! "$OP" provision --provider "do" --yes --no-wait --watchdog 0 >/dev/null 2>&1 || fail "--watchdog 0 accepted"
 ! server_exists || fail "--watchdog 0 still created a server"
