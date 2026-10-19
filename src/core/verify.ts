@@ -9,10 +9,12 @@
 // message must be what was asked for (the right account, cast or target).
 //
 // A valid signature only proves that key `signer` signed. Whether that key belongs to
-// `data.fid` is checked against Optimism, through an RPC the member chooses (see chain.ts):
-//   - onchain keys: the KeyRegistry must list the key as added for that FID.
-//   - gasless keys (KEY_ADD): NOT checkable. The HTTP API returns no KEY_ADD message and no
-//     custody signature, only the node's word. Such messages are kept and marked unverified.
+// `data.fid` is checked without the node being read:
+//   - onchain keys: the KeyRegistry on Optimism must list the key as added for that FID, read
+//     through an RPC the member chooses (chain.ts).
+//   - gasless keys (KEY_ADD): no onchain record, and the HTTP API returns no KEY_ADD message or
+//     custody signature. A second, independent node is asked instead (secondnode.ts). Without
+//     one, such messages are kept and marked unverified.
 
 import { ed25519 } from "@noble/curves/ed25519";
 import { blake3 } from "@noble/hashes/blake3";
@@ -22,12 +24,17 @@ import type { HexString, HubMessage } from "./hub.js";
 
 export type DropReason = "altered" | "signature" | "mismatch" | "signer";
 
-// "onchain": the KeyRegistry lists the key for this FID. "unverified": not checkable (gasless
-// key, no RPC, or the RPC failed). "false": the key is provably not (or no longer) the FID's.
-export type KeyCheck = "onchain" | "unverified" | "false";
+// "onchain": the KeyRegistry lists the key for this FID. "confirmed": a second node lists it as
+// one of the FID's active keys. "unverified": not checkable (no RPC or second node, or they
+// failed). "false": the key is not (or no longer) the FID's: on Optimism, or per the second node.
+export type KeyCheck = "onchain" | "confirmed" | "unverified" | "false";
 
 export interface KeyRegistry {
   keyState(fid: number, key: HexString): Promise<"added" | "removed" | "none">;
+}
+
+export interface KeyLister {
+  listsKey(fid: number, key: HexString): Promise<boolean>;
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
@@ -139,7 +146,10 @@ export class Verifier {
   readonly dropped: Record<DropReason, number> = { altered: 0, signature: 0, mismatch: 0, signer: 0 };
   private keys = new Map<string, Promise<KeyCheck>>();
 
-  constructor(readonly chain?: KeyRegistry) {}
+  constructor(
+    readonly chain?: KeyRegistry,
+    readonly second?: KeyLister,
+  ) {}
 
   get failed(): number {
     return Object.values(this.dropped).reduce((a, b) => a + b, 0);
@@ -160,21 +170,31 @@ export class Verifier {
     });
   }
 
-  // `claimedOnchain`: the node says this is an onchain key. A gasless claim cannot be checked.
+  // `claimedOnchain`: the node says this is an onchain key. Errors give "unverified" and are
+  // not remembered, so the next look tries again.
   keyCheck(fid: number, key: HexString, claimedOnchain: boolean): Promise<KeyCheck> {
-    const chain = this.chain;
-    if (!chain) return Promise.resolve("unverified");
     const k = `${fid}:${key.toLowerCase()}:${claimedOnchain}`;
     let p = this.keys.get(k);
     if (!p) {
-      p = chain.keyState(fid, key).then((s) =>
-        // A removed onchain key's messages are revoked by the protocol, so none should be served.
-        s === "added" ? "onchain" : s === "removed" || claimedOnchain ? "false" : "unverified",
-      );
+      p = this.checkKey(fid, key, claimedOnchain);
       p.catch(() => this.keys.delete(k));
       this.keys.set(k, p);
     }
     return p.catch(() => "unverified" as const);
+  }
+
+  private async checkKey(fid: number, key: HexString, claimedOnchain: boolean): Promise<KeyCheck> {
+    let state: "added" | "removed" | "none" | undefined;
+    try {
+      state = await this.chain?.keyState(fid, key);
+    } catch (e) {
+      if (!this.second) throw e; // the second node lists onchain keys too, so it can stand in
+    }
+    if (state === "added") return "onchain";
+    // A removed onchain key's messages are revoked by the protocol, so none should be served.
+    if (state === "removed" || (state === "none" && claimedOnchain)) return "false";
+    if (!this.second) return "unverified";
+    return (await this.second.listsKey(fid, key)) ? "confirmed" : "false";
   }
 
   summary(): string {
