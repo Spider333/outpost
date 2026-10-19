@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Fake ssh for the watchdog test: every remote command answers with the progress line in
+# $FAKE_STATE/progress, or fails like an unreachable server while $FAKE_STATE/ssh-down exists
+# or once no server is left.
+S="${FAKE_STATE:?}"
+for a in "$@"; do [ "$a" = "-O" ] && exit 0; done # tunnel control (check, exit)
+[ -e "$S/ssh-down" ] && exit 255
+# Like a command that hangs on the server.
+[ -e "$S/ssh-hang" ] && exec sleep 1000
+# A deleted server does not answer either.
+up=0; for f in "$S"/droplet.* "$S"/hz.server.*; do [ -e "$f" ] && up=1; done
+[ "$up" -eq 1 ] || exit 255
+cat "$S/progress"

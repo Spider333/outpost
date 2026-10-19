@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Fake doctl: keeps resources as "id name ip" lines and honours --format.
 S="${FAKE_STATE:?}"; echo "doctl $*" >> "$S/calls.log"
+# Like the API with no network: every call fails.
+[ -e "$S/api-down" ] && { echo "Error: dial tcp: network is unreachable" >&2; exit 1; }
+# Like a DigitalOcean outage for volumes only: get and delete answer 503, the rest works.
+case "$1 $2 $3" in "compute volume get"|"compute volume delete")
+  [ -e "$S/volume-503" ] && { echo "Error: 503 Service Unavailable" >&2; exit 1; } ;; esac
 fmt=""; tag=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; [ "$prev" = "--tag-names" ] && tag="$a"; prev="$a"; done
 list() { # $1 = file glob prefix
   for f in "$S"/$1.*; do [ -e "$f" ] || continue; read -r id name ip < "$f"
@@ -10,7 +15,9 @@ case "$1 $2 $3" in
   "compute droplet create") echo "d-1 $4 203.0.113.7" > "$S/droplet.$4"
     # Like DigitalOcean on a bad day: --volumes is accepted but nothing is attached.
     [ -n "${FAKE_SKIP_ATTACH:-}" ] || : > "$S/attached" ;;
-  "compute droplet delete") rm -f "$S/droplet.$4" "$S/attached" ;;
+  "compute droplet delete") rm -f "$S/droplet.$4" "$S/attached"
+    # Like the network dropping in the middle of a destroy.
+    if [ -e "$S/drop-after-droplet-delete" ]; then : >"$S/api-down"; fi ;;
   "compute volume list") list volume
     # Like DigitalOcean just after a delete: still listed, but gone.
     if [ -n "${FAKE_STALE_VOLUME:-}" ]; then case "$fmt" in ID,Name) echo "vol-ghost $FAKE_STALE_VOLUME";; *) echo "$FAKE_STALE_VOLUME";; esac; fi ;;
