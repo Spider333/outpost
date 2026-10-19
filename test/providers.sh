@@ -50,4 +50,16 @@ grep -q "doctl compute volume create .*--size 1200GiB" "$FAKE_STATE/calls.log" |
 out="$("$ROOT/outpost" provision --provider hetzner --disk 1200 --dry-run 2>&1)"
 [[ "$out" == *"at most 1024 GB"* ]] || fail "hetzner: no warning for a volume over 1024 GB"
 echo "ok: default disk 1000 GB on Hetzner, 1200 GB on DigitalOcean"
+
+# No network: destroy must fail and keep the state, never call the resources gone.
+for p in "do" hetzner; do
+  find "$FAKE_STATE" -type f -delete
+  "$ROOT/outpost" provision --provider "$p" --yes --no-wait >/dev/null
+  : >"$FAKE_STATE/api-down"
+  ! "$ROOT/outpost" destroy --yes >/dev/null 2>&1 || fail "$p: destroy succeeded with the API down"
+  [ -f "$OUTPOST_STATE_DIR/state" ] || fail "$p: destroy forgot the server with the API down"
+  rm -f "$FAKE_STATE/api-down"
+  "$ROOT/outpost" destroy --yes >/dev/null
+  echo "ok: $p destroy with the API down fails and keeps the state"
+done
 find "$WORK" -type f -delete

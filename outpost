@@ -545,6 +545,14 @@ do_delete() {
   say "$kind $label: already gone"
 }
 
+# Whether a Hetzner resource exists. A failed `describe` can also mean "no network", so this
+# lists instead and stops if the list fails: nothing may be called gone, or forgotten, unchecked.
+hz_has() {
+  local names
+  names="$(plist hcloud "$1" list -o noheader -o columns=name)" || die "cannot list Hetzner $1s, so nothing was deleted. Try again."
+  printf '%s\n' "$names" | awk '{print $1}' | grep -qx "$2"
+}
+
 cmd_destroy() {
   local provider name
   while [ $# -gt 0 ]; do
@@ -602,10 +610,10 @@ cmd_destroy() {
       ;;
     hetzner)
       require_cli hcloud "Install hcloud and run hcloud context create outpost"
-      if [ "$DRY_RUN" -eq 1 ] || hcloud server describe "$name" >/dev/null 2>&1; then run hcloud server delete "$name"; else say "server $name: already gone"; fi
-      if [ "$DRY_RUN" -eq 1 ] || hcloud volume describe "$name-data" >/dev/null 2>&1; then run hcloud volume delete "$name-data"; else say "volume $name-data: already gone"; fi
-      if [ "$DRY_RUN" -eq 1 ] || hcloud firewall describe "$name-fw" >/dev/null 2>&1; then run hcloud firewall delete "$name-fw"; else say "firewall $name-fw: already gone"; fi
-      if [ "$DRY_RUN" -eq 1 ] || hcloud ssh-key describe "$name-key" >/dev/null 2>&1; then run hcloud ssh-key delete "$name-key"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hz_has server "$name"; then run hcloud server delete "$name"; else say "server $name: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hz_has volume "$name-data"; then run hcloud volume delete "$name-data"; else say "volume $name-data: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hz_has firewall "$name-fw"; then run hcloud firewall delete "$name-fw"; else say "firewall $name-fw: already gone"; fi
+      if [ "$DRY_RUN" -eq 1 ] || hz_has ssh-key "$name-key"; then run hcloud ssh-key delete "$name-key"; fi
       ;;
   esac
   if [ "$DRY_RUN" -eq 0 ]; then
@@ -700,6 +708,9 @@ watchdog_run() {
         "cannot reach the server over SSH") since="$now" ;;
         # Before ./outpost node has run, only the time limit applies.
         "node container is not running") [ "$started" -eq 0 ] || [ "$line" = "$last" ] || { last="$line"; since="$now"; } ;;
+        # Snapchain's own loader, and the node opening its database, print no progress for
+        # long stretches: only the time limit applies there.
+        "downloading snapshot:"* | "loading snapshot into the database"*) started=1; last="$line"; since="$now" ;;
         synced*) started=1; last="$line"; since="$now" ;;
         *) started=1
           if [ "$line" != "$last" ]; then last="$line"; since="$now"; fi ;;

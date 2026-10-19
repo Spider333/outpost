@@ -23,14 +23,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-server_exists() { [ -e "$FAKE_STATE/droplet.outpost-node" ]; }
+server_exists() { [ -e "$FAKE_STATE/droplet.outpost-node" ] || [ -e "$FAKE_STATE/hz.server.outpost-node" ]; }
 gone_within() { for _ in $(seq 1 "$1"); do server_exists || return 0; sleep 1; done; return 1; }
-# A new server with the watchdog armed for $1 "hours", reporting progress line $2.
+# A new server (provider $3, default DigitalOcean) with the watchdog armed for $1 "hours",
+# reporting progress line $2.
 start() {
   find "$FAKE_STATE" -type f -delete
   rm -f "$OUTPOST_STATE_DIR/watchdog.log"
   echo "$2" >"$FAKE_STATE/progress"
-  "$OP" provision --provider "do" --yes --no-wait --watchdog "$1" >/dev/null
+  "$OP" provision --provider "${3:-do}" --yes --no-wait --watchdog "$1" >/dev/null
   server_exists || fail "provision made no server"
 }
 finish() {
@@ -100,7 +101,31 @@ server_exists || fail "deleted a synced node"
 finish synced
 echo "ok: leaves a synced node alone"
 
-# 7. A saved pid that now belongs to another program (after a restart) is left alone.
+# 7. Phases with no progress signal (Snapchain's own loader, the node opening its database)
+# are not stalls.
+start 100 "loading snapshot: shard 2: 2672 of 2672 chunks loaded, 560 GB on disk"
+sleep 2
+echo "loading snapshot into the database (no API yet)" >"$FAKE_STATE/progress"
+sleep 5
+server_exists || fail "deleted while the node was opening its database"
+finish "no API yet"
+echo "ok: phases with no progress signal are not stalls"
+
+# 8. The time limit passes while the provider's API is unreachable (Hetzner and DigitalOcean):
+# the watchdog keeps the state and retries until the deletion really happens.
+for p in hetzner "do"; do
+  start 3 "catching up: furthest shard is 500 blocks behind" "$p"
+  : >"$FAKE_STATE/api-down"
+  sleep 6
+  server_exists || fail "$p: server gone with the API down?"
+  [ -f "$OUTPOST_STATE_DIR/state" ] || fail "$p: watchdog forgot the server while the API was down"
+  kill -0 "$(wd_pid)" 2>/dev/null || fail "$p: watchdog gave up while the API was down"
+  rm -f "$FAKE_STATE/api-down"
+  gone_within 8 || fail "$p: not deleted once the API was back"
+  echo "ok: $p, time limit during an API outage: retries until deleted"
+done
+
+# 9. A saved pid that now belongs to another program (after a restart) is left alone.
 sleep 1000 &
 other=$!
 echo "$other" >"$OUTPOST_STATE_DIR/watchdog.pid"
@@ -110,7 +135,7 @@ kill "$other"
 wait "$other" 2>/dev/null || true
 echo "ok: a stale pid of another program is not killed"
 
-# 8. Bad values and servers Outpost did not make are refused before anything is created.
+# 10. Bad values and servers Outpost did not make are refused before anything is created.
 find "$FAKE_STATE" -type f -delete
 ! "$OP" provision --provider "do" --yes --no-wait --watchdog 0 >/dev/null 2>&1 || fail "--watchdog 0 accepted"
 ! server_exists || fail "--watchdog 0 still created a server"

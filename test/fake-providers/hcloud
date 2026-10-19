@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 S="${FAKE_STATE:?}"; echo "hcloud $*" >> "$S/calls.log"
+# Like the API with no network: every call fails.
+[ -e "$S/api-down" ] && { echo "hcloud: dial tcp: network is unreachable" >&2; exit 1; }
+names() { for f in "$S"/hz."$1".*; do [ -e "$f" ] && echo "${f##*/hz.$1.}"; done; exit 0; }
 case "$1 $2" in
   "server ip") [ -e "$S/hz.server.$3" ] && echo 198.51.100.9 || exit 1 ;;
+  "server list") names server ;;
   "server describe") [ -e "$S/hz.server.$3" ] || exit 1 ;;
   "server create") n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done; touch "$S/hz.server.$n" ;;
   "server delete") [ -e "$S/hz.server.$3" ] && rm "$S/hz.server.$3" || exit 1 ;;
+  "volume list") names volume ;;
   "volume describe") [ -e "$S/hz.volume.$3" ] || exit 1 ;;
   "volume create") n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done; touch "$S/hz.volume.$n" ;;
   "volume delete") rm "$S/hz.volume.$3" ;;
+  "firewall list") names fw ;;
   "firewall describe") [ -e "$S/hz.fw.$3" ] || exit 1 ;;
   "firewall create") n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done; touch "$S/hz.fw.$n" ;;
   "firewall delete") rm "$S/hz.fw.$3" ;;

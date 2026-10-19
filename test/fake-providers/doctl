@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Fake doctl: keeps resources as "id name ip" lines and honours --format.
 S="${FAKE_STATE:?}"; echo "doctl $*" >> "$S/calls.log"
+# Like the API with no network: every call fails.
+[ -e "$S/api-down" ] && { echo "Error: dial tcp: network is unreachable" >&2; exit 1; }
 fmt=""; tag=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; [ "$prev" = "--tag-names" ] && tag="$a"; prev="$a"; done
 list() { # $1 = file glob prefix
   for f in "$S"/$1.*; do [ -e "$f" ] || continue; read -r id name ip < "$f"
