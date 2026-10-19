@@ -41,9 +41,11 @@ The commit is also shown at the bottom of the client.
 
 **Alter a message or make one up with someone's real key.** The client checks every message it
 reads, in the member's own browser: the hash must match the message content and the Ed25519
-signature must be valid for that hash (`checkMessage` in `src/core/verify.ts`). A message that
-fails is not shown, and the client says how many it dropped. The node's own validation is never
-asked. Test: the malicious-node cases in `test/verify.test.ts`.
+signature must be valid for that hash (`verifyMessage` in `src/core/verify.ts`). Everything the
+client shows is rebuilt from those signed bytes; the node's reply is only input to the check and
+is never displayed. A message that fails, or that comes with any field the signed bytes do not
+contain, is not shown, and the client says how many it dropped. The node's own validation is
+never asked. Test: the malicious-node cases in `test/verify.test.ts`.
 
 **Answer a question with the wrong data.** Messages must match what was asked for: casts by
 account F really are by F, a channel feed really is that channel, a cast looked up by hash
