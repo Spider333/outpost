@@ -38,6 +38,33 @@ out="$(FAKE_STALE_VOLUME=outpost-node-data "$ROOT/outpost" destroy --provider "d
 [[ "$out" == *"volume outpost-node-data: already gone"* ]] || fail "do: destroy did not report the stale volume as gone"
 echo "ok: do destroy accepts a volume that is listed but already gone"
 
+# DigitalOcean answering 503 for volume get and delete: destroy must fail and keep the state,
+# not call the volume gone.
+find "$FAKE_STATE" -type f -delete
+"$ROOT/outpost" provision --provider "do" --yes --no-wait >/dev/null
+: >"$FAKE_STATE/volume-503"
+out="$("$ROOT/outpost" destroy --yes 2>&1)" && fail "do: destroy succeeded while volume delete failed: $out"
+[[ "$out" != *"volume outpost-node-data: already gone"* ]] || fail "do: a 503 was taken as already gone"
+[[ "$out" != *"Billing for these resources has stopped"* ]] || fail "do: destroy claimed billing stopped"
+[ -f "$OUTPOST_STATE_DIR/state" ] || fail "do: destroy forgot the server after a 503"
+ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "do: volume gone?"
+rm -f "$FAKE_STATE/volume-503"
+"$ROOT/outpost" destroy --yes >/dev/null
+[ "$(find "$FAKE_STATE" -type f ! -name calls.log | wc -l)" -eq 0 ] || fail "do: retry after a 503 left resources"
+echo "ok: do destroy with volume get/delete failing (503) fails and keeps the state"
+
+# The network drops right after the droplet is deleted: same, nothing else may be called gone.
+find "$FAKE_STATE" -type f -delete
+"$ROOT/outpost" provision --provider "do" --yes --no-wait >/dev/null
+: >"$FAKE_STATE/drop-after-droplet-delete"
+out="$("$ROOT/outpost" destroy --yes 2>&1)" && fail "do: destroy succeeded after the network dropped: $out"
+[[ "$out" != *"already gone"* ]] || fail "do: called something gone with no network: $out"
+[ -f "$OUTPOST_STATE_DIR/state" ] || fail "do: destroy forgot the server after the network dropped"
+rm -f "$FAKE_STATE/drop-after-droplet-delete" "$FAKE_STATE/api-down"
+"$ROOT/outpost" destroy --yes >/dev/null
+[ "$(find "$FAKE_STATE" -type f ! -name calls.log | wc -l)" -eq 0 ] || fail "do: retry after the network dropped left resources"
+echo "ok: do destroy with the network dropping midway fails and keeps the state"
+
 # Disk defaults: new Hetzner accounts can hold at most 1024 GB of volumes.
 find "$FAKE_STATE" -type f -delete
 "$ROOT/outpost" provision --provider hetzner --yes --no-wait >/dev/null

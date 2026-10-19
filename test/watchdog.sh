@@ -125,6 +125,33 @@ for p in hetzner "do"; do
   echo "ok: $p, time limit during an API outage: retries until deleted"
 done
 
+# 8b. DigitalOcean answers 503 for volume get and delete only: the watchdog must keep the state
+# and retry until the volume is really deleted.
+start 3 "catching up: furthest shard is 500 blocks behind"
+: >"$FAKE_STATE/volume-503"
+sleep 6
+ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "volume gone while its delete failed?"
+[ -f "$OUTPOST_STATE_DIR/state" ] || fail "watchdog forgot the server while volume delete failed"
+kill -0 "$(wd_pid)" 2>/dev/null || fail "watchdog gave up while volume delete failed"
+rm -f "$FAKE_STATE/volume-503"
+for _ in $(seq 1 8); do ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || break; sleep 1; done
+! ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "volume not deleted once the API was back"
+for _ in 1 2 3 4 5; do kill -0 "$(wd_pid)" 2>/dev/null || break; sleep 1; done
+! kill -0 "$(wd_pid)" 2>/dev/null || fail "watchdog still running after the volume was deleted"
+echo "ok: do, volume delete failing (503): retries until the volume is deleted"
+
+# 9b. A watchdog of another checkout (same command, other path) is not killed by stop.
+mkdir -p "$WORK/other"
+printf '#!/usr/bin/env bash\nsleep 1000\n' >"$WORK/other/outpost"
+chmod +x "$WORK/other/outpost"
+"$WORK/other/outpost" watchdog run &
+other=$!
+echo "$other" >"$OUTPOST_STATE_DIR/watchdog.pid"
+"$OP" watchdog stop >/dev/null
+kill -0 "$other" 2>/dev/null || fail "watchdog stop killed another checkout's watchdog"
+kill "$other"; wait "$other" 2>/dev/null || true
+echo "ok: another checkout's watchdog is not killed"
+
 # 9. A saved pid that now belongs to another program (after a restart) is left alone.
 sleep 1000 &
 other=$!
