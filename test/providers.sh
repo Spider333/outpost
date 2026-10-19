@@ -53,9 +53,11 @@ for p in "do" hetzner; do
   [ -e "$fw" ] || fail "$p: society on did not open 443/tcp"
   [ -e "$C/outpost-society" ] || fail "$p: society on did not start Caddy"
   [ -e "$C/outpost-gate" ] || fail "$p: society on did not start the gate"
-  grep -qx "$host {" "$SRV/caddy/Caddyfile" || fail "$p: Caddyfile is not for $host"
-  grep -qx "	reverse_proxy 127.0.0.1:3390" "$SRV/caddy/Caddyfile" || fail "$p: Caddyfile does not proxy to the gate"
-  [ "$(wc -l <"$SRV/caddy/Caddyfile")" -eq 4 ] || fail "$p: Caddyfile does more than proxy to the gate"
+  grep -qx "		exclude http.log http.handlers http.stdlib" "$SRV/caddy/Caddyfile" || fail "$p: Caddyfile lets Caddy log request URIs and client IPs"
+  # All of it: no request logs, a proxy to the gate on $host, nothing else (no files, no page).
+  want="$(printf '{\n\tlog {\n\t\texclude http.log http.handlers http.stdlib\n\t}\n}\n%s {\n\treverse_proxy 127.0.0.1:3390\n\theader -Server\n}' "$host")"
+  [ "$(cat "$SRV/caddy/Caddyfile")" = "$want" ] || fail "$p: Caddyfile is not exactly the society one:
+$(cat "$SRV/caddy/Caddyfile")"
   cmp -s "$SRV/gate/gate.ts" "$ROOT/src/server/gate.ts" || fail "$p: the gate on the server is not src/server/gate.ts"
   grep -q -- "--network host --read-only --cap-drop ALL --security-opt no-new-privileges" "$C/outpost-gate" || fail "$p: gate container not locked down"
   grep -q -- "-v $SRV/gate:/gate:ro node:24.21.0-alpine node /gate/gate.ts" "$C/outpost-gate" || fail "$p: gate not run from its source in the pinned Node image"
