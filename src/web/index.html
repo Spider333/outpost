@@ -33,7 +33,11 @@
       <label for="rpc-url">Optimism RPC for key and custody checks (empty to turn them off)</label>
       <input id="rpc-url" placeholder="https://mainnet.optimism.io" inputmode="url" autocomplete="off">
       <button id="rpc-save" type="button">Save RPC</button>
-      <p class="muted small">Onchain app keys are checked against Farcaster's KeyRegistry on Optimism through this RPC, not through the node. Gasless app keys cannot be checked through the node's API, so their casts say "signer not verified".</p>
+      <p class="muted small">Onchain app keys are checked against Farcaster's KeyRegistry on Optimism through this RPC, not through the node.</p>
+      <label for="check-node">Second node for gasless app keys (empty to turn the check off)</label>
+      <input id="check-node" placeholder="https://snap.farcaster.xyz:3381" inputmode="url" autocomplete="off">
+      <button id="check-save" type="button">Save second node</button>
+      <p id="check-note" class="muted small"></p>
     </details>
 
     <section id="connect" class="card" hidden aria-labelledby="connect-h">

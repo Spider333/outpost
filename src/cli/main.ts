@@ -31,8 +31,10 @@ import {
   parseAppSelector,
   checkNodeUrl,
   checkToken,
+  DEFAULT_CHECK_NODE,
   DEFAULT_OPTIMISM_RPC,
   Optimism,
+  secondNode,
   Verifier,
   type AppFilter,
   type FeedItem,
@@ -93,12 +95,14 @@ options:
                       taken from the command line, where other users and shell history see them
   --rpc <url>         Optimism RPC for key and custody checks (default $OUTPOST_OPTIMISM_RPC or
                       ${DEFAULT_OPTIMISM_RPC}; "off" skips them)
+  --check-node <url>  second node asked about gasless app keys, which have no onchain record
+                      (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}; "off" skips it)
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
 
 Every message read from the node is verified here (hash, signature, account) before use.
 `;
 
-function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string }): { hub: Hub; chain?: Optimism } {
+function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "check-node"?: string }): { hub: Hub; chain?: Optimism } {
   const rpc = v.rpc ?? process.env.OUTPOST_OPTIMISM_RPC ?? DEFAULT_OPTIMISM_RPC;
   const chain = rpc === "off" ? undefined : new Optimism(rpc);
   const url = v.node ?? process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381";
@@ -107,7 +111,10 @@ function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string }): 
   const auth = tokenFile
     ? { url: checkNodeUrl(url), token: checkToken(readFileSync(tokenFile, "utf8")) }
     : { url, username: process.env.OUTPOST_NODE_USER, password: process.env.OUTPOST_NODE_PASSWORD };
-  return { hub: new Hub({ ...auth, verifier: new Verifier(chain) }), chain };
+  const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? DEFAULT_CHECK_NODE;
+  const second = check === "off" ? undefined : secondNode(checkNodeUrl(check), auth.url);
+  if (check !== "off" && !second) console.error("note: the second node is the node being read, so gasless keys are not checked");
+  return { hub: new Hub({ ...auth, verifier: new Verifier(chain, second) }), chain };
 }
 
 
@@ -215,9 +222,10 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   const names = await feed.appNames(items);
   const label = (it: FeedItem) =>
     it.app.kind === "app" ? `via ${names.get(it.app.requestFid!) ?? it.app.requestFid} (app fid ${it.app.requestFid})` : it.app.kind === "self" ? "via own key" : "via unknown key";
-  // Onchain keys are checked on Optimism; gasless keys cannot be checked through the node's API.
+  // Onchain keys are checked on Optimism; gasless keys with the second node, if one is set.
   const own = loadKey()?.publicKey.toLowerCase();
-  const keyNote = (it: FeedItem) => (it.app.keyCheck === "onchain" || it.signer.toLowerCase() === own ? "" : "  [signer not verified]");
+  const keyNote = (it: FeedItem) =>
+    it.app.keyCheck === "onchain" || it.signer.toLowerCase() === own ? "" : it.app.keyCheck === "confirmed" ? "  [signer confirmed by second node]" : "  [signer not verified]";
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
     console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`);
@@ -294,6 +302,7 @@ async function main(argv: string[]) {
       embed: { type: "string", multiple: true },
       "token-file": { type: "string" },
       rpc: { type: "string" },
+      "check-node": { type: "string" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CastType, FarcasterNetwork, makeCastAdd, NobleEd25519Signer } from "@farcaster/core";
 import { bytesToHex } from "viem";
-import { checkMessage, FeedBuilder, Hub, Verifier, census, type HexString, type HubMessage, type HubSigner, type KeyRegistry } from "../src/core/index.js";
+import { checkMessage, FeedBuilder, Hub, SecondNode, secondNode, Verifier, census, type HexString, type HubMessage, type HubSigner, type KeyRegistry } from "../src/core/index.js";
 
 // Real mainnet messages from Farcaster's public read node, unmodified (see the file's "source").
 const real = JSON.parse(readFileSync(new URL("./fixtures/real-messages.json", import.meta.url), "utf8")).messages as Record<string, HubMessage>;
@@ -169,4 +169,60 @@ test("casts encoded by non-TypeScript apps verify, and are no loophole: changing
   const page = await new Hub({ url: "http://node.test", verifier, fetch: answer }).castsByParentUrl(ch.data.castAddBody!.parentUrl!);
   assert.deepEqual(page.items.map((m) => m.hash), [ch.hash]);
   assert.equal(verifier.dropped.mismatch, 1);
+});
+
+// A second node that lists only `keys` as AUTHOR's active keys, or is down. Counts its requests.
+function secondListing(keys: string[], state = { down: false, calls: 0 }) {
+  const node = new SecondNode(
+    new Hub({
+      url: "http://second.test",
+      fetch: async (input) => {
+        state.calls++;
+        if (state.down) throw new Error("connection refused");
+        const fid = Number(new URL(String(input)).searchParams.get("fid"));
+        const signers = fid === AUTHOR ? keys.map((k) => gasless(AUTHOR, k as HexString)) : [];
+        return new Response(JSON.stringify({ signers, gaslessSignerCount: signers.length, gaslessSignerLimit: 1000, currentUserNonce: 0 }));
+      },
+    }),
+  );
+  return { node, state };
+}
+
+test("a malicious node with a second node: a gasless key the second node does not list is dropped, one it lists is confirmed", async () => {
+  const real1 = throwaway();
+  const fake = throwaway();
+  const listed = await asNodeJson("posted from an app with a gasless key", real1);
+  const forged = await asNodeJson("the node's own key, called gasless", fake);
+  const second = secondListing([await keyOf(real1)]);
+  const verifier = new Verifier(registry([[AUTHOR, AUTHOR_KEY]]), second.node);
+  const hub = new Hub({
+    url: "http://node.test",
+    verifier,
+    fetch: fakeNode({
+      casts: [listed, forged, real.quote!],
+      signers: [onchain(AUTHOR, AUTHOR_KEY), gasless(AUTHOR, await keyOf(real1)), gasless(AUTHOR, await keyOf(fake))],
+      userData: [real.userData!],
+    }),
+  });
+  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.deepEqual(new Map(items.map((i) => [i.hash, i.app.keyCheck])), new Map([[listed.hash, "confirmed"], [real.quote!.hash, "onchain"]]));
+  assert.deepEqual(verifier.dropped, { altered: 0, signature: 0, mismatch: 0, signer: 1 });
+  // One signersByFid read covered both gasless keys; the onchain key never reached it.
+  assert.equal(second.state.calls, 1);
+});
+
+test("second node down: unverified and not remembered; a second node on the same origin is skipped", async () => {
+  const k = await keyOf(throwaway());
+  const second = secondListing([k], { down: true, calls: 0 });
+  const verifier = new Verifier(registry([]), second.node);
+  assert.equal(await verifier.keyCheck(AUTHOR, k, false), "unverified");
+  second.state.down = false;
+  assert.equal(await verifier.keyCheck(AUTHOR, k, false), "confirmed");
+  // The Optimism RPC failing is not fatal either: the second node lists onchain keys too.
+  const noRpc = new Verifier({ keyState: () => Promise.reject(new Error("rpc down")) }, secondListing([k]).node);
+  assert.equal(await noRpc.keyCheck(AUTHOR, k, true), "confirmed");
+
+  assert.equal(secondNode("https://node.example:3381", "https://node.example:3381/"), undefined);
+  assert.ok(secondNode("https://snap.farcaster.xyz:3381", "https://203-0-113-7.sslip.io") instanceof SecondNode);
+  assert.equal(await new Verifier(registry([]), secondNode("https://node.example", "https://node.example")).keyCheck(AUTHOR, k, false), "unverified");
 });

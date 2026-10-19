@@ -16,7 +16,7 @@ export function checkNodeUrl(s: string): string {
     throw new Error(`not a URL: ${s}`);
   }
   const local = u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost");
-  if (u.protocol !== "https:" && !local) throw new Error(`a society node needs an https URL: ${s}`);
+  if (u.protocol !== "https:" && !local) throw new Error(`a node URL must be https (or http on this machine): ${s}`);
   if (u.username || u.password || u.search || u.hash) throw new Error(`a node URL is a plain base URL, with no login, query or fragment: ${s}`);
   return u.origin + u.pathname.replace(/\/+$/, "");
 }

@@ -1,0 +1,45 @@
+// A second, independent node, asked whether a key really is one of an account's active keys
+// when Optimism cannot say (gasless keys have no onchain record, and Snapchain's HTTP API does
+// not return the custody signature that added them). A fake then needs both nodes to lie.
+// The second node learns which accounts you check (one signersByFid read per account per
+// session, covering all its keys), not which casts you read.
+//
+// Snapchain deletes a removed key and revokes its messages; an expired gasless key stays listed
+// (with its expiresAt). So "not listed" means the key is not the account's.
+
+import { Hub, liveToken, type HexString } from "./hub.js";
+import type { KeyLister } from "./verify.js";
+
+// Farcaster's public read node: plain GETs work from any page (Access-Control-Allow-Origin: *).
+export const DEFAULT_CHECK_NODE = "https://snap.farcaster.xyz:3381";
+
+export class SecondNode implements KeyLister {
+  private byFid = new Map<number, Promise<Set<string>>>();
+
+  constructor(readonly hub: Hub) {}
+
+  listsKey(fid: number, key: HexString): Promise<boolean> {
+    let p = this.byFid.get(fid);
+    if (!p) {
+      p = (async () => {
+        const keys = new Set<string>();
+        let pageToken: string | undefined;
+        do {
+          const page = await this.hub.signersByFidPage(fid, pageToken);
+          for (const s of page.signers) if (s.fid === fid) keys.add(s.key.toLowerCase());
+          pageToken = liveToken(page.nextPageToken);
+        } while (pageToken);
+        return keys;
+      })();
+      p.catch(() => this.byFid.delete(fid)); // errors are not remembered
+      this.byFid.set(fid, p);
+    }
+    return p.then((keys) => keys.has(key.toLowerCase()));
+  }
+}
+
+// Undefined when the second node is the node being read: a node cannot second itself.
+export function secondNode(url: string, readingFrom: string, fetchImpl?: typeof fetch): SecondNode | undefined {
+  if (new URL(url).origin === new URL(readingFrom).origin) return undefined;
+  return new SecondNode(new Hub({ url, fetch: fetchImpl, timeoutMs: 10_000 }));
+}

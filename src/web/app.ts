@@ -26,9 +26,11 @@ import {
   verifyCharter,
   checkNodeUrl,
   checkToken,
+  DEFAULT_CHECK_NODE,
   DEFAULT_OPTIMISM_RPC,
   HubError,
   Optimism,
+  secondNode,
   takeInvite,
   Verifier,
   type Society,
@@ -46,6 +48,7 @@ const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
 const SOCIETY_STORAGE = "outpost.society";
 const RPC_STORAGE = "outpost.rpc";
+const CHECKNODE_STORAGE = "outpost.checknode";
 
 // Set by scripts/build.mjs: the git commit this bundle was built from.
 declare const __OUTPOST_COMMIT__: string;
@@ -134,8 +137,13 @@ const society = store<Society>(SOCIETY_STORAGE);
 // Key and custody checks read Optimism through this RPC, never through the node. "" turns them off.
 const rpc = store<string>(RPC_STORAGE) ?? DEFAULT_OPTIMISM_RPC;
 const chain = rpc ? new Optimism(rpc) : undefined;
-const verifier = new Verifier(chain);
-const hub = new Hub({ url: society?.node ?? location.origin, token: society?.token, verifier });
+// Gasless keys have no onchain record, so a second, independent node is asked. "" turns it off;
+// a second node on the same origin as the node being read is skipped.
+const checkUrl = store<string>(CHECKNODE_STORAGE) ?? DEFAULT_CHECK_NODE;
+const readUrl = society?.node ?? location.origin;
+const second = checkUrl ? secondNode(checkUrl, readUrl) : undefined;
+const verifier = new Verifier(chain, second);
+const hub = new Hub({ url: readUrl, token: society?.token, verifier });
 const feed = new FeedBuilder(hub);
 
 let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
@@ -193,6 +201,12 @@ function wireNodeSettings() {
     ? `Using the society node ${society.node}.`
     : `Using your own node (this page's origin, ${location.origin}).`;
   $<HTMLInputElement>("rpc-url").value = rpc;
+  $<HTMLInputElement>("check-node").value = checkUrl;
+  $("check-note").textContent = !checkUrl
+    ? 'The second-node check is off: casts signed with gasless keys say "signer not verified".'
+    : !second
+      ? "The second node is the node you read from, so the gasless-key check is skipped. Choose a different node."
+      : `Gasless keys are checked with ${checkUrl}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
   $("node-note").textContent = society ? `Reads and writes go to the society node ${society.node}.` : "Reads and writes go only to your own node.";
   $("soc-save").addEventListener("click", () =>
     busy(null, "", async () => {
@@ -206,6 +220,13 @@ function wireNodeSettings() {
     store(SOCIETY_STORAGE, null);
     location.reload();
   });
+  $("check-save").addEventListener("click", () =>
+    busy(null, "", async () => {
+      const v = $<HTMLInputElement>("check-node").value.trim();
+      store(CHECKNODE_STORAGE, v ? checkNodeUrl(v) : "");
+      location.reload();
+    }),
+  );
   $("rpc-save").addEventListener("click", () =>
     busy(null, "", async () => {
       const v = $<HTMLInputElement>("rpc-url").value.trim();
@@ -451,19 +472,24 @@ function castCard(it: FeedItem): HTMLLIElement {
       h("span", { class: "name" }, it.author?.displayName ?? name),
       h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
       h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
-      // Your own key needs no proof; any other key must be found in the KeyRegistry on Optimism.
+      // Your own key needs no proof; any other key must be on Optimism or listed by the second node.
       it.app.keyCheck === "onchain" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
         ? null
-        : h(
-            "span",
-            {
-              class: "key-tag",
-              title: rpc
-                ? "The signature is valid, but this page could not prove the key belongs to this account. Gasless app keys cannot be checked through the node's API; the node could have signed this with its own key."
-                : "Key checks are off (no Optimism RPC set under Node and checks).",
-            },
-            "signer not verified",
-          ),
+        : it.app.keyCheck === "confirmed"
+          ? h(
+              "span",
+              { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` },
+              "signer confirmed by second node",
+            )
+          : h(
+              "span",
+              {
+                class: "key-tag",
+                title:
+                  "The signature is valid, but this page could not prove the key belongs to this account: it is not on Optimism and no second node could be asked (off, unreachable, or the same node). The node could have signed this with its own key.",
+              },
+              "signer not verified",
+            ),
     ),
     it.text ? h("p", { class: "cast-text" }, it.text) : null,
     embeds.length
