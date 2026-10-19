@@ -1,0 +1,185 @@
+{
+  "source": "GET https://snap.farcaster.xyz:3381 (Farcaster public read node, Snapchain HTTP API), fetched 2026-10-19. Public mainnet messages, unmodified.",
+  "messages": {
+    "cast": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 1,
+        "timestamp": 178472550,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": null,
+          "text": "",
+          "embeds": [
+            {
+              "url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/68485ea2-aafa-4432-df30-dab5926b1900/original"
+            }
+          ],
+          "mentionsPositions": [],
+          "type": "CAST"
+        }
+      },
+      "hash": "0x9e639f232b0b585725c6ba66a3f1190e911272df",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "TgkZF8zhSVt/n77fQDMjldXag/vlTzHcj5QOnbzfY50s8zQDdxjsLdRvuuSecfuBFczDHA6QkClBlN5O9J0vBA==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "reply": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 1,
+        "timestamp": 182710221,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [
+            14206,
+            19960
+          ],
+          "parentCastId": {
+            "fid": 852612,
+            "hash": "0x9d37ece822109756e40b8624abdb0c88e9e8a5d5"
+          },
+          "parentUrl": null,
+          "text": " ",
+          "embeds": [],
+          "mentionsPositions": [
+            0,
+            1
+          ],
+          "type": "CAST"
+        }
+      },
+      "hash": "0xa7cfccb85b71ecd53945dec4c53161a8a4aed77b",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "3muv+tUjyXsmLWMy8Js55K3Iu9dWVtXl3qqBgcn0eJefvYgzj6rA2ih9Ebp+oaH6vrslaowGNDQnV2Pi/peABQ==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "quote": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 1,
+        "timestamp": 182627353,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": null,
+          "text": "I just voted to stay and build a techno-optimist community with the Network School Farcaster core team. We’re going to implement a Singapore-like code to ensure positive-sum behavior within this app, as distinct from the hostility of most social media. It’s an experiment in decentralized digital democracy, where everyone who’s here has freely opted in. Here’s my onchain vote for the new social smart contract: https://basescan.org/tx/0xa9a0124a30baebc50179adfce1cfc5c9c84eef54ae35b4a934fabae708276ad3 \nhttps://farcaster.xyz/rish/0x5d479754",
+          "embeds": [
+            {
+              "url": "https://farcaster.xyz/network-school/i-voted-2x1-v2.png"
+            },
+            {
+              "url": "https://basescan.org/tx/0xa9a0124a30baebc50179adfce1cfc5c9c84eef54ae35b4a934fabae708276ad3"
+            },
+            {
+              "castId": {
+                "fid": 194,
+                "hash": "0x5d4797540cc98c6ce69d679527e792a23553c695"
+              }
+            }
+          ],
+          "mentionsPositions": [],
+          "type": "LONG_CAST"
+        }
+      },
+      "hash": "0x6bfba885bd80d8d98039c0d2c0332bd028f3da38",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "FT/6tit8CBmOYxfds5hw1ZF3U8BA8lhRGT5fsTqftOtsaH1fOWAHksrqljFQI92qFPbvRLqIN01OqLlwoLeMDQ==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "userData": {
+      "data": {
+        "type": "MESSAGE_TYPE_USER_DATA_ADD",
+        "fid": 1,
+        "timestamp": 80529644,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "userDataBody": {
+          "type": "USER_DATA_TYPE_DISPLAY",
+          "value": "Farcaster"
+        }
+      },
+      "hash": "0x96b2d28bdeb7bbdd3a18bd8cca02dc7e47885e17",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "CfzMEEEoLuydf4Y7SpHNvZT7lAHkEPSRx9yOWResA+O+WwTbRVgYN7EkcWYAWC7aTZDa1osBmDGr6ma6h1xXDA==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "link": {
+      "data": {
+        "type": "MESSAGE_TYPE_LINK_ADD",
+        "fid": 1,
+        "timestamp": 62108385,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "linkBody": {
+          "type": "follow",
+          "displayTimestamp": null,
+          "targetFid": 3
+        }
+      },
+      "hash": "0x2c46328a582b1944b5ae0eb2bdfa62ad1dd3a311",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "vAe/e63QsteJq0kzNglzD+Oznd8kQciK37TUMmiupsZtfWVDeiB/EGXRCg2gvct71fYNFF02tkSW/BHz459wDA==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "reaction": {
+      "data": {
+        "type": "MESSAGE_TYPE_REACTION_ADD",
+        "fid": 1,
+        "timestamp": 182934820,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "reactionBody": {
+          "type": "REACTION_TYPE_LIKE",
+          "targetCastId": {
+            "fid": 1970,
+            "hash": "0xf6d23f66f7353692a0b136ed45a4bb33ff31ecc0"
+          }
+        }
+      },
+      "hash": "0x3cc69b4a3d8da8b08cefc562511c2de44df49faf",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "2af7pSYrkdWsWHWE0Z9l0aR/f3phiMBJVdOT0OqLKVfMS5ifYQdnreXFySbjsWLTv/Kwtg5YYUetC4Goin0IDA==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb85cf7feef230f30925b101223fd3e3dc4e1120bacd677f5ad3523288f8f7102"
+    },
+    "channelProto3": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 898137,
+        "timestamp": 127323350,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": "https://thenetworkstate.com",
+          "text": "逐光而行，向阳而生。🌅🏴‍☠️",
+          "embeds": [
+            {
+              "url": "https://takocdn.xyz/images/a2eb0ff7-15cd-4813-1296-54fc48af9c00/original"
+            },
+            {
+              "url": "https://takocdn.xyz/images/223fca25-b741-49af-6cd3-9b3e4dc89b00/original"
+            }
+          ],
+          "mentionsPositions": [],
+          "type": "CAST"
+        }
+      },
+      "hash": "0x4d96015493a9f43323b0050b094ee69d74e2bfe1",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "SWnDrtzLv+cNlfkZ5psMFb49glvzIdvc9jrw55MtPLjde6D+8Xz8y4eXuUb54yY01LXhY8JA4bk4s0AXS+XGCA==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xbba81228c986c893f46b917f3fe1be6857d3ac828f97799b7fa693041a0417bc"
+    }
+  }
+}

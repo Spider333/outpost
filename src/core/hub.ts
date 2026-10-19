@@ -3,6 +3,7 @@
 // Snapchain does not serve gRPC-web, so @farcaster/hub-web does not work here.
 
 import { Message } from "@farcaster/core";
+import type { Verifier } from "./verify.js";
 
 export type HexString = `0x${string}`;
 
@@ -23,7 +24,7 @@ export interface HubMessage {
       parentUrl?: string | null;
       type: string;
     };
-    castRemoveBody?: { targetHash: string };
+    castRemoveBody?: { targetHash: string }; // base64
     reactionBody?: { type: string; targetCastId?: { fid: number; hash: string }; targetUrl?: string };
     linkBody?: { type: string; targetFid: number; displayTimestamp?: number | null };
     userDataBody?: { type: string; value: string };
@@ -118,23 +119,41 @@ export interface HubOptions {
   // Optional Basic auth, for a node behind Caddy or with rpc_auth set.
   username?: string;
   password?: string;
+  // Bearer token for a society node (one per member). Takes the place of Basic auth.
+  token?: string;
+  // Checks every message the node returns; failures are dropped and counted (verify.ts).
+  verifier?: Verifier;
   fetch?: typeof fetch;
   timeoutMs?: number;
+}
+
+// A society node answers 429 with Retry-After when a member is over their rate limit.
+const MAX_RETRIES = 3;
+const MAX_RETRY_WAIT_MS = 60_000;
+
+function retryAfterMs(h: string | null): number {
+  const s = Number(h);
+  if (h && Number.isFinite(s)) return Math.max(0, s * 1000);
+  const t = h ? Date.parse(h) : NaN;
+  return Number.isNaN(t) ? 5_000 : Math.max(0, t - Date.now());
 }
 
 type Query = Record<string, string | number | boolean | Array<string | number> | undefined>;
 
 export class Hub {
   readonly url: string;
+  readonly verifier?: Verifier;
   private readonly auth?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
   constructor(opts: HubOptions) {
     this.url = opts.url.replace(/\/+$/, "");
-    if (opts.username !== undefined) {
+    if (opts.token !== undefined) this.auth = `Bearer ${opts.token}`;
+    else if (opts.username !== undefined) {
       this.auth = "Basic " + btoa(`${opts.username}:${opts.password ?? ""}`);
     }
+    this.verifier = opts.verifier;
     this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = opts.timeoutMs ?? 15_000;
   }
@@ -154,20 +173,30 @@ export class Hub {
       else parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
     }
     const url = `${this.url}${path}${parts.length ? `?${parts.join("&")}` : ""}`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     let res: Response;
-    try {
-      res = await this.fetchImpl(url, {
-        method,
-        headers: this.headers(body ? { "content-type": "application/octet-stream" } : {}),
-        body: body as BodyInit | undefined,
-        signal: ctrl.signal,
-      });
-    } catch (e) {
-      throw new HubError(`cannot reach node at ${this.url}`, 0, (e as Error).message);
-    } finally {
-      clearTimeout(timer);
+    for (let attempt = 0; ; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      try {
+        res = await this.fetchImpl(url, {
+          method,
+          headers: this.headers(body ? { "content-type": "application/octet-stream" } : {}),
+          body: body as BodyInit | undefined,
+          signal: ctrl.signal,
+        });
+      } catch (e) {
+        throw new HubError(`cannot reach node at ${this.url}`, 0, (e as Error).message);
+      } finally {
+        clearTimeout(timer);
+      }
+      const wait = retryAfterMs(res.headers.get("retry-after"));
+      if (res.status !== 429 || attempt >= MAX_RETRIES || wait > MAX_RETRY_WAIT_MS) break;
+      await res.body?.cancel();
+      await new Promise((r) => setTimeout(r, wait));
+    }
+    if (res.status === 401) throw new HubError(`the node at ${this.url} refused the access token (HTTP 401)`, 401, "the host removed it, or it was mistyped");
+    if (res.status === 429) {
+      throw new HubError(`the node at ${this.url} is rate limiting you (HTTP 429)`, 429, `try again in ${Math.ceil(retryAfterMs(res.headers.get("retry-after")) / 1000)} s`);
     }
     const text = await res.text();
     let json: unknown;
@@ -243,38 +272,58 @@ export class Hub {
     }
   }
 
-  private async paged(path: string, query: Query): Promise<Paged<HubMessage>> {
+  // `asked` says whether a message answers this request; the verifier drops those that do not.
+  private async paged(path: string, query: Query, asked: (m: HubMessage) => boolean): Promise<Paged<HubMessage>> {
     const res = await this.request<{ messages: HubMessage[]; nextPageToken?: string }>("GET", path, query);
-    return { items: res.messages ?? [], nextPageToken: liveToken(res.nextPageToken) };
+    const items = res.messages ?? [];
+    return { items: this.verifier ? await this.verifier.messages(items, asked) : items, nextPageToken: liveToken(res.nextPageToken) };
+  }
+
+  private async one(path: string, query: Query, asked: (m: HubMessage) => boolean): Promise<HubMessage | undefined> {
+    const m = await this.optional(() => this.request<HubMessage>("GET", path, query));
+    return m && this.verifier ? (await this.verifier.messages([m], asked))[0] : m;
   }
 
   castsByFid(fid: number, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
-    return this.paged("/v1/castsByFid", { fid, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse });
+    return this.paged("/v1/castsByFid", { fid, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse }, (m) => m.data.fid === fid);
   }
 
   castsByParentUrl(url: string, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
-    return this.paged("/v1/castsByParent", { url, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse });
+    return this.paged(
+      "/v1/castsByParent",
+      { url, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse },
+      (m) => m.data.castAddBody?.parentUrl === url,
+    );
   }
 
   linksByFid(fid: number, opts: { linkType?: string; pageSize?: number; pageToken?: string } = {}) {
-    return this.paged("/v1/linksByFid", { fid, link_type: opts.linkType ?? "follow", pageSize: opts.pageSize, pageToken: opts.pageToken });
+    return this.paged("/v1/linksByFid", { fid, link_type: opts.linkType ?? "follow", pageSize: opts.pageSize, pageToken: opts.pageToken }, (m) => m.data.fid === fid);
   }
 
   userDataByFid(fid: number) {
-    return this.paged("/v1/userDataByFid", { fid });
+    return this.paged("/v1/userDataByFid", { fid }, (m) => m.data.fid === fid);
   }
 
   async castById(fid: number, hash: HexString): Promise<HubMessage | undefined> {
-    return this.optional(() => this.request<HubMessage>("GET", "/v1/castById", { fid, hash }));
+    return this.one("/v1/castById", { fid, hash }, (m) => m.data.fid === fid && m.hash.toLowerCase() === hash.toLowerCase());
   }
 
   async linkById(fid: number, targetFid: number, linkType = "follow"): Promise<HubMessage | undefined> {
-    return this.optional(() => this.request<HubMessage>("GET", "/v1/linkById", { fid, target_fid: targetFid, link_type: linkType }));
+    return this.one(
+      "/v1/linkById",
+      { fid, target_fid: targetFid, link_type: linkType },
+      (m) => m.data.fid === fid && m.data.linkBody?.targetFid === targetFid && m.data.linkBody.type === linkType,
+    );
   }
 
   async reactionById(fid: number, type: "Like" | "Recast", target: { fid: number; hash: HexString }): Promise<HubMessage | undefined> {
-    return this.optional(() =>
-      this.request<HubMessage>("GET", "/v1/reactionById", { fid, reaction_type: type, target_fid: target.fid, target_hash: target.hash }),
+    return this.one(
+      "/v1/reactionById",
+      { fid, reaction_type: type, target_fid: target.fid, target_hash: target.hash },
+      (m) => {
+        const r = m.data.reactionBody;
+        return m.data.fid === fid && r?.type === `REACTION_TYPE_${type.toUpperCase()}` && r.targetCastId?.fid === target.fid && r.targetCastId.hash.toLowerCase() === target.hash.toLowerCase();
+      },
     );
   }
 

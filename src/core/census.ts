@@ -56,8 +56,12 @@ export async function census(hub: Hub, c: CharterBody, opts: { days?: number; no
       if (!page.nextPageToken || oldest === undefined || oldest < cutoff) break;
       pageToken = page.nextPageToken;
     }
-    const refs = await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer));
-    return { stats: { fid, casts: recent.length, lastCast }, refs };
+    const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer))).filter((r) => {
+      if (r.keyCheck !== "false") return true;
+      hub.verifier?.drop("signer"); // signed by a key that is provably not the member's: not counted
+      return false;
+    });
+    return { stats: { fid, casts: refs.length, lastCast }, refs };
   });
 
   const mix = new Map<string, { app: AppRef; casts: number }>();

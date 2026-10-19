@@ -6,3 +6,6 @@ export * from "./apps.js";
 export * from "./feed.js";
 export * from "./charter.js";
 export * from "./census.js";
+export * from "./verify.js";
+export * from "./chain.js";
+export * from "./society.js";
