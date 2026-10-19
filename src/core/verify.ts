@@ -8,6 +8,10 @@
 // ed25519 signature of `hash` by `signer` (strict rules, as Snapchain checks them), and the
 // message must be what was asked for (the right account, cast or target).
 //
+// Callers never see the node's JSON: a message that passes is rebuilt from the decoded data
+// whose bytes matched the hash (signedMessage), so a field the node adds next to the signed
+// ones cannot reach the feed. Such a field also marks the message as altered.
+//
 // A valid signature only proves that key `signer` signed. Whether that key belongs to
 // `data.fid` is checked without the node being read:
 //   - onchain keys: the KeyRegistry on Optimism must list the key as added for that FID, read
@@ -18,7 +22,16 @@
 
 import { ed25519 } from "@noble/curves/ed25519";
 import { blake3 } from "@noble/hashes/blake3";
-import { CastAddBody, MessageData } from "@farcaster/core";
+import {
+  castTypeToJSON,
+  farcasterNetworkToJSON,
+  messageTypeToJSON,
+  reactionTypeToJSON,
+  userDataTypeToJSON,
+  CastAddBody,
+  MessageData,
+  type CastId,
+} from "@farcaster/core";
 import { bytesToHex, hexToBytes } from "viem";
 import type { HexString, HubMessage } from "./hub.js";
 
@@ -124,7 +137,57 @@ async function verifyEd25519(sig: Uint8Array, msg: Uint8Array, pub: Uint8Array):
   return ed25519.verify(sig, msg, pub, { zip215: false });
 }
 
-export async function checkMessage(m: HubMessage): Promise<"ok" | "altered" | "signature"> {
+const bytesToBase64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+
+// A message in the node's JSON shape, built only from signed data: `d` is what was encoded and
+// matched the hash. Bodies the client never reads (verifications, frames, ...) are left out.
+export function signedMessage(d: MessageData, hash: Uint8Array, signature: Uint8Array, signer: Uint8Array): HubMessage {
+  const id = (c: CastId | undefined) => c && { fid: c.fid, hash: bytesToHex(c.hash) };
+  const data: HubMessage["data"] = { type: messageTypeToJSON(d.type), fid: d.fid, timestamp: d.timestamp, network: farcasterNetworkToJSON(d.network) };
+  const c = d.castAddBody;
+  if (c) {
+    data.castAddBody = {
+      text: c.text,
+      embeds: c.embeds.map((e) => (e.castId ? { castId: id(e.castId)! } : { url: e.url ?? "" })),
+      embedsDeprecated: [...c.embedsDeprecated],
+      mentions: [...c.mentions],
+      mentionsPositions: [...c.mentionsPositions],
+      parentCastId: id(c.parentCastId) ?? null,
+      parentUrl: c.parentUrl ?? null,
+      type: castTypeToJSON(c.type),
+    };
+  }
+  if (d.castRemoveBody) data.castRemoveBody = { targetHash: bytesToBase64(d.castRemoveBody.targetHash) };
+  const r = d.reactionBody;
+  if (r) {
+    data.reactionBody = { type: reactionTypeToJSON(r.type) };
+    if (r.targetCastId) data.reactionBody.targetCastId = id(r.targetCastId);
+    if (r.targetUrl !== undefined) data.reactionBody.targetUrl = r.targetUrl;
+  }
+  const l = d.linkBody;
+  if (l) data.linkBody = { type: l.type, targetFid: l.targetFid ?? 0, displayTimestamp: l.displayTimestamp ?? null };
+  if (d.userDataBody) data.userDataBody = { type: userDataTypeToJSON(d.userDataBody.type), value: d.userDataBody.value };
+  return {
+    data,
+    hash: bytesToHex(hash),
+    hashScheme: "HASH_SCHEME_BLAKE3",
+    signature: bytesToBase64(signature),
+    signatureScheme: "SIGNATURE_SCHEME_ED25519",
+    signer: bytesToHex(signer),
+  };
+}
+
+// True when the node's JSON has a field (not null) that the signed message lacks, at any depth.
+function extraField(node: unknown, signed: unknown): boolean {
+  if (node === null || typeof node !== "object") return false;
+  if (signed === null || typeof signed !== "object") return true;
+  if (Array.isArray(node)) return !Array.isArray(signed) || node.length !== signed.length || node.some((v, i) => extraField(v, signed[i]));
+  const s = signed as Record<string, unknown>;
+  return Object.entries(node).some(([k, v]) => v !== null && v !== undefined && (!(k in s) || extraField(v, s[k])));
+}
+
+// The message rebuilt from its signed bytes, or why it failed.
+export async function verifyMessage(m: HubMessage): Promise<HubMessage | "altered" | "signature"> {
   try {
     if (m.hashScheme !== "HASH_SCHEME_BLAKE3" || m.signatureScheme !== "SIGNATURE_SCHEME_ED25519") return "altered";
     const d = messageData(m.data);
@@ -135,10 +198,19 @@ export async function checkMessage(m: HubMessage): Promise<"ok" | "altered" | "s
       const alt = castBytesProto3(d);
       if (!alt || bytesToHex((hash = hashOf(alt))) !== want) return "altered";
     }
-    return (await verifyEd25519(base64ToBytes(m.signature), hash, hexToBytes(m.signer))) ? "ok" : "signature";
+    const signature = base64ToBytes(m.signature);
+    const signer = hexToBytes(m.signer);
+    if (!(await verifyEd25519(signature, hash, signer))) return "signature";
+    const signed = signedMessage(d, hash, signature, signer);
+    return extraField(m, signed) ? "altered" : signed; // the node added something
   } catch {
     return "altered"; // malformed JSON, hex, base64 or bytes: nothing to trust
   }
+}
+
+export async function checkMessage(m: HubMessage): Promise<"ok" | "altered" | "signature"> {
+  const r = await verifyMessage(m);
+  return typeof r === "string" ? r : "ok";
 }
 
 export class Verifier {
@@ -159,15 +231,18 @@ export class Verifier {
     this.dropped[reason]++;
   }
 
-  // Keeps the messages that pass; `asked` says whether a message answers the request.
+  // The messages that pass, rebuilt from their signed bytes; `asked` says whether a message
+  // answers the request.
   async messages(ms: HubMessage[], asked: (m: HubMessage) => boolean = () => true): Promise<HubMessage[]> {
-    const results = await Promise.all(ms.map(checkMessage));
+    const results = await Promise.all(ms.map(verifyMessage));
     this.checked += ms.length;
-    return ms.filter((m, i) => {
-      const r = results[i] === "ok" && !asked(m) ? "mismatch" : results[i]!;
-      if (r !== "ok") this.drop(r);
-      return r === "ok";
-    });
+    const out: HubMessage[] = [];
+    for (const r of results) {
+      const failed = typeof r === "string" ? r : asked(r) ? undefined : "mismatch";
+      if (failed) this.drop(failed);
+      else out.push(r as HubMessage);
+    }
+    return out;
   }
 
   // `claimedOnchain`: the node says this is an onchain key. Errors give "unverified" and are

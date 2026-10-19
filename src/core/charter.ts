@@ -79,7 +79,8 @@ function typedData(body: CharterBody) {
 const isFid = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
 const isSelector = (s: unknown) => s === "self" || s === "unknown" || isFid(s);
 const isHttpUrl = (s: unknown) => typeof s === "string" && /^(https?|chain):\/\//.test(s);
-const isHttpsUrl = (s: unknown) => typeof s === "string" && /^https:\/\/[^\s/?#]+[^\s?#]*$/.test(s);
+// No login in the host part (https://user:pw@host): a charter must not hand out credentials.
+const isHttpsUrl = (s: unknown) => typeof s === "string" && /^https:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/.test(s);
 
 // Structural check. Returns a list of problems; empty means the shape is fine.
 export function checkShape(c: unknown): string[] {

@@ -86,6 +86,8 @@ test("charter nodes: signed with the rest, so a changed list fails verification"
 test("charter nodes: https URLs only; charters without nodes still verify", async () => {
   assert.match(checkShape({ ...BODY, nodes: ["http://203.0.113.7"] }).join(), /"nodes" must be/);
   assert.match(checkShape({ ...BODY, nodes: ["https://a.example?x=1"] }).join(), /"nodes" must be/);
+  assert.match(checkShape({ ...BODY, nodes: ["https://user:pw@node.example"] }).join(), /"nodes" must be/);
+  await assert.rejects(signCharter({ ...BODY, nodes: ["https://user:pw@node.example"] }, KEY), /not valid/);
   await assert.rejects(signCharter({ ...BODY, nodes: ["ftp://x"] }, KEY), /not valid/);
   for (const f of ["network-states", "test-society"]) {
     const old = JSON.parse(readFileSync(new URL(`../examples/${f}.charter.json`, import.meta.url), "utf8"));

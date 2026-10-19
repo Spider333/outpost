@@ -3,7 +3,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CastType, FarcasterNetwork, makeCastAdd, NobleEd25519Signer } from "@farcaster/core";
 import { bytesToHex } from "viem";
-import { checkMessage, FeedBuilder, Hub, SecondNode, secondNode, Verifier, census, type HexString, type HubMessage, type HubSigner, type KeyRegistry } from "../src/core/index.js";
+import {
+  checkMessage,
+  FeedBuilder,
+  Hub,
+  messageData,
+  SecondNode,
+  secondNode,
+  signedMessage,
+  Verifier,
+  verifyMessage,
+  census,
+  type HexString,
+  type HubMessage,
+  type HubSigner,
+  type KeyRegistry,
+} from "../src/core/index.js";
 
 // Real mainnet messages from Farcaster's public read node, unmodified (see the file's "source").
 const real = JSON.parse(readFileSync(new URL("./fixtures/real-messages.json", import.meta.url), "utf8")).messages as Record<string, HubMessage>;
@@ -225,4 +240,47 @@ test("second node down: unverified and not remembered; a second node on the same
   assert.equal(secondNode("https://node.example:3381", "https://node.example:3381/"), undefined);
   assert.ok(secondNode("https://snap.farcaster.xyz:3381", "https://203-0-113-7.sslip.io") instanceof SecondNode);
   assert.equal(await new Verifier(registry([]), secondNode("https://node.example", "https://node.example")).keyCheck(AUTHOR, k, false), "unverified");
+});
+
+const PHISH = "https://phish.example/claim";
+// What signedMessage() would build from the node's JSON, before the extra-field check runs.
+const rebuiltFrom = (m: HubMessage) => signedMessage(messageData(m.data), new Uint8Array(20), new Uint8Array(64), new Uint8Array(32));
+
+test("embed injection: a url the node adds next to a signed castId never reaches the feed", async () => {
+  const inj = copy(real.quote!);
+  const e = inj.data.castAddBody!.embeds.find((x) => "castId" in x) as { castId: unknown; url?: string };
+  e.url = PHISH;
+  assert.equal(await checkMessage(inj), "altered");
+  // Even without that check, the rebuilt message carries only the signed castId.
+  assert.ok(!JSON.stringify(rebuiltFrom(inj)).includes("phish"));
+
+  const verifier = new Verifier(registry([[AUTHOR, AUTHOR_KEY]]));
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [inj], signers: [onchain(AUTHOR, AUTHOR_KEY)] }) });
+  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { includeReplies: true });
+  assert.equal(items.length, 0);
+  assert.equal(verifier.dropped.altered, 1);
+});
+
+test("every message type: callers get the message rebuilt from signed data, and an added field marks it altered", async () => {
+  for (const [name, m] of Object.entries(real)) {
+    // An honest message round-trips exactly.
+    assert.deepEqual(await verifyMessage(m), m, name);
+    const body = Object.keys(m.data).find((k) => k.endsWith("Body"))!;
+    for (const add of [
+      (x: HubMessage) => ((x.data as unknown as Record<string, Record<string, unknown>>)[body]!.injected = PHISH),
+      (x: HubMessage) => ((x.data as unknown as Record<string, unknown>).injected = PHISH),
+      (x: HubMessage) => ((x as unknown as Record<string, unknown>).injected = PHISH),
+    ]) {
+      const x = copy(m);
+      add(x);
+      assert.equal(await checkMessage(x), "altered", name);
+      assert.ok(!JSON.stringify(rebuiltFrom(x)).includes("phish"), name);
+    }
+  }
+  // Through the Hub as well: what castById returns is the rebuilt message, not the node's object.
+  const verifier = new Verifier();
+  const served = copy(real.cast!);
+  const got = await new Hub({ url: "http://node.test", verifier, fetch: async () => new Response(JSON.stringify(served)) }).castById(AUTHOR, served.hash);
+  assert.deepEqual(got, real.cast);
+  assert.notEqual(got, served);
 });
