@@ -1,7 +1,9 @@
 # Upstream PR drafts
 
-Local branches in `upstream/` (not pushed, not opened). Opening any of them needs David's yes.
-Each must be tested on our node before it is opened. Status column says what has been run.
+Fixes for Snapchain, the Farcaster docs and the hub-monorepo examples, found while building
+Outpost. The drafts with a branch name are branches in local clones of the upstream repos (the
+`upstream/` folder, which is not part of this repo). None has been pushed or opened yet. Each is
+tested on our node before it is opened, and the Tested column says what has been run.
 
 Already covered by someone else's open PR, so we skip them:
 snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requirements),

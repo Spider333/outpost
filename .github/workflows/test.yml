@@ -1,0 +1,25 @@
+# Typecheck, unit tests, shell tests and shellcheck on pushes to main and on pull requests.
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: bash test/providers.sh
+      # Linux only (GNU df and split). Run as root like the real loader.
+      - run: sudo bash test/snapshot-restore.sh
+      # shellcheck is preinstalled on GitHub's Ubuntu runners.
+      - run: shellcheck outpost infra/*.sh test/*.sh
