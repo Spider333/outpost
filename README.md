@@ -192,7 +192,8 @@ src/cli/             command-line client
 src/web/             web client
 src/server/serve.ts  local server for the web client, forwards /v1 to the node
 src/server/gate.ts   society mode: member tokens, rate limits, read and post only
-scripts/             build, devnet end-to-end test, live checks, example charters
+scripts/             build, devnet end-to-end test, live checks, example charters,
+                     society node check
 test/                unit tests and shell tests, with fake provider CLIs
 examples/            example charters and a code of conduct
 site/                microsite and tutorial

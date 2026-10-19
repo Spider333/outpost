@@ -114,6 +114,9 @@ the node:
 - Request bodies over 64 KiB: 413. None of the member's headers are passed to the node.
 - Only the published client origins get CORS access.
 
+Any member can check these from outside with their own token:
+`scripts/society-check.sh <node URL> <token file>`.
+
 ## Running a society node
 
 ```

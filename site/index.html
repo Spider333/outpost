@@ -108,6 +108,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
         <li><a href="#t-apps">Filter by app</a></li>
         <li><a href="#t-limits">What a keyless node cannot do</a></li>
         <li><a href="#t-society">Societies: a charter file</a></li>
+        <li><a href="#t-share">Share your node</a> (society mode)</li>
         <li><a href="#t-cleanup">Clean up</a></li>
       </ol>
     </li>
@@ -130,7 +131,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <dt>What you need</dt>
   <dd>A DigitalOcean or Hetzner account with its command-line tool logged in (<code>doctl</code> or <code>hcloud</code>), or any Ubuntu 24.04 server with root SSH and 1.2 TB of disk. Node.js 20 or newer. A <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>.</dd>
   <dt>Who it is for</dt>
-  <dd>Farcaster users who are at ease in a terminal, and developers who want to see the protocol from the node up. You will rent a server and run a few commands.</dd>
+  <dd>Farcaster users who are at ease in a terminal, and developers who want to see the protocol from the node up. You will rent a server and run a few commands. A community can share one node: its members use it from a browser and pay nothing (<a href="#t-share">step 8</a>).</dd>
 </dl>
 </section>
 
@@ -169,6 +170,8 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li><strong>A narrow app key.</strong> The key the client holds can cast, react and follow. It cannot change your profile or your verified addresses, and it expires 30 days after its last use.</li>
   <li><strong>Revoking needs no recovery phrase.</strong> The key signs its own removal, from the client or with <code>./outpost uninstall</code>.</li>
   <li><strong>A feed in time order, labelled by app.</strong> Your following feed is the latest casts of everyone you follow, merged by time. Each cast shows the app that posted it, and you can show only one app or hide it.</li>
+  <li><strong>Every message is checked.</strong> Before showing a message, the client checks its hash and signature, and that the key that signed it belongs to the author. What it shows is rebuilt from the signed bytes, so a node cannot alter a message or slip anything into it unnoticed.</li>
+  <li><strong>One node for a whole society.</strong> Members of a society can share one node. Each gets their own access token and rate limit, and their app keys stay in their own browsers.</li>
   <li><strong>Societies as signed files.</strong> A <a href="#g-charter">charter</a> lists a society's members, which apps and channels count, and its code of conduct. Load one to read the society's feed. Leaving is one tap, and a census of its activity is computed on your node.</li>
 </ul>
 </section>
@@ -427,7 +430,55 @@ casts 1071
 casts_per_day 153.0</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
 
-<h3 id="t-cleanup">8. Clean up</h3>
+<h3 id="t-share">8. Share your node</h3>
+<p>A node costs money for every hour it runs, so it makes sense for a society to share one. In society mode your server stops being only yours: members of your society use it from their own browsers, with their own accounts, for free.</p>
+<p>That means members trust you a little. Outpost keeps that trust small, in code anyone can read. Your server serves no page and no script, so you cannot change the client a member runs. Their app keys stay in their browsers, so you cannot post as them. Their client checks every message it reads, so you cannot alter or invent what they see. What you can still do, such as see what they read, is listed in <a href="https://github.com/Spider333/outpost/blob/main/TRUST.md">TRUST.md</a>.</p>
+<pre class="cmd">./outpost society on</pre>
+<pre class="out">open (or close) 443/tcp in your server's firewall yourself; Outpost did not create this server.
+[society] serving the node API at https://142-93-168-228.sslip.io to members only (no web page)
+
+society node: https://142-93-168-228.sslip.io (the node API for members; no web page)
+add a member: ./outpost members add &lt;name&gt;
+the first request can take a minute while the certificate is issued.
+turn it off with: ./outpost society off</pre>
+<p class="muted">Shortened: the lines that download the gate's container image are cut. Our node was set up before <code>./outpost provision</code> existed, so we ran this with <code>OUTPOST_HOST</code> and opened 443/tcp in its firewall ourselves.</p>
+<p>A gate now sits in front of the node. It lets a request through only with a member's token, only for reads and for posting, and only as fast as that member's rate limit allows. Add a member:</p>
+<pre class="cmd">./outpost members add test1</pre>
+<pre class="out">invite link for test1 (shown once; send it privately, whoever has it can use the node as test1):
+it works once society mode is on (./outpost society on). Remove with: ./outpost members remove test1</pre>
+<p class="muted">Shortened: the line with the link is cut, because it holds test1's token.</p>
+<p>The link opens the client from GitHub Pages, built from this repository by a public workflow, and tells it which node to use. The token comes after <code>#</code>, so the browser never sends it to GitHub. Your server only ever stores a hash of it. <code>./outpost members remove test1</code> turns the token off at once.</p>
+<p>Any member can check the gate from outside with <code>curl</code>. With test1's token in a file:</p>
+<pre class="cmd">scripts/society-check.sh https://142-93-168-228.sslip.io token.txt</pre>
+<pre class="out">without a token:          401
+with a wrong token:       401
+with your token:          200
+a page (/):               403
+POST /v1/validateMessage: 403
+DELETE /v1/info:          403
+type of a reply:          application/json
+300 reads at once (count, status, Retry-After):
+ 111 200 
+ 189 429 1</pre>
+<p class="look">401 means no access without a valid token; 403 means the gate refuses everything except reads and posting; 429 means the member hit their rate limit (by default 20 reads a second, with bursts of 100) and should wait the number of seconds given.</p>
+<p>The command-line client works against a society node too. It checks every message, and asks a second node (Farcaster's public one, unless you pick another) about keys that have no onchain record:</p>
+<pre class="cmd">npm ci && npm run build
+node dist/cli.js feed --fid 3 --limit 8 --node https://142-93-168-228.sslip.io --token-file token.txt</pre>
+<pre class="out">2026-10-19 08:48  @grin  via warpcast (app fid 9152)
+  Marrakech goes hard  [1 embed]
+  1970:0x4ca01b4642ff443661db6812a0ef49e0765aac1e
+2026-10-19 02:26  @brixbounty  via own key  [signer confirmed by second node]
+  18723:0x45e4db64566b2ba0b92a4ba4e1f08043f033f60b
+
+8 casts in 7.74 s from https://142-93-168-228.sslip.io
+    7  via warpcast (app fid 9152)
+    1  via own key
+warning: Your node sent 1 of 4160 messages that failed verification (1 altered); they are not shown.</pre>
+<p class="muted">Shortened: 6 of the 8 casts are cut.</p>
+<p class="look">"Signer confirmed by second node" means the cast was signed with a key added without an onchain transaction, and a second, independent node confirmed it is the author's. In our samples about 1 honest message in 10,000 is encoded in a way the client cannot rebuild exactly; it is dropped and counted with the rest, never shown as if it were fine.</p>
+<p><code>./outpost society off</code> stops the gate, and on a server Outpost made, closes 443/tcp.</p>
+
+<h3 id="t-cleanup">9. Clean up</h3>
 <pre class="cmd">./outpost uninstall</pre>
 <pre class="out">revoking the CLI's app key with the key itself (no recovery phrase needed)
 revoked app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde for FID 3355358. No recovery phrase was needed.
