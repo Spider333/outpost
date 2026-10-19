@@ -16,7 +16,7 @@ When you are done:
 ./outpost destroy     # delete the server and stop paying
 ```
 
-The tutorial is in [site/index.html](site/index.html).
+The tutorial is at https://spider333.github.io/outpost/ (source: [site/index.html](site/index.html)).
 
 ## Before you paste a recovery phrase
 
