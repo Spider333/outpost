@@ -44,6 +44,13 @@ front of every request, including `/v1`. The password is kept in `.outpost/phone
 `./outpost client --phone off` removes it and closes the port. On a server Outpost did not
 create, open and close 443/tcp in its firewall yourself.
 
+**Society mode.** `./outpost society on` opens 443/tcp and puts a gate in front of the node.
+Every request needs a member's token; the server keeps only SHA-256 hashes of tokens; only reads
+and message submission reach the node; each member has a rate limit. The server serves no page
+or JavaScript. A member's token can read through the node but cannot post: posting needs the
+member's app key, which stays in their browser. [TRUST.md](TRUST.md) has the full list of what a
+host can and cannot do.
+
 **SSH.** Outpost keeps server host keys in `.outpost/known_hosts` and trusts the first key it sees
 for a new server (`StrictHostKeyChecking=accept-new`). The `.outpost/` folder is mode 700 and is
 in `.gitignore`.

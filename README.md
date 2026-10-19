@@ -105,9 +105,30 @@ flowchart LR
   panel shows members, active members, casts per day and the apps members post from, all
   computed from your node. Examples are in [examples/](examples/).
 
+- **Every message checked.** The client checks the hash and signature of every message it reads,
+  and that the signing key belongs to the author, before showing it. A node that alters or makes
+  up messages gets caught; [TRUST.md](TRUST.md) says how far that goes.
+
 The client connects an account with a wallet signature or a test account's recovery phrase, and
 casts, replies, likes, recasts and follows. The command-line client has the same features:
 `./outpost cli --help`.
+
+## Share your node (society mode)
+
+One node can serve a whole community. Members pay nothing and use their own accounts; their app
+keys stay in their own browsers.
+
+```
+./outpost society on            # opens 443/tcp and starts the gate
+./outpost members add alice     # prints alice's invite link, once
+./outpost members remove alice
+./outpost society off
+```
+
+The invite link opens the client from GitHub Pages, built from this repository, so the host
+serves no code. A gate in front of the node gives each member their own token and rate limit and
+lets only reads and posts through. [TRUST.md](TRUST.md) lists what a host can and cannot do to
+its members, with the code and test behind each point.
 
 ## Settings
 
@@ -132,6 +153,8 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 - Casts you write are text up to 1,024 bytes (the limit for a normal account) with up to 4
   embedded URLs. There is no image upload, and an @name you type stays plain text; it does not
   become a mention. There is no notifications view.
+- `./outpost cli selftest` asks the node to validate messages, which a society node's gate does
+  not allow. Run it over your own node's SSH tunnel.
 - Outpost prints DigitalOcean prices only. New Hetzner accounts can have a volume size limit below
   1.2 TB; ask Hetzner support to raise it if `provision` fails.
 - The node costs money for as long as it exists, whether or not you use the client.
@@ -162,12 +185,13 @@ are saved in [docs/evidence/](docs/evidence/README.md).
 
 ```
 outpost              the CLI: provision, node, client, status, cli, uninstall, destroy
-infra/               cloud-init, node setup, snapshot loader, phone access
-src/core/            protocol code: node HTTP client, accounts, app keys, writes,
-                     feed, app attribution, charters, census (runs in Node and browsers)
+infra/               cloud-init, node setup, snapshot loader, phone access, society mode
+src/core/            protocol code: node HTTP client, message checks, accounts, app keys,
+                     writes, feed, app attribution, charters, census (Node and browsers)
 src/cli/             command-line client
 src/web/             web client
 src/server/serve.ts  local server for the web client, forwards /v1 to the node
+src/server/gate.ts   society mode: member tokens, rate limits, read and post only
 scripts/             build, devnet end-to-end test, live checks, example charters
 test/                unit tests and shell tests, with fake provider CLIs
 examples/            example charters and a code of conduct
@@ -182,7 +206,8 @@ them when needed.
 ## Security
 
 Report vulnerabilities privately; see [SECURITY.md](SECURITY.md). It also lists what Outpost
-stores, which ports it opens and the known advisories in its dependencies.
+stores, which ports it opens and the known advisories in its dependencies. What a society host
+can and cannot do is in [TRUST.md](TRUST.md).
 
 ## Licence and credits
 
