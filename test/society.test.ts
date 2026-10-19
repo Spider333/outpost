@@ -54,6 +54,16 @@ test("society node: 429 waits for Retry-After and retries; a long wait is report
   assert.equal((await flaky.info()).version, "0.14.3");
   assert.equal(calls, 3);
 
+  // Under a sustained limit a request keeps its place: here it is refused 10 times in a row.
+  calls = 0;
+  const busyNode = new Hub({
+    url: NODE,
+    token: TOKEN,
+    fetch: async () => (++calls <= 10 ? new Response("{}", { status: 429, headers: { "retry-after": "0" } }) : new Response(JSON.stringify({ version: "0.14.3", numShards: 2, shardInfos: [] }))),
+  });
+  assert.equal((await busyNode.info()).version, "0.14.3");
+  assert.equal(calls, 11);
+
   const t0 = Date.now();
   const limited = new Hub({ url: NODE, token: TOKEN, fetch: async () => new Response("slow down", { status: 429, headers: { "retry-after": "120" } }) });
   await assert.rejects(limited.info(), (e: unknown) => e instanceof HubError && e.status === 429 && /try again in 120 s/.test(e.message));

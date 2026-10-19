@@ -127,8 +127,10 @@ export interface HubOptions {
   timeoutMs?: number;
 }
 
-// A society node answers 429 with Retry-After when a member is over their rate limit.
-const MAX_RETRIES = 3;
+// A society node answers 429 with Retry-After (whole seconds) when a member is over their rate
+// limit (default 20 reads/s). A feed reads with up to 24 requests at once, so a request may be
+// turned away several times in a row: keep retrying until a minute of waiting in total.
+const MAX_RETRIES = 20;
 const MAX_RETRY_WAIT_MS = 60_000;
 
 function retryAfterMs(h: string | null): number {
@@ -174,6 +176,7 @@ export class Hub {
     }
     const url = `${this.url}${path}${parts.length ? `?${parts.join("&")}` : ""}`;
     let res: Response;
+    let waited = 0;
     for (let attempt = 0; ; attempt++) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
@@ -190,9 +193,10 @@ export class Hub {
         clearTimeout(timer);
       }
       const wait = retryAfterMs(res.headers.get("retry-after"));
-      if (res.status !== 429 || attempt >= MAX_RETRIES || wait > MAX_RETRY_WAIT_MS) break;
+      if (res.status !== 429 || attempt >= MAX_RETRIES || waited + wait > MAX_RETRY_WAIT_MS) break;
       await res.body?.cancel();
       await new Promise((r) => setTimeout(r, wait));
+      waited += wait;
     }
     if (res.status === 401) throw new HubError(`the node at ${this.url} refused the access token (HTTP 401)`, 401, "the host removed it, or it was mistyped");
     if (res.status === 429) {
