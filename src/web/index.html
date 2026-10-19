@@ -15,8 +15,27 @@
   </header>
 
   <p id="status" class="status" role="status" aria-live="polite"></p>
+  <p id="verify-status" class="muted small" aria-live="polite"></p>
 
   <main>
+    <details id="node-settings" class="card">
+      <summary>Node and checks</summary>
+      <p class="muted small">By default this page reads from the node behind <code>./outpost client</code>. To use a society node someone else runs, open their invite link, or enter its address and your access token here. This page checks every message itself: the node's host cannot post as you or change a message. They can see what you read, withhold or delay messages, and remove your access, and a message signed with a key this page cannot check is marked "signer not verified".</p>
+      <p id="soc-current" class="small"></p>
+      <label for="soc-node">Society node URL</label>
+      <input id="soc-node" placeholder="https://203.0.113.7.sslip.io" inputmode="url" autocomplete="off">
+      <label for="soc-token">Access token</label>
+      <input id="soc-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="row wrap">
+        <button id="soc-save" class="primary" type="button">Use this node</button>
+        <button id="soc-forget" type="button">Back to my own node</button>
+      </div>
+      <label for="rpc-url">Optimism RPC for key and custody checks (empty to turn them off)</label>
+      <input id="rpc-url" placeholder="https://mainnet.optimism.io" inputmode="url" autocomplete="off">
+      <button id="rpc-save" type="button">Save RPC</button>
+      <p class="muted small">Onchain app keys are checked against Farcaster's KeyRegistry on Optimism through this RPC, not through the node. Gasless app keys cannot be checked through the node's API, so their casts say "signer not verified".</p>
+    </details>
+
     <section id="connect" class="card" hidden aria-labelledby="connect-h">
       <h2 id="connect-h">Connect an account</h2>
       <p>To post, this client needs its own <em>app key</em>: a key that can cast, react and follow for your account, and nothing else. It expires 30 days after you last use it. Your account's owner key (the custody key) signs one authorization for it.</p>
@@ -101,6 +120,7 @@
           <dt>Code of conduct</dt><dd id="ch-coc"></dd>
           <dt>Members</dt><dd id="ch-members"></dd>
           <dt>Rules</dt><dd id="ch-rules"></dd>
+          <dt>Society nodes</dt><dd id="ch-nodes"></dd>
         </dl>
         <div class="row wrap">
           <button id="ch-join" class="primary" type="button">Join (follow members)</button>
@@ -134,7 +154,7 @@
   </main>
 
   <footer class="muted small">
-    Reads and writes go only to your own node. Open source, MIT.
+    <span id="node-note">Reads and writes go only to your own node.</span> Every message is checked in this page before it is shown. Open source, MIT. <span id="build"></span>
   </footer>
   <script type="module" src="app.js"></script>
 </body>

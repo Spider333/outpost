@@ -7,12 +7,12 @@
 // Signature: EIP-712 over keccak256 of the canonical JSON of everything except `signature`.
 // Change one byte and the recovered signer changes, so the file is rejected.
 // If the charter names an issuer FID, the signer must be that FID's custody address, which
-// anyone can check against their own node.
+// anyone can check on Optimism's IdRegistry (or, less strictly, against their node).
 
 import { keccak256, recoverTypedDataAddress, toBytes, type Hex, type LocalAccount, type WalletClient } from "viem";
 import { passesFilter, type AppFilter, type AppRef, type AppSelector } from "./apps.js";
 import type { FeedItem } from "./feed.js";
-import { Hub } from "./hub.js";
+import { Hub, type HexString } from "./hub.js";
 
 export const CHARTER_VERSION = 1;
 
@@ -30,6 +30,7 @@ export interface CharterBody {
     keywords?: string[]; // if set, a cast must contain one of them (case-insensitive)
     excludeKeywords?: string[];
   };
+  nodes?: string[]; // https base URLs of society nodes members can use; signed like the rest
   issuedAt: string; // ISO 8601
 }
 
@@ -78,6 +79,7 @@ function typedData(body: CharterBody) {
 const isFid = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
 const isSelector = (s: unknown) => s === "self" || s === "unknown" || isFid(s);
 const isHttpUrl = (s: unknown) => typeof s === "string" && /^(https?|chain):\/\//.test(s);
+const isHttpsUrl = (s: unknown) => typeof s === "string" && /^https:\/\/[^\s/?#]+[^\s?#]*$/.test(s);
 
 // Structural check. Returns a list of problems; empty means the shape is fine.
 export function checkShape(c: unknown): string[] {
@@ -102,6 +104,7 @@ export function checkShape(c: unknown): string[] {
     const v = f?.[k];
     if (v !== undefined && (!Array.isArray(v) || !v.every((s) => typeof s === "string" && s.trim().length > 0))) p.push(`"feed.${k}" must be non-empty strings`);
   }
+  if (o.nodes !== undefined && (!Array.isArray(o.nodes) || o.nodes.length > 20 || !o.nodes.every(isHttpsUrl))) p.push('"nodes" must be at most 20 https URLs');
   if (typeof o.issuedAt !== "string" || Number.isNaN(Date.parse(o.issuedAt))) p.push('"issuedAt" must be an ISO date');
   return p;
 }
@@ -129,12 +132,15 @@ export async function signCharter(body: CharterBody, signer: CharterSigner | Loc
 export interface Verification {
   ok: boolean;
   signer?: Hex;
-  // "custody" when the signer is the issuer FID's custody address on your node.
+  // "custody" when the signer is the issuer FID's custody address (on Optimism if a chain was
+  // given, else on your node).
   issuerCheck: "custody" | "mismatch" | "no-issuer" | "not-checked";
   problems: string[];
 }
 
-export async function verifyCharter(c: unknown, hub?: Hub): Promise<Verification> {
+// With `chain` (an Optimism RPC the member chose), the issuer's custody comes from the IdRegistry
+// contract, not from the node.
+export async function verifyCharter(c: unknown, hub?: Hub, chain?: { custodyOf(fid: number): Promise<HexString | undefined> }): Promise<Verification> {
   const problems = checkShape(c);
   const ch = c as Charter;
   const sig = ch?.signature as { type?: unknown; signer?: unknown; value?: unknown } | undefined;
@@ -152,8 +158,9 @@ export async function verifyCharter(c: unknown, hub?: Hub): Promise<Verification
     return { ok: false, signer: recovered, issuerCheck: "not-checked", problems: ["the file was changed after it was signed (signature does not match its content)"] };
   }
   if (!ch.issuer) return { ok: true, signer: recovered, issuerCheck: "no-issuer", problems: [] };
-  if (!hub) return { ok: true, signer: recovered, issuerCheck: "not-checked", problems: [] };
-  const custody = await hub.custodyOf(ch.issuer.fid);
+  const source = chain ?? hub;
+  if (!source) return { ok: true, signer: recovered, issuerCheck: "not-checked", problems: [] };
+  const custody = await source.custodyOf(ch.issuer.fid);
   if (!custody || custody.toLowerCase() !== recovered.toLowerCase()) {
     return { ok: false, signer: recovered, issuerCheck: "mismatch", problems: [`signed by ${recovered}, but FID ${ch.issuer.fid}'s custody address is ${custody ?? "unknown"}`] };
   }

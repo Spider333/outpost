@@ -114,11 +114,15 @@ export class FeedBuilder {
   profile(fid: number): Promise<Profile> {
     let p = this.profiles.get(fid);
     if (!p) {
-      p = this.hub.userDataByFid(fid).then((page) => {
+      p = this.hub.userDataByFid(fid).then(async (page) => {
         const prof: Profile = { fid };
         for (const m of page.items) {
           const b = m.data.userDataBody;
           if (!b) continue;
+          if (this.hub.verifier && (await this.apps.appOf(fid, m.signer)).keyCheck === "false") {
+            this.hub.verifier.drop("signer"); // a name or picture set with a key that is not theirs
+            continue;
+          }
           if (b.type === "USER_DATA_TYPE_USERNAME") prof.username = b.value;
           else if (b.type === "USER_DATA_TYPE_DISPLAY") prof.displayName = b.value;
           else if (b.type === "USER_DATA_TYPE_PFP") prof.pfp = b.value;
@@ -172,6 +176,8 @@ export class FeedBuilder {
       const refs = await mapLimit(batch, concurrency, (m) => this.apps.appOf(m.data.fid, m.signer));
       batch.forEach((m, j) => {
         const ref = refs[j]!;
+        // Signed by a key that provably is not the author's: a forgery, never shown.
+        if (ref.keyCheck === "false") return this.hub.verifier?.drop("signer");
         if (out.length < limit && passesFilter(ref, filter)) {
           const item = toItem(m, ref);
           if (item) {

@@ -7,20 +7,15 @@
 
 import { decodeGaslessSignedKeyRequestMetadata } from "@farcaster/core";
 import { Hub, liveToken, type HexString, type HubSigner } from "./hub.js";
+import { base64ToBytes, type KeyCheck } from "./verify.js";
 
 export type AppKind = "app" | "self" | "unknown";
 
 export interface AppRef {
   kind: AppKind;
   requestFid?: number; // set when kind is "app" or "self"
-  source?: "gasless" | "onchain";
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  source?: "gasless" | "onchain"; // as the node claims it
+  keyCheck?: KeyCheck; // set when the hub has a verifier: is the key really the author's?
 }
 
 export function requestFidOf(s: HubSigner): number | undefined {
@@ -64,7 +59,14 @@ export class AppResolver {
     return p;
   }
 
+  // The app behind a key, plus (with a verifier) whether the key provably belongs to `fid`.
   async appOf(fid: number, signer: HexString): Promise<AppRef> {
+    const ref = await this.fromNode(fid, signer);
+    const v = this.hub.verifier;
+    return v ? { ...ref, keyCheck: await v.keyCheck(fid, signer, ref.source === "onchain") } : ref;
+  }
+
+  private async fromNode(fid: number, signer: HexString): Promise<AppRef> {
     const k = `${fid}:${signer.toLowerCase()}`;
     const hit = this.byKey.get(k);
     if (hit) return hit;

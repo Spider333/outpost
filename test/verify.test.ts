@@ -1,0 +1,172 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { CastType, FarcasterNetwork, makeCastAdd, NobleEd25519Signer } from "@farcaster/core";
+import { bytesToHex } from "viem";
+import { checkMessage, FeedBuilder, Hub, Verifier, census, type HexString, type HubMessage, type HubSigner, type KeyRegistry } from "../src/core/index.js";
+
+// Real mainnet messages from Farcaster's public read node, unmodified (see the file's "source").
+const real = JSON.parse(readFileSync(new URL("./fixtures/real-messages.json", import.meta.url), "utf8")).messages as Record<string, HubMessage>;
+const copy = (m: HubMessage): HubMessage => JSON.parse(JSON.stringify(m));
+const AUTHOR = real.quote!.data.fid;
+const AUTHOR_KEY = real.quote!.signer;
+
+// Snapchain's JSON for a message @farcaster/core built (what the node would return for it).
+async function asNodeJson(text: string, signer: NobleEd25519Signer, fid = AUTHOR): Promise<HubMessage> {
+  const m = (
+    await makeCastAdd(
+      { text, type: CastType.CAST, embeds: [], embedsDeprecated: [], mentions: [], mentionsPositions: [] },
+      { fid, network: FarcasterNetwork.MAINNET, timestamp: real.quote!.data.timestamp + 10 },
+      signer,
+    )
+  )._unsafeUnwrap();
+  return {
+    data: {
+      type: "MESSAGE_TYPE_CAST_ADD",
+      fid,
+      timestamp: m.data!.timestamp,
+      network: "FARCASTER_NETWORK_MAINNET",
+      castAddBody: { embedsDeprecated: [], mentions: [], parentCastId: null, parentUrl: null, text, embeds: [], mentionsPositions: [], type: "CAST" },
+    },
+    hash: bytesToHex(m.hash),
+    hashScheme: "HASH_SCHEME_BLAKE3",
+    signature: Buffer.from(m.signature).toString("base64"),
+    signatureScheme: "SIGNATURE_SCHEME_ED25519",
+    signer: bytesToHex(m.signer),
+  };
+}
+
+const throwaway = () => new NobleEd25519Signer(crypto.getRandomValues(new Uint8Array(32)));
+const keyOf = async (s: NobleEd25519Signer) => bytesToHex((await s.getSignerKey())._unsafeUnwrap());
+const onchain = (fid: number, key: HexString): HubSigner => ({ source: "SIGNER_SOURCE_ONCHAIN", key, keyType: 1, fid });
+const gasless = (fid: number, key: HexString): HubSigner => ({ source: "SIGNER_SOURCE_OFFCHAIN", key, keyType: 1, fid, requestFid: fid });
+
+// A node that answers castsByFid, signersByFid and userDataByFid from fixed lists.
+function fakeNode(world: { casts: HubMessage[]; signers: HubSigner[]; userData?: HubMessage[] }): typeof fetch {
+  return async (input) => {
+    const url = new URL(String(input));
+    const json = (body: unknown) => new Response(JSON.stringify(body));
+    switch (url.pathname) {
+      case "/v1/castsByFid":
+        return json({ messages: world.casts });
+      case "/v1/signersByFid":
+        return json({ signers: world.signers, gaslessSignerCount: 0, gaslessSignerLimit: 1000, currentUserNonce: 0 });
+      case "/v1/userDataByFid":
+        return json({ messages: world.userData ?? [] });
+      default:
+        return new Response(JSON.stringify({ error: "not found" }), { status: 400 });
+    }
+  };
+}
+
+// Stands in for the KeyRegistry on Optimism: only the listed keys are added onchain.
+const registry = (added: Array<[number, string]>, removed: Array<[number, string]> = []): KeyRegistry => ({
+  keyState: async (fid, key) =>
+    added.some(([f, k]) => f === fid && k === key.toLowerCase()) ? "added" : removed.some(([f, k]) => f === fid && k === key.toLowerCase()) ? "removed" : "none",
+});
+
+test("real mainnet messages of every type we read pass verification", async () => {
+  for (const [name, m] of Object.entries(real)) assert.equal(await checkMessage(m), "ok", name);
+});
+
+test("a malicious node: altered text, bad signature and a key falsely claimed for the author are dropped", async () => {
+  const altered = copy(real.quote!);
+  altered.data.castAddBody!.text += " (edited by the node)";
+  const badSig = copy(real.cast!);
+  const sig = Buffer.from(badSig.signature, "base64");
+  sig[10]! ^= 1;
+  badSig.signature = sig.toString("base64");
+  // The node's own key signs a cast "by" the author and the node lists that key as theirs.
+  const nodeKey = throwaway();
+  const forged = await asNodeJson("I endorse whatever the host says", nodeKey);
+  const valid = real.quote!;
+
+  const verifier = new Verifier(registry([[AUTHOR, AUTHOR_KEY]]));
+  const hub = new Hub({
+    url: "http://node.test",
+    verifier,
+    fetch: fakeNode({ casts: [altered, badSig, forged, valid], signers: [onchain(AUTHOR, AUTHOR_KEY), onchain(AUTHOR, await keyOf(nodeKey))], userData: [real.userData!] }),
+  });
+  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+
+  assert.deepEqual(items.map((i) => i.hash), [valid.hash]);
+  assert.equal(items[0]!.app.keyCheck, "onchain");
+  assert.equal(items[0]!.author?.displayName, "Farcaster"); // the real profile passed too
+  assert.deepEqual(verifier.dropped, { altered: 1, signature: 1, mismatch: 0, signer: 1 });
+  assert.equal(verifier.failed, 3);
+  assert.match(verifier.summary(), /^Your node sent 3 of 5 messages that failed verification \(1 altered, 1 with a bad signature, 1 signed by a key that is not the author's\)/);
+});
+
+test("a key the node calls gasless cannot be checked: kept, marked unverified", async () => {
+  const k = throwaway();
+  const cast = await asNodeJson("signed with a gasless key", k);
+  const verifier = new Verifier(registry([]));
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [cast], signers: [gasless(AUTHOR, await keyOf(k))] }) });
+  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10 });
+  assert.equal(items.length, 1);
+  assert.equal(items[0]!.app.keyCheck, "unverified");
+  assert.equal(verifier.failed, 0);
+});
+
+test("an onchain key the author removed is dropped; no RPC means unverified, and RPC errors are not cached", async () => {
+  const k = throwaway();
+  const key = await keyOf(k);
+  assert.equal(await new Verifier(registry([], [[AUTHOR, key]])).keyCheck(AUTHOR, key, false), "false");
+  assert.equal(await new Verifier().keyCheck(AUTHOR, key, true), "unverified");
+  let calls = 0;
+  const flaky = new Verifier({ keyState: async () => (++calls === 1 ? Promise.reject(new Error("rpc down")) : "added") });
+  assert.equal(await flaky.keyCheck(AUTHOR, key, true), "unverified");
+  assert.equal(await flaky.keyCheck(AUTHOR, key, true), "onchain");
+});
+
+test("a valid message that does not answer the request is dropped", async () => {
+  const other = await asNodeJson("someone else's cast", throwaway(), AUTHOR + 1);
+  const verifier = new Verifier();
+  const answer = (body: unknown) => async () => new Response(JSON.stringify(body));
+  // castsByFid for AUTHOR returning another account's cast.
+  const page = await new Hub({ url: "http://node.test", verifier, fetch: answer({ messages: [other] }) }).castsByFid(AUTHOR);
+  assert.equal(page.items.length, 0);
+  // castById for one cast returning a different (valid) cast of the same account.
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: answer(real.cast) });
+  assert.equal(await hub.castById(AUTHOR, real.quote!.hash), undefined);
+  // reactionById returning the account's like of a different cast.
+  const target = { fid: 1970, hash: "0x00000000000000000000000000000000000000aa" as HexString };
+  assert.equal(await new Hub({ url: "http://node.test", verifier, fetch: answer(real.reaction) }).reactionById(AUTHOR, "Like", target), undefined);
+  assert.equal(verifier.dropped.mismatch, 3);
+  // The same reaction, asked for correctly, passes.
+  const r = real.reaction!.data.reactionBody!.targetCastId!;
+  assert.ok(await new Hub({ url: "http://node.test", verifier, fetch: answer(real.reaction) }).reactionById(AUTHOR, "Like", { fid: r.fid, hash: r.hash as HexString }));
+});
+
+test("census does not count casts whose key is provably not the member's", async () => {
+  const k = throwaway();
+  const forged = await asNodeJson("forged", k);
+  const verifier = new Verifier(registry([[AUTHOR, AUTHOR_KEY]]));
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [forged, real.quote!], signers: [onchain(AUTHOR, AUTHOR_KEY), onchain(AUTHOR, await keyOf(k))] }) });
+  const now = Date.UTC(2021, 0, 1) + (real.quote!.data.timestamp + 60) * 1000;
+  const c = await census(hub, { charter: 1, name: "t", members: [AUTHOR], issuedAt: "2026-10-19T00:00:00Z" }, { days: 30, now });
+  assert.equal(c.casts, 1);
+  assert.equal(verifier.dropped.signer, 1);
+});
+
+test("casts encoded by non-TypeScript apps verify, and are no loophole: changing one still fails", async () => {
+  // Posted by an app that writes protobuf fields in number order and leaves empty lists out.
+  const ch = real.channelProto3!;
+  assert.equal(await checkMessage(ch), "ok");
+  for (const change of [
+    (m: HubMessage) => (m.data.castAddBody!.text += "!"),
+    (m: HubMessage) => (m.data.castAddBody!.parentUrl = "https://farcaster.xyz/~/channel/other"),
+    (m: HubMessage) => m.data.castAddBody!.embeds.pop(),
+    (m: HubMessage) => (m.data.castAddBody!.mentions = [3]),
+  ]) {
+    const m = copy(ch);
+    change(m);
+    assert.equal(await checkMessage(m), "altered");
+  }
+  // A channel feed keeps only casts posted to the channel that was asked for.
+  const verifier = new Verifier();
+  const answer = async () => new Response(JSON.stringify({ messages: [ch, real.quote] }));
+  const page = await new Hub({ url: "http://node.test", verifier, fetch: answer }).castsByParentUrl(ch.data.castAddBody!.parentUrl!);
+  assert.deepEqual(page.items.map((m) => m.hash), [ch.hash]);
+  assert.equal(verifier.dropped.mismatch, 1);
+});

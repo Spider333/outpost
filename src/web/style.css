@@ -150,6 +150,9 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .cast-actions button { min-height: 36px; font-size: 13px; padding: 4px 10px; }
 .cast-actions button[aria-pressed="true"] { color: var(--ok); border-color: var(--ok); }
 .app-tag { font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; color: var(--muted); }
+.key-tag { font-size: 12px; border: 1px solid currentColor; border-radius: 4px; padding: 0 6px; color: var(--warn); }
+#verify-status.bad { color: var(--bad); }
+summary { cursor: pointer; font-weight: 600; }
 .reply-to { font-size: 14px; color: var(--muted); margin: 0 0 8px; }
 
 .sr-only {

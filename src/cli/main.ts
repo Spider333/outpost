@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Command-line client. Every read and write goes to your own node.
 
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { FarcasterNetwork, MessageData, ViemLocalEip712Signer, type Message } from "@farcaster/core";
 import { privateKeyToAccount } from "viem/accounts";
@@ -28,6 +29,11 @@ import {
   unreact,
   FeedBuilder,
   parseAppSelector,
+  checkNodeUrl,
+  checkToken,
+  DEFAULT_OPTIMISM_RPC,
+  Optimism,
+  Verifier,
   type AppFilter,
   type FeedItem,
   type AppKey,
@@ -35,7 +41,7 @@ import {
   type Reaction,
 } from "../core/index.js";
 import { askHidden, confirm } from "./prompt.js";
-import { cmdCharter } from "./charter.js";
+import { cmdCharter, verificationNote } from "./charter.js";
 import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
 
 const WARNING = `
@@ -82,17 +88,28 @@ const USAGE = `usage: ./outpost cli <command> [options]
                                  ask the node to validate them (sends nothing)
 
 options:
-  --node <url>      node HTTP API (default $OUTPOST_NODE_URL or http://127.0.0.1:3381)
-  --ttl-days <n>    app key expiry after last use, 1-90 (default 30)
+  --node <url>        node HTTP API (default $OUTPOST_NODE_URL or http://127.0.0.1:3381)
+  --token-file <path> access token for a society node, read from this file. Tokens are never
+                      taken from the command line, where other users and shell history see them
+  --rpc <url>         Optimism RPC for key and custody checks (default $OUTPOST_OPTIMISM_RPC or
+                      ${DEFAULT_OPTIMISM_RPC}; "off" skips them)
+  --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
+
+Every message read from the node is verified here (hash, signature, account) before use.
 `;
 
-function hubFromEnv(url?: string): Hub {
-  return new Hub({
-    url: url ?? process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381",
-    username: process.env.OUTPOST_NODE_USER,
-    password: process.env.OUTPOST_NODE_PASSWORD,
-  });
+function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string }): { hub: Hub; chain?: Optimism } {
+  const rpc = v.rpc ?? process.env.OUTPOST_OPTIMISM_RPC ?? DEFAULT_OPTIMISM_RPC;
+  const chain = rpc === "off" ? undefined : new Optimism(rpc);
+  const url = v.node ?? process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381";
+  const tokenFile = v["token-file"];
+  // A token goes only to https (or this machine), so it never crosses a network in the clear.
+  const auth = tokenFile
+    ? { url: checkNodeUrl(url), token: checkToken(readFileSync(tokenFile, "utf8")) }
+    : { url, username: process.env.OUTPOST_NODE_USER, password: process.env.OUTPOST_NODE_PASSWORD };
+  return { hub: new Hub({ ...auth, verifier: new Verifier(chain) }), chain };
 }
+
 
 function requireKey(): AppKey {
   const key = loadKey();
@@ -198,9 +215,12 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   const names = await feed.appNames(items);
   const label = (it: FeedItem) =>
     it.app.kind === "app" ? `via ${names.get(it.app.requestFid!) ?? it.app.requestFid} (app fid ${it.app.requestFid})` : it.app.kind === "self" ? "via own key" : "via unknown key";
+  // Onchain keys are checked on Optimism; gasless keys cannot be checked through the node's API.
+  const own = loadKey()?.publicKey.toLowerCase();
+  const keyNote = (it: FeedItem) => (it.app.keyCheck === "onchain" || it.signer.toLowerCase() === own ? "" : "  [signer not verified]");
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
-    console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}`);
+    console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`);
     console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
     console.log(`  ${it.fid}:${it.hash}`);
   }
@@ -208,6 +228,7 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   for (const it of items) mix.set(label(it), (mix.get(label(it)) ?? 0) + 1);
   console.log(`\n${items.length} cast${items.length === 1 ? "" : "s"} in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
   for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${k}`);
+  console.log(verificationNote(hub));
 }
 
 async function cmdUninstall(hub: Hub) {
@@ -271,6 +292,8 @@ async function main(argv: string[]) {
       reply: { type: "string" },
       channel: { type: "string" },
       embed: { type: "string", multiple: true },
+      "token-file": { type: "string" },
+      rpc: { type: "string" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },
@@ -286,7 +309,7 @@ async function main(argv: string[]) {
     console.log(USAGE);
     return;
   }
-  const hub = hubFromEnv(values.node);
+  const { hub, chain } = hubFromEnv(values);
   const reaction = (r: Reaction, add: boolean) => async () => {
     const key = requireKey();
     const target = { fid: parseFid(args[0]), hash: parseHash(args[1]) };
@@ -306,7 +329,7 @@ async function main(argv: string[]) {
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
-    charter: () => cmdCharter(hub, args, requireKey),
+    charter: () => cmdCharter(hub, args, requireKey, chain),
     cast: async () => {
       const text = args.join(" ");
       report(

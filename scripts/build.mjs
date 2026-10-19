@@ -1,6 +1,18 @@
 // Builds dist/: the web client (one JS bundle + html + css) and the client server.
 import { build } from "esbuild";
+import { execSync } from "node:child_process";
 import { copyFile, mkdir } from "node:fs/promises";
+
+// The commit the web client is built from, shown in its footer. CI sets GITHUB_SHA.
+function commit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try {
+    const git = (args) => execSync(`git ${args}`, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    return git("rev-parse HEAD") + (git("status --porcelain") ? "-dirty" : "");
+  } catch {
+    return "unknown"; // not a git checkout
+  }
+}
 
 await mkdir("dist/web", { recursive: true });
 await build({
@@ -14,6 +26,7 @@ await build({
   outfile: "dist/web/app.js",
   // Test-data library pulled in by @farcaster/core; see src/web/faker-stub.ts.
   alias: { "@faker-js/faker": "./src/web/faker-stub.ts" },
+  define: { __OUTPOST_COMMIT__: JSON.stringify(commit()) },
   logLevel: "warning",
 });
 await build({

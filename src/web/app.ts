@@ -1,4 +1,5 @@
-// Web client. Static page; every request goes to your own node's HTTP API.
+// Web client. Static page; every request goes to your own node's HTTP API, or to a society
+// node (someone else's, with your access token). Every message read is verified here first.
 // By default the page and the node share an origin: `./outpost client` serves this page and
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
@@ -23,6 +24,14 @@ import {
   census,
   charterFeed,
   verifyCharter,
+  checkNodeUrl,
+  checkToken,
+  DEFAULT_OPTIMISM_RPC,
+  HubError,
+  Optimism,
+  takeInvite,
+  Verifier,
+  type Society,
   type Charter,
   type AccountInfo,
   type AppFilter,
@@ -35,6 +44,11 @@ import {
 
 const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
+const SOCIETY_STORAGE = "outpost.society";
+const RPC_STORAGE = "outpost.rpc";
+
+// Set by scripts/build.mjs: the git commit this bundle was built from.
+declare const __OUTPOST_COMMIT__: string;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -104,9 +118,24 @@ function ago(ms: number): string {
 // ---- state
 
 const params = new URLSearchParams(location.search);
-// Always the page's own origin: `./outpost client` forwards /v1/* to your node. The node is never
-// taken from the URL, so a link cannot point this client at someone else's node.
-const hub = new Hub({ url: location.origin });
+// The page's own origin (`./outpost client` forwards /v1/* to your node), unless you chose a
+// society node: in the panel, or by accepting an invite link (#node=...&token=...). A link alone
+// never switches nodes: the invite is removed from the address bar and you are asked first.
+let inviteError: string | undefined;
+try {
+  const invite = takeInvite(location, history);
+  if (invite && confirm(`Use the society node at ${invite.node}?\n\nIts host will see what you read and can withhold or delay messages. This page checks every message itself; the host cannot post as you.`)) {
+    store(SOCIETY_STORAGE, invite);
+  }
+} catch (e) {
+  inviteError = `Invite link not used: ${errText(e)}`;
+}
+const society = store<Society>(SOCIETY_STORAGE);
+// Key and custody checks read Optimism through this RPC, never through the node. "" turns them off.
+const rpc = store<string>(RPC_STORAGE) ?? DEFAULT_OPTIMISM_RPC;
+const chain = rpc ? new Optimism(rpc) : undefined;
+const verifier = new Verifier(chain);
+const hub = new Hub({ url: society?.node ?? location.origin, token: society?.token, verifier });
 const feed = new FeedBuilder(hub);
 
 let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
@@ -127,18 +156,64 @@ let charter: Charter | undefined = store<Charter>(CHARTER_STORAGE);
 
 async function checkNode() {
   const pill = $("node-status");
+  const which = society ? `society node ${new URL(society.node).host}` : "node";
   try {
     const info = await hub.info();
     const { synced, maxDelay } = syncState(info);
-    pill.textContent = synced ? `node synced (v${info.version})` : `node syncing, ${maxDelay} blocks behind`;
+    pill.textContent = synced ? `${which} synced (v${info.version})` : `${which} syncing, ${maxDelay} blocks behind`;
     pill.className = `pill ${synced ? "ok" : "warn"}`;
     return synced;
   } catch (e) {
-    pill.textContent = "node unreachable";
+    pill.textContent = e instanceof HubError && e.status === 401 ? `${which}: access refused` : `${which} unreachable`;
     pill.className = "pill bad";
-    say(`Cannot reach your node at ${hub.url}. ${errText(e)}`, true);
+    if (e instanceof HubError && e.status === 401) {
+      say(`The society node at ${hub.url} no longer accepts your access token: the host removed it, or it was mistyped. Ask the host for a new invite link, or go back to your own node under "Node and checks".`, true);
+    } else {
+      say(`Cannot reach ${society ? "the society node" : "your node"} at ${hub.url}. ${errText(e)}`, true);
+      if (!society) ($("node-settings") as HTMLDetailsElement).open = true;
+    }
     return false;
   }
+}
+
+// What the verifier dropped so far. The node is not asked; these checks run in this page.
+function showVerification() {
+  const el = $("verify-status");
+  if (!verifier.checked) return;
+  el.textContent = verifier.failed
+    ? `${verifier.summary()} Rarely an honest node trips this too, when the app that posted a message encoded it unusually.`
+    : `All ${verifier.checked} messages from the node passed verification in this page.`;
+  el.classList.toggle("bad", verifier.failed > 0);
+}
+
+// ---- node settings
+
+function wireNodeSettings() {
+  $("soc-current").textContent = society
+    ? `Using the society node ${society.node}.`
+    : `Using your own node (this page's origin, ${location.origin}).`;
+  $<HTMLInputElement>("rpc-url").value = rpc;
+  $("node-note").textContent = society ? `Reads and writes go to the society node ${society.node}.` : "Reads and writes go only to your own node.";
+  $("soc-save").addEventListener("click", () =>
+    busy(null, "", async () => {
+      const s: Society = { node: checkNodeUrl($<HTMLInputElement>("soc-node").value), token: checkToken($<HTMLInputElement>("soc-token").value) };
+      $<HTMLInputElement>("soc-token").value = "";
+      store(SOCIETY_STORAGE, s);
+      location.reload();
+    }),
+  );
+  $("soc-forget").addEventListener("click", () => {
+    store(SOCIETY_STORAGE, null);
+    location.reload();
+  });
+  $("rpc-save").addEventListener("click", () =>
+    busy(null, "", async () => {
+      const v = $<HTMLInputElement>("rpc-url").value.trim();
+      if (v && !/^https:\/\/[^\s]+$/.test(v)) throw new Error("The RPC must be an https URL, or empty to turn the checks off.");
+      store(RPC_STORAGE, v);
+      location.reload();
+    }),
+  );
 }
 
 // ---- connect
@@ -376,6 +451,19 @@ function castCard(it: FeedItem): HTMLLIElement {
       h("span", { class: "name" }, it.author?.displayName ?? name),
       h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
       h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
+      // Your own key needs no proof; any other key must be found in the KeyRegistry on Optimism.
+      it.app.keyCheck === "onchain" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
+        ? null
+        : h(
+            "span",
+            {
+              class: "key-tag",
+              title: rpc
+                ? "The signature is valid, but this page could not prove the key belongs to this account. Gasless app keys cannot be checked through the node's API; the node could have signed this with its own key."
+                : "Key checks are off (no Optimism RPC set under Node and checks).",
+            },
+            "signer not verified",
+          ),
     ),
     it.text ? h("p", { class: "cast-text" }, it.text) : null,
     embeds.length
@@ -408,6 +496,7 @@ async function loadFeed(fid?: number) {
   } else return;
   appNames = await feed.appNames(items);
   renderFeed();
+  showVerification();
   say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
 }
 
@@ -434,13 +523,13 @@ function wireFeed() {
 // ---- society (charter)
 
 async function showCharter(c: unknown, source: string) {
-  const v = await verifyCharter(c, hub);
+  const v = await verifyCharter(c, hub, chain);
   const verdict = $("charter-verdict");
   $("charter-view").hidden = false;
   if (!v.ok) {
     verdict.className = "verdict-bad";
     verdict.textContent = `Rejected (${source}): ${v.problems.join("; ")}`;
-    for (const id of ["ch-name", "ch-desc", "ch-coc", "ch-members", "ch-rules"]) $(id).textContent = "";
+    for (const id of ["ch-name", "ch-desc", "ch-coc", "ch-members", "ch-rules", "ch-nodes"]) $(id).textContent = "";
     ($("ch-join") as HTMLButtonElement).disabled = true;
     $("ch-details").hidden = true;
     // Never keep an earlier society's lens active behind a rejected file.
@@ -456,7 +545,7 @@ async function showCharter(c: unknown, source: string) {
   verdict.className = "verdict-ok";
   verdict.textContent =
     v.issuerCheck === "custody"
-      ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked on your node.`
+      ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked ${chain ? "on Optimism" : "on your node"}.`
       : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`;
   $("ch-name").textContent = ch.name;
   $("ch-desc").textContent = ch.description ?? "";
@@ -470,12 +559,32 @@ async function showCharter(c: unknown, source: string) {
   if (ch.clients?.include?.length) rules.push(`only apps: ${ch.clients.include.join(", ")}`);
   if (ch.clients?.exclude?.length) rules.push(`hides apps: ${ch.clients.exclude.join(", ")}`);
   $("ch-rules").textContent = rules.join("; ") || "members' casts, no other rules";
+  $("ch-nodes").replaceChildren(
+    ...(ch.nodes ?? []).map((url) =>
+      h(
+        "div",
+        {},
+        `${url} `,
+        h("button", { type: "button", onclick: () => useNode(url) }, url === society?.node ? "in use" : "use this node"),
+      ),
+    ),
+  );
+  if (!ch.nodes?.length) $("ch-nodes").textContent = "none listed";
   ($("ch-join") as HTMLButtonElement).disabled = !key;
   charter = ch;
   store(CHARTER_STORAGE, ch);
   chipState.clear();
   perAuthor = 5;
   await loadFeed();
+}
+
+// A charter lists nodes; a token still comes from that node's host.
+function useNode(url: string) {
+  const details = $("node-settings") as HTMLDetailsElement;
+  details.open = true;
+  $<HTMLInputElement>("soc-node").value = url;
+  $("soc-token").focus();
+  say(`Paste the access token the host of ${url} gave you, then press "Use this node".`);
 }
 
 function leaveCharter() {
@@ -544,6 +653,7 @@ function wireCharter() {
           .map((a) => `${a.app.kind === "app" ? names.get(a.app.requestFid!) ?? `app ${a.app.requestFid}` : a.app.kind === "self" ? "own key" : "unknown"}: ${a.casts}`)
           .join(", ") || "no casts";
       $("ch-census").hidden = false;
+      showVerification();
     }),
   );
 }
@@ -557,6 +667,12 @@ async function main() {
   } catch {
     // Served without Outpost's server (e.g. Caddy for phones): mainnet.
   }
+  $("build").replaceChildren(
+    __OUTPOST_COMMIT__ === "unknown"
+      ? "Built from an unknown commit."
+      : h("a", { href: `https://github.com/Spider333/outpost/commit/${__OUTPOST_COMMIT__.replace(/-dirty$/, "")}`, rel: "noopener noreferrer" }, `Built from ${__OUTPOST_COMMIT__.slice(0, 12)}${__OUTPOST_COMMIT__.endsWith("-dirty") ? " plus local changes" : ""}.`),
+  );
+  wireNodeSettings();
   wireConnect();
   wireKey();
   wireCompose();
@@ -569,6 +685,7 @@ async function main() {
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
     else say("Enter an FID or username to read a feed, or connect an account to post.");
   }
+  if (inviteError) say(inviteError, true);
   setInterval(checkNode, 60_000);
 }
 
