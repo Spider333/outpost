@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fake ssh: runs the remote command here, in $FAKE_STATE/server, which stands in for the server.
+# /usr/local/lib/outpost is rewritten into it, infra/society.sh is pointed at it, and a fake
+# docker (server/docker) keeps containers as files.
+S="${FAKE_STATE:?}"
+while [ $# -gt 0 ]; do
+  case "$1" in -i|-o|-S|-L|-O) shift 2 ;; *@*) shift; break ;; *) shift ;; esac
+done
+cmd="$*"
+echo "ssh $cmd" >> "$S/calls.log"
+[ -n "$cmd" ] || exit 0
+mkdir -p "$S/server/lib"
+cmd="${cmd//\/usr\/local\/lib\/outpost/$S/server/lib}"
+OUTPOST_SOCIETY_DIR="$S/server/srv/outpost-society" PATH="$(cd "$(dirname "$0")" && pwd)/server:$PATH" exec bash -c "$cmd"

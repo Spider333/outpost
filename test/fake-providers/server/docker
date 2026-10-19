@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fake docker on the fake server: a container is a file holding its run arguments and the
+# OUTPOST_GATE_* variables it was started with.
+S="${FAKE_STATE:?}"; echo "docker $*" >> "$S/calls.log"
+C="$S/containers"; mkdir -p "$C"
+case "$1" in
+  inspect) n="${!#}"; [ -e "$C/$n" ] || exit 1; [ "$2" != -f ] || echo running ;;
+  run) n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done
+    # docker run --rm (caddy validate) leaves nothing behind.
+    [ -z "$n" ] || { echo "$*"; env | grep '^OUTPOST_GATE_' || true; } > "$C/$n" ;;
+  rm) shift; [ "$1" != -f ] || shift; for n in "$@"; do rm -f "$C/$n"; done ;;
+  kill|exec) n="${!#}"; [ "$1" = exec ] && n="$2"; [ -e "$C/$n" ] ;;
+  *) echo "fake docker: unhandled $*" >&2; exit 3 ;;
+esac

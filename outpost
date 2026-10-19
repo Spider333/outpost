@@ -6,6 +6,8 @@
 #   ./outpost client      run the web client on your machine, talking to your node
 #
 # Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy
+# Society node, used by members from their own browsers: ./outpost society on|off|status,
+# ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list
 # Every command is safe to run twice. Add --dry-run to provision/destroy to see the
 # exact provider commands without running them.
 
@@ -424,7 +426,7 @@ ensure_build() {
   fi
 }
 
-# Firewall rule for HTTPS (443/tcp), only used by --phone.
+# Firewall rule for HTTPS (443/tcp), used by --phone and by society mode.
 phone_firewall() {
   local action="$1" provider name
   provider="$(state_get PROVIDER)"
@@ -441,9 +443,18 @@ phone_firewall() {
       run doctl compute firewall "$action-rules" "$fw" --inbound-rules "protocol:tcp,ports:443,address:0.0.0.0/0,address:::/0" || true
       ;;
     hetzner)
-      run hcloud firewall "$action-rule" "$name-fw" --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0 || true
+      # hcloud names them add-rule and delete-rule.
+      local verb="$action"
+      [ "$action" = remove ] && verb=delete
+      run hcloud firewall "$verb-rule" "$name-fw" --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0 || true
       ;;
   esac
+}
+
+# True if the container exists on the server. Phone access and society mode both use 443/tcp,
+# so turning one off must not close it under the other.
+server_has_container() {
+  node_ssh "docker inspect '$1' >/dev/null 2>&1"
 }
 
 # Serves the client from the server over HTTPS with a password, for use on a phone.
@@ -452,7 +463,7 @@ cmd_phone() {
   ip="$(node_host)"
   if [ "$mode" = "off" ]; then
     node_ssh 'OUTPOST_PHONE_OFF=1 bash -s' <"$OUTPOST_DIR/infra/phone-setup.sh"
-    phone_firewall remove
+    if server_has_container outpost-society; then say "society mode still uses 443/tcp; leaving it open"; else phone_firewall remove; fi
     say "phone access is off"
     return 0
   fi
@@ -499,6 +510,97 @@ cmd_cli() {
   case "${1:-}" in ""|-h|--help|help) node "$OUTPOST_DIR/dist/cli.js" --help; return ;; esac
   tunnel_up
   OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" "$@"
+}
+
+# ---- society
+
+# Society mode: members use your node from their own browsers, with their own Farcaster
+# accounts and their own token for the node. Caddy terminates TLS and src/server/gate.ts checks
+# each request (see infra/society.sh). The server serves no web page; members load the client
+# from GitHub Pages.
+SOCIETY_APP="https://spider333.github.io/outpost/app/"
+
+society_host() {
+  local ip
+  ip="$(node_host)"
+  [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "society mode needs the server's IPv4 address for <ip>.sslip.io, not '$ip'"
+  echo "${ip//./-}.sslip.io"
+}
+
+# Copies infra/society.sh to the server and runs it there: society_run "<VAR=value ...>" <action> [name].
+# Both go into the remote command line, so callers pass only checked names and numbers.
+society_run() {
+  local env="$1"
+  shift
+  node_ssh 'mkdir -p /usr/local/lib/outpost && cat >/usr/local/lib/outpost/society.sh' <"$OUTPOST_DIR/infra/society.sh"
+  node_ssh "${env}bash /usr/local/lib/outpost/society.sh $*"
+}
+
+cmd_society() {
+  local mode="${1:-status}" host env="" v val
+  host="$(society_host)"
+  case "$mode" in
+    on)
+      # Per-member rate limits for the gate, passed on when set here.
+      for v in OUTPOST_GATE_READ_RATE OUTPOST_GATE_READ_BURST OUTPOST_GATE_SUBMIT_RATE OUTPOST_GATE_SUBMIT_BURST; do
+        val="${!v:-}"
+        [ -n "$val" ] || continue
+        [[ "$val" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "$v must be a number"
+        env="$env$v=$val "
+      done
+      phone_firewall add
+      society_run "${env}OUTPOST_SOCIETY_HOST='$host' " on <"$OUTPOST_DIR/src/server/gate.ts"
+      say ""
+      say "society node: https://$host (the node API for members; no web page)"
+      say "add a member: ./outpost members add <name>"
+      say "the first request can take a minute while the certificate is issued."
+      say "turn it off with: ./outpost society off"
+      ;;
+    off)
+      society_run "" off
+      if server_has_container outpost-phone; then say "phone access still uses 443/tcp; leaving it open"; else phone_firewall remove; fi
+      say "society mode is off"
+      ;;
+    status)
+      say "society node: https://$host"
+      society_run "" status
+      ;;
+    *) die "usage: ./outpost society on|off|status" ;;
+  esac
+}
+
+cmd_members() {
+  local action="${1:-list}" name="${2:-}" host token hash out
+  case "$action" in
+    add|remove)
+      [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$ ]] || die "usage: ./outpost members $action <name> (letters, digits, '.', '_' or '-', up to 40)"
+      ;;
+    list) ;;
+    *) die "usage: ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list" ;;
+  esac
+  case "$action" in
+    add)
+      require_cli openssl "It ships with macOS and most Linux systems."
+      host="$(society_host)"
+      # The token is made here and only its SHA-256 goes to the server (over SSH stdin), so the
+      # server never has it. Outpost keeps no copy: the link below is the only one.
+      token="$(openssl rand -hex 32)"
+      hash="$(printf '%s' "$token" | openssl dgst -sha256 | awk '{print $NF}')"
+      [[ "$token" =~ ^[0-9a-f]{64}$ && "$hash" =~ ^[0-9a-f]{64}$ ]] || die "could not make a token with openssl"
+      out="$(printf '%s\n' "$hash" | society_run "" add "$name")"
+      if [ "$out" = exists ]; then
+        say "$name is already a member. Their link was shown once, when they were added. For a new one:"
+        say "  ./outpost members remove $name && ./outpost members add $name"
+        return 0
+      fi
+      [ "$out" = added ] || die "unexpected answer from the server: $out"
+      say "invite link for $name (shown once; send it privately, whoever has it can use the node as $name):"
+      say "${SOCIETY_APP}#node=https%3A%2F%2F$host&token=$token"
+      say "it works once society mode is on (./outpost society on). Remove with: ./outpost members remove $name"
+      ;;
+    remove) society_run "" remove "$name" ;;
+    list) society_run "" list ;;
+  esac
 }
 
 cmd_status() {
@@ -599,7 +701,7 @@ cmd_destroy() {
 }
 
 usage() {
-  sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
@@ -609,6 +711,8 @@ main() {
     provision) cmd_provision "$@" ;;
     node) cmd_node "$@" ;;
     client) cmd_client "$@" ;;
+    society) cmd_society "$@" ;;
+    members) cmd_members "$@" ;;
     cli) cmd_cli "$@" ;;
     status) cmd_status "$@" ;;
     uninstall) cmd_uninstall "$@" ;;

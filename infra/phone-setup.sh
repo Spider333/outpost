@@ -22,6 +22,10 @@ if [ "${OUTPOST_PHONE_OFF:-0}" = "1" ]; then
   exit 0
 fi
 
+if docker inspect outpost-society >/dev/null 2>&1; then
+  echo "[phone] society mode is on and also uses port 443. Turn it off first: ./outpost society off" >&2
+  exit 1
+fi
 : "${OUTPOST_PHONE_HOST:?missing OUTPOST_PHONE_HOST}"
 : "${OUTPOST_PHONE_HASH:?missing OUTPOST_PHONE_HASH}"
 [ -f "$WEB/index.html" ] || { echo "[phone] $WEB is empty" >&2; exit 1; }

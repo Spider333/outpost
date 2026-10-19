@@ -25,6 +25,8 @@ case "$1 $2 $3" in
     [ -e "$S/tag.$tag" ] || { echo "Error: tag $tag does not exist (422)" >&2; exit 1; }
     echo "fw-9 $5" > "$S/fw.$5" ;;
   "compute firewall delete") for f in "$S"/fw.*; do grep -q "^$4 " "$f" && rm -f "$f"; done ;;
+  "compute firewall add-rules") : > "$S/fw443" ;;
+  "compute firewall remove-rules") rm -f "$S/fw443" ;;
   "compute ssh-key get") ls "$S"/sshkey.* >/dev/null 2>&1 || exit 1 ;;
   "compute ssh-key import") echo "k-1 $4" > "$S/sshkey.$4" ;;
   "compute ssh-key list") list sshkey ;;
