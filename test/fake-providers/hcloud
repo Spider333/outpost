@@ -2,7 +2,7 @@
 S="${FAKE_STATE:?}"; echo "hcloud $*" >> "$S/calls.log"
 # Like the API with no network: every call fails.
 [ -e "$S/api-down" ] && { echo "hcloud: dial tcp: network is unreachable" >&2; exit 1; }
-names() { for f in "$S"/hz."$1".*; do [ -e "$f" ] && echo "${f##*/hz.$1.}"; done; exit 0; }
+names() { for f in "$S"/hz."$1".*; do [ -e "$f" ] && echo "${f##*/hz."$1".}"; done; exit 0; }
 case "$1 $2" in
   "server ip") [ -e "$S/hz.server.$3" ] && echo 198.51.100.9 || exit 1 ;;
   "server list") names server ;;
