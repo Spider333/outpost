@@ -15,10 +15,19 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
-h1 { font-size: 30px; line-height: 1.2; margin: 8px 0 8px; }
-h2 { font-size: 23px; margin: 48px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-h3 { font-size: 18px; margin: 28px 0 6px; }
+main { max-width: 760px; margin: 0 auto; padding: 4rem 16px 64px; }
+h1 { font-size: clamp(2rem, 6vw, 2.75rem); line-height: 1.15; margin: 0 0 1rem; letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.75rem, 4.5vw, 2.25rem); line-height: 1.2; margin: 6rem 0 1rem; }
+h3 { font-size: 1.375rem; line-height: 1.3; margin: 4rem 0 0.75rem; }
+h2 + h3 { margin-top: 2rem; }
+section > h2:first-child { margin-top: 0; }
+section.part { margin-top: 6rem; }
+@media (max-width: 600px) {
+  main { padding-top: 2.5rem; }
+  h2 { margin-top: 4rem; }
+  h3 { margin-top: 3rem; }
+  section.part { margin-top: 4rem; }
+}
 p, li { max-width: 68ch; }
 a { color: var(--accent); }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -29,7 +38,7 @@ pre.out { color: #c9d1d9; }
 pre.out::before { content: "output"; display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
 pre.pending { border-style: dashed; color: var(--muted); }
 .lede { font-size: 19px; color: var(--muted); margin-top: 0; }
-.danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 14px 16px; margin: 20px 0; }
+.danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 14px 16px; margin: 3rem 0 0; }
 .danger h2, .danger h3 { border: 0; margin: 0 0 6px; padding: 0; color: var(--bad); font-size: 19px; }
 .concept { border-left: 3px solid var(--ok); padding: 2px 0 2px 14px; margin: 18px 0; }
 .concept strong:first-child { color: var(--ok); }
@@ -38,14 +47,131 @@ table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 10px 0;
 th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px 10px 6px 0; vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
 nav ol { padding-left: 20px; }
+.hero-links { margin: 1.25rem 0 0; }
+.toc { margin-top: 3rem; }
+.toc h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.toc > ul { margin: 0; padding-left: 20px; }
+.toc ol ol { margin: 4px 0 6px; padding-left: 20px; font-size: 15px; }
+.toc li { margin: 2px 0; }
+dl.facts { margin: 1.5rem 0 0; }
+dl.facts dt { font-weight: 600; margin-top: 1.25rem; }
+dl.facts dd { margin: 4px 0 0; max-width: 68ch; }
+.flow { margin: 1.5rem 0 0; display: flex; align-items: stretch; gap: 0; }
+.flow .box { flex: 1 1 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--surface); font-size: 15px; line-height: 1.5; }
+.flow .box p { margin: 0 0 8px; }
+.flow .box p:last-child { margin-bottom: 0; }
+.flow .box-h { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.flow .box-h + p { margin-top: 2px; }
+.flow .link { flex: 0 0 86px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; font-size: 13px; line-height: 1.35; color: var(--muted); padding: 0 6px; }
+.flow .link strong { color: var(--accent); font-weight: 600; }
+.flow .link::before { content: "\2194"; font-size: 22px; line-height: 1; color: var(--accent); margin-bottom: 4px; }
+.flow-notes { margin-top: 1.25rem; }
+@media (max-width: 640px) {
+  .flow { flex-direction: column; }
+  .flow .link { flex-basis: auto; flex-direction: row; gap: 8px; padding: 10px 0; }
+  .flow .link::before { content: "\2195"; margin: 0; }
+}
+.diffs { padding-left: 0; list-style: none; }
+.diffs li { margin: 0 0 1rem; }
+.look { font-size: 15px; color: var(--muted); margin: 12px 0 -4px; }
+details.out-fold { margin: 10px 0; }
+details.out-fold summary { cursor: pointer; color: var(--accent); font-size: 15px; padding: 4px 0; }
+dl.terms dt { font-weight: 600; margin-top: 1rem; scroll-margin-top: 16px; }
+dl.terms dd { margin: 2px 0 0; max-width: 68ch; }
+dl.terms dd a { white-space: nowrap; }
 footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 48px; padding-top: 16px; }
 </style>
 </head>
 <body>
 <main>
 
+<header>
 <h1>Outpost: your own node and client for Farcaster</h1>
-<p class="lede">Three commands take you from nothing to a Snapchain read node you control and a client that reads from it and posts through it. No API keys from anyone.</p>
+<p class="lede">Outpost rents a server, keeps your own copy of Farcaster's data on it, and gives you a client that reads from that copy and posts through it. Three commands, and no API key from anyone.</p>
+<p class="hero-links"><a href="#quickstart">Quickstart</a> · <a href="#tutorial">Tutorial</a> · <a href="https://github.com/Spider333/outpost">Code on GitHub</a></p>
+</header>
+
+<nav class="toc" aria-labelledby="toc-h">
+  <h2 id="toc-h">On this page</h2>
+  <ul>
+    <li><a href="#what">What Outpost is</a></li>
+    <li><a href="#how">How the pieces fit</a></li>
+    <li><a href="#different">What is different about it</a></li>
+    <li><a href="#quickstart">Quickstart</a></li>
+    <li><a href="#warn-h">Before you paste a recovery phrase</a></li>
+    <li><a href="#tutorial">Tutorial</a>
+      <ol>
+        <li><a href="#t-provision">Rent a server</a></li>
+        <li><a href="#t-node">Start a read node</a> (read nodes and validators)</li>
+        <li><a href="#t-login">Connect an account</a> (FIDs, custody, storage, app keys)</li>
+        <li><a href="#t-post">Read and post</a> (messages)</li>
+        <li><a href="#t-apps">Filter by app</a></li>
+        <li><a href="#t-limits">What a keyless node cannot do</a></li>
+        <li><a href="#t-society">Societies: a charter file</a></li>
+        <li><a href="#t-cleanup">Clean up</a></li>
+      </ol>
+    </li>
+    <li><a href="#terms">Terms</a></li>
+    <li><a href="#about">About this project</a></li>
+  </ul>
+</nav>
+
+<section class="part" aria-labelledby="what">
+<h2 id="what">What Outpost is</h2>
+<p>Farcaster is a social network whose posts, likes and follows are public data. That data is kept by <a href="#g-snapchain">Snapchain</a>, a network of computers called nodes. A small, fixed set of them, the <a href="#g-validator">validators</a>, agree on the order of new messages. Anyone can run a <a href="#g-read-node">read node</a>: it keeps a full copy of the data and answers questions about it.</p>
+<p>Outpost sets up a read node on a server you rent, and runs a client on your computer that reads from that node and posts through it. Besides the server, you need no API key and no paid service.</p>
+<dl class="facts">
+  <dt>What you end up with</dt>
+  <dd>A read node on your server holding the whole network's data (557 GB on 18 October 2026). A web client at <code>http://127.0.0.1:8381</code> that shows your following feed and can cast, reply, like, recast and follow. An <a href="#g-app-key">app key</a> that can cast, react and follow, and nothing else.</dd>
+  <dt>What it costs</dt>
+  <dd>About $0.41 an hour on DigitalOcean at October 2026 list prices: $0.25 for the server (8 vCPU, 32 GB RAM) and about $0.16 for its 1.2 TB disk. That comes to about $10 a day, billed by the hour until you run <code>./outpost destroy</code>. Hetzner is also supported; check its prices before you start.</dd>
+  <dt>How long it takes</dt>
+  <dd>About 6 hours for the first sync on our test server: 1 hour 43 minutes to load a <a href="#g-snapshot">snapshot</a> of the network, then 4 hours 11 minutes to catch up on the blocks since. The client works once loading is done. The newest casts appear as the node catches up.</dd>
+  <dt>What you need</dt>
+  <dd>A DigitalOcean or Hetzner account with its command-line tool logged in (<code>doctl</code> or <code>hcloud</code>), or any Ubuntu 24.04 server with root SSH and 1.2 TB of disk. Node.js 20 or newer. A <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>.</dd>
+  <dt>Who it is for</dt>
+  <dd>Farcaster users who are at ease in a terminal, and developers who want to see the protocol from the node up. You will rent a server and run a few commands.</dd>
+</dl>
+</section>
+
+<section class="part" aria-labelledby="how">
+<h2 id="how">How the pieces fit</h2>
+<div class="flow">
+  <div class="box">
+    <p class="box-h">Your computer</p>
+    <p>Your browser opens <code>127.0.0.1:8381</code>.</p>
+    <p>The Outpost client runs here. It holds your app key and signs what you post.</p>
+  </div>
+  <div class="link"><strong>SSH tunnel</strong> port 22</div>
+  <div class="box">
+    <p class="box-h">Your server</p>
+    <p>A Snapchain read node with a full copy of the network's data on a 1.2 TB disk.</p>
+    <p>Its API is closed to the internet. The client reaches it through the tunnel.</p>
+  </div>
+  <div class="link"><strong>Gossip</strong> 3382/udp</div>
+  <div class="box">
+    <p class="box-h">The rest of Farcaster</p>
+    <p>Other nodes, and the validators that put messages into blocks.</p>
+    <p>Account and key events from the Optimism chain arrive inside those blocks.</p>
+  </div>
+</div>
+<ul class="flow-notes">
+  <li><strong>Reading.</strong> The client asks your node, which already holds the network's data.</li>
+  <li><strong>Posting.</strong> The client signs the message with your app key and sends it through the <a href="#g-tunnel">tunnel</a> to your node. The node checks it and passes it to the validators over <a href="#g-gossip">gossip</a>. Outpost then reads the message back from your node before it says "confirmed".</li>
+  <li><strong>Open ports.</strong> Two, on the server: 22 for SSH and 3382/udp for gossip.</li>
+</ul>
+</section>
+
+<section class="part" aria-labelledby="different">
+<h2 id="different">What is different about it</h2>
+<ul class="diffs">
+  <li><strong>Your own node.</strong> Your feed is read from a node you run, and your posts go out through it.</li>
+  <li><strong>A narrow app key.</strong> The key the client holds can cast, react and follow. It cannot change your profile or your verified addresses, and it expires 30 days after its last use.</li>
+  <li><strong>Revoking needs no recovery phrase.</strong> The key signs its own removal, from the client or with <code>./outpost uninstall</code>.</li>
+  <li><strong>A feed in time order, labelled by app.</strong> Your following feed is the latest casts of everyone you follow, merged by time. Each cast shows the app that posted it, and you can show only one app or hide it.</li>
+  <li><strong>Societies as signed files.</strong> A <a href="#g-charter">charter</a> lists a society's members, which apps and channels count, and its code of conduct. Load one to read the society's feed. Leaving is one tap, and a census of its activity is computed on your node.</li>
+</ul>
+</section>
 
 <h2 id="quickstart">Quickstart</h2>
 <p>You need a DigitalOcean or Hetzner account with its command line tool logged in, Node.js 20 or newer, and a <strong>test</strong> account for Farcaster that already has storage.</p>
@@ -76,25 +202,15 @@ cd outpost
   <p>What Outpost does with a phrase: it derives the custody address in memory, signs one authorization for an app key that can only cast, react and follow and that expires 30 days after last use, then drops it. It never writes the phrase to disk and never sends it over the network. You can check this in <code>src/core/account.ts</code> and <code>src/cli/main.ts</code>.</p>
 </section>
 
-<nav aria-label="Tutorial">
-  <h2 id="tutorial">Tutorial</h2>
-  <ol>
-    <li><a href="#t-provision">Rent a server</a></li>
-    <li><a href="#t-node">Start a read node</a> (read nodes and validators)</li>
-    <li><a href="#t-login">Connect an account</a> (FIDs, custody, storage, app keys)</li>
-    <li><a href="#t-post">Read and post</a> (messages)</li>
-    <li><a href="#t-apps">Filter by app</a></li>
-    <li><a href="#t-limits">What a keyless node cannot do</a></li>
-    <li><a href="#t-society">Societies: a charter file</a></li>
-    <li><a href="#t-cleanup">Clean up</a></li>
-  </ol>
-</nav>
+<h2 id="tutorial">Tutorial</h2>
+<p>Eight steps, from renting a server to deleting it. Every output is copied from a real run; when a run was not on a fresh node, the step says so. Boxes with a green edge explain each idea where it first matters, and every term is also listed under <a href="#terms">Terms</a>.</p>
 
 <h3 id="t-provision">1. Rent a server</h3>
-<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a snapshot of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a <a href="#g-snapshot">snapshot</a> of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
 <pre class="cmd">./outpost provision --provider do
 # or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
+<p class="look">The first three lines give the price. Each line starting with <code>+</code> is one command sent to DigitalOcean.</p>
 <pre class="out">DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 1200 GB volume.
 Billed by the hour while it exists: the volume about $0.16/h, plus the droplet
 (s-8vcpu-32gb-amd is $0.25/h). October 2026 list prices; check yours.
@@ -103,11 +219,16 @@ Billed by the hour while it exists: the volume about $0.16/h, plus the droplet
 + doctl compute tag create outpost-node
 + doctl compute firewall create --name outpost-node-fw --tag-names outpost-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
 + doctl compute droplet create outpost-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.6oiXwl8gsl --volumes \&lt;volume-id\&gt; --tag-name outpost-node --wait</pre>
-<p>The firewall opens two ports: 22 for SSH and 3382/udp for gossip, which is how your node talks to the rest of the network. The node's API ports stay closed. Your client reaches them through an SSH tunnel. This matters: by default, a node with an open API port lets anyone on the internet send messages through it.</p>
+<p>The firewall opens two ports: 22 for SSH and 3382/udp for <a href="#g-gossip">gossip</a>, which is how your node talks to the rest of the network. The node's API ports stay closed. Your client reaches them through an <a href="#g-tunnel">SSH tunnel</a>. This matters: by default, a node with an open API port lets anyone on the internet send messages through it.</p>
 <p>Already have a server? Skip this step and run <code>OUTPOST_HOST=&lt;ip&gt; ./outpost node</code>. It needs Ubuntu 24.04, root SSH and the disk above.</p>
 
 <h3 id="t-node">2. Start a read node</h3>
+<div class="concept">
+<p><strong>Read nodes and validators.</strong> Snapchain has two roles, run by the same program. Validators propose and vote on blocks; there is a fixed set of them. A read node, which is what you are about to start, follows the chain, keeps the full state and answers queries. It never votes. Anyone can run one, and it needs no key or paid service: account and key events from the Optimism chain arrive inside the blocks validators produce.</p>
+<p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so Outpost reads every message back from your node before it says "confirmed".</p>
+</div>
 <pre class="cmd">./outpost node</pre>
+<p class="look">The line that matters is the one with <code>synced</code>, near the end.</p>
 <pre class="out">setting up the read node on 142.93.168.228
 [node-setup] data directory: /mnt/snap (1356 GB free)
 [node-setup] starting snapchain 0.14.3 (read node)
@@ -130,14 +251,10 @@ next: ./outpost client</pre>
 <pre class="out">node: loading snapshot: shard 1: 200 of 2672 chunks loaded, 20 GB on disk</pre>
 <p>Once it has caught up:</p>
 <pre class="cmd">./outpost status</pre>
+<p class="look">"Within 1 blocks of the tip" means your copy of every <a href="#g-shard">shard</a> is at most one block behind the newest.</p>
 <pre class="out">server: 142.93.168.228 (OUTPOST_HOST)
 node: synced: every shard is within 1 blocks of the tip</pre>
 <p class="muted">Our node was set up before <code>./outpost provision</code> existed, so we pointed Outpost at it with <code>OUTPOST_HOST</code>. A server made by <code>./outpost provision</code> shows its provider and name on the first line instead.</p>
-
-<div class="concept">
-<p><strong>Read nodes and validators.</strong> Snapchain has two roles, run by the same program. Validators propose and vote on blocks; there is a fixed set of them. A read node, which is what you just started, follows the chain, keeps the full state and answers queries. It never votes. Anyone can run one, and it needs no key or paid service: account and key events from the Optimism chain arrive inside the blocks validators produce.</p>
-<p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so Outpost reads every message back from your node before it says "confirmed".</p>
-</div>
 
 <h3 id="t-login">3. Connect an account</h3>
 <pre class="cmd">./outpost client</pre>
@@ -156,8 +273,19 @@ node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)</pre>
 <p><strong>Storage.</strong> The network only keeps messages for accounts that rent storage. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; when you go over, the oldest are pruned. Storage is bought onchain. Outpost does not buy it; it stops if the account has none.</p>
 </div>
 
+<div class="concept">
+<p><strong>App keys.</strong> You do not sign every post with the custody key. Instead the custody key authorizes an <em>app key</em>, an Ed25519 key the client holds. Since May 2026 this is a plain message to the network, <code>KEY_ADD</code>, with no Optimism transaction and no gas. Each key has:</p>
+<ul>
+  <li><strong>scopes</strong>: the message types it may sign. Outpost asks for casts, reactions and follows only, so it cannot change your profile or verified addresses;</li>
+  <li><strong>a TTL</strong>: it expires after 30 days without use (the maximum is 90);</li>
+  <li><strong>a requesting app</strong>: the FID of the app that asked for it, signed by that app's custody key. That is how anyone can tell which app posted a cast.</li>
+</ul>
+<p>Two details trip people up. The signature uses its own EIP-712 domain, <code>Farcaster KeyAdd</code> with chain ID 1, not the onchain key gateway's domain, so the older helper functions produce signatures the network rejects. And the deadline is in Farcaster time, seconds since 1 January 2021, not Unix time.</p>
+</div>
+
 <p class="muted">The outputs in this step and the next are from mainnet, with our test account (FID 3355358), on 18 October 2026. The warning printed before the first question is left out here, and the home path is shortened.</p>
 <pre class="cmd">./outpost cli login</pre>
+<p class="look">Before it asks you to sign, Outpost shows the custody address, the FID that address owns, its storage units and what the key may do.</p>
 <pre class="out">Is this a test account, and do you accept the above? [y/N] y
 Recovery phrase (input hidden):
 
@@ -174,18 +302,10 @@ Your recovery phrase was not saved anywhere. Revoke this key any time with: ./ou
 scopes: cast_add, cast_remove, reaction_add, reaction_remove, link_add, link_remove
 expires: 2026-11-17T22:50:31.000Z unless used before then</pre>
 
-<div class="concept">
-<p><strong>App keys.</strong> You do not sign every post with the custody key. Instead the custody key authorizes an <em>app key</em>, an Ed25519 key the client holds. Since May 2026 this is a plain message to the network, <code>KEY_ADD</code>, with no Optimism transaction and no gas. Each key has:</p>
-<ul>
-  <li><strong>scopes</strong>: the message types it may sign. Outpost asks for casts, reactions and follows only, so it cannot change your profile or verified addresses;</li>
-  <li><strong>a TTL</strong>: it expires after 30 days without use (the maximum is 90);</li>
-  <li><strong>a requesting app</strong>: the FID of the app that asked for it, signed by that app's custody key. That is how anyone can tell which app posted a cast.</li>
-</ul>
-<p>Two details trip people up. The signature uses its own EIP-712 domain, <code>Farcaster KeyAdd</code> with chain ID 1, not the onchain key gateway's domain, so the older helper functions produce signatures the network rejects. And the deadline is in Farcaster time, seconds since 1 January 2021, not Unix time.</p>
-</div>
-
 <p>Before any account is involved, you can check the signing code against your own node. This builds every message type Outpost uses with throwaway keys, asks the node to validate each one, and checks that two tampered messages are rejected. It sends nothing.</p>
 <pre class="cmd">./outpost cli selftest</pre>
+<details class="out-fold">
+<summary>All 11 checks passed. Show the full output</summary>
 <pre class="out">PASS  KEY_ADD (gasless, scoped, 30-day TTL): node says valid=true, expected true
 PASS  CAST_ADD: node says valid=true, expected true
 PASS  CAST_REMOVE: node says valid=true, expected true
@@ -199,11 +319,13 @@ PASS  CAST_ADD with text changed after signing: node says valid=false, expected 
 PASS  KEY_ADD with TTL widened after signing: node says valid=false, expected false
 
 all 11 checks passed against http://127.0.0.1:13392</pre>
+</details>
 <p class="muted">This run was against our mainnet node, through the tunnel on port 13392. The node's validator checks signatures and message rules, not account state, so it cannot tell you whether a custody signature matches a real account. The unit tests (<code>npm test</code>) cover that with known test vectors.</p>
 
 <h3 id="t-post">4. Read and post</h3>
 <p>Snapchain has no home timeline endpoint. A following feed is the list of accounts you follow (<code>/v1/linksByFid</code>), the latest casts of each (<code>/v1/castsByFid</code>), merged by time. That is one request per account you follow, which is fine on your own node.</p>
 <pre class="cmd">./outpost cli feed --fid 99 --limit 3</pre>
+<p class="look">Each cast takes three lines: time, author and the app that posted it; the text; the author's FID and the cast's hash. The last lines count casts per app.</p>
 <pre class="out">2026-10-18 22:46  @catra.eth  via warpcast (app fid 9152)
   @higherathletics proof  [1 embed]
   9318:0xbe6ca325398da8036c64f40605447a4b965f4231
@@ -235,6 +357,7 @@ recast: 0x06fcb40fa0fbd70a3caa344afd4704b7bd5a046f (confirmed: your node returns
 <h3 id="t-apps">5. Filter by app</h3>
 <p>A cast does not say which app posted it. But it is signed by an app key, and every app key records the FID of the app that requested it. Outpost looks this up on your node for every author (<code>/v1/signersByFid</code>) and labels each cast. In the client, tap an app to show only its casts, again to hide them, again to reset. In the command line:</p>
 <pre class="cmd">./outpost cli feed --fid 2 --limit 2 --exclude 9152</pre>
+<p class="look">With app 9152 (warpcast) hidden, the feed shows casts from other apps and from people's own keys.</p>
 <pre class="out">2026-10-18 22:06  @baseddesigner.eth  via puffinapp (app fid 3355363)
   testing
   196957:0x1fcb5aedc4a0a8ea2372b7f8a6e021400f67b29f
@@ -246,6 +369,7 @@ recast: 0x06fcb40fa0fbd70a3caa344afd4704b7bd5a046f (confirmed: your node returns
     1  via puffinapp (app fid 3355363)
     1  via own key</pre>
 <pre class="cmd">./outpost cli feed --fid 37 --limit 2 --include 16823</pre>
+<p class="look">Only casts from app 16823 (fireflyapp) are left.</p>
 <pre class="out">2026-10-17 05:50  @vitalik.eth  via fireflyapp (app fid 16823)
   Fun fact of the day: Bitcoin mining cost is split about 50/50 between compute capex and electricity. Meanwhile, AI inference is almost completely dominated by compute capex.  [2 embed]
   5650:0x9252885364ac7db01ac427e97dd246b7af619949
@@ -313,6 +437,51 @@ keys added in the web client are revoked from its 'Your app key' panel.</pre>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
 <pre class="cmd">./outpost destroy</pre>
 <p>This deletes the server, the volume and the firewall after you type the server's name. Your account, follows and casts are not affected; they live on the network.</p>
+
+<h2 id="terms">Terms</h2>
+<p>Every term used on this page, in one place. Where a tutorial step explains a term in more depth, the entry links to it.</p>
+<dl class="terms">
+  <dt id="g-app-key">App key</dt>
+  <dd>An Ed25519 key that signs your posts, so the custody key is not needed for each one. Outpost's can only cast, react and follow, and expires 30 days after its last use. <a href="#t-login">Step 3</a>.</dd>
+  <dt id="g-census">Census</dt>
+  <dd>A count of a society's members, active members, casts per day and the apps they post from, computed from your node. <a href="#t-society">Step 7</a>.</dd>
+  <dt id="g-charter">Charter</dt>
+  <dd>Outpost's signed JSON file for a society: its members, which apps, channels and keywords count, and a link to its code of conduct. <a href="#t-society">Step 7</a>.</dd>
+  <dt id="g-custody">Custody address</dt>
+  <dd>The Ethereum address that owns an FID. Its private key comes from your recovery phrase. <a href="#t-login">Step 3</a>.</dd>
+  <dt id="g-fid">FID</dt>
+  <dd>Farcaster ID: the number that is your account, registered on the Optimism chain. Usernames point to it.</dd>
+  <dt id="g-gossip">Gossip</dt>
+  <dd>How nodes pass messages and blocks to one another, over UDP port 3382.</dd>
+  <dt id="g-keyadd"><code>KEY_ADD</code>, <code>KEY_REMOVE</code></dt>
+  <dd>The messages that add and remove an app key. Since May 2026 they go straight to the network, with no Optimism transaction and no gas.</dd>
+  <dt id="g-message">Message</dt>
+  <dd>One action, such as a cast, a like or a follow, signed by an app key. Its hash identifies it; the commands print that hash. <a href="#t-post">Step 4</a>.</dd>
+  <dt id="g-optimism">Optimism</dt>
+  <dd>The blockchain where FIDs are registered and owned. Its events reach your node inside the blocks validators produce, so the node needs no connection to Optimism.</dd>
+  <dt id="g-read-node">Read node</dt>
+  <dd>A Snapchain node that keeps the full state and answers queries. It never votes on blocks, needs no key, and passes your messages on to validators. Anyone can run one. <a href="#t-node">Step 2</a>.</dd>
+  <dt id="g-phrase">Recovery phrase</dt>
+  <dd>The words that hold an account's custody key. Whoever has them can transfer the account. Read the <a href="#warn-h">warning</a> before you use one.</dd>
+  <dt id="g-scopes">Scopes</dt>
+  <dd>The message types an app key may sign.</dd>
+  <dt id="g-shard">Shard</dt>
+  <dd>Snapchain splits its data into shards, each with its own chain of blocks. A node is synced when every shard is at or near the tip.</dd>
+  <dt id="g-snapchain">Snapchain</dt>
+  <dd>The network of nodes that stores Farcaster's data, and the program those nodes run. Outpost runs its official Docker image, version 0.14.3.</dd>
+  <dt id="g-snapshot">Snapshot</dt>
+  <dd>A compressed copy of the network's data. A new node loads it first, then catches up on the blocks since. On 18 October 2026 it was about 400 GB compressed and 557 GB once loaded.</dd>
+  <dt id="g-tunnel">SSH tunnel</dt>
+  <dd>An encrypted connection over SSH that makes a port on the server reachable as a port on your computer. Outpost uses one so the node's API never faces the internet. Your client reaches the node at <code>127.0.0.1:13381</code> by default.</dd>
+  <dt id="g-storage">Storage</dt>
+  <dd>Space an account rents onchain for its messages. One unit bought after July 2025 holds 100 casts, 200 reactions and 200 follows; past that, the oldest are pruned.</dd>
+  <dt id="g-tip">Tip</dt>
+  <dd>The newest block of a shard.</dd>
+  <dt id="g-ttl">TTL</dt>
+  <dd>How long an app key lives without being used: 30 days for Outpost's keys, 90 at most.</dd>
+  <dt id="g-validator">Validator</dt>
+  <dd>One of the fixed set of Snapchain nodes that propose and vote on blocks.</dd>
+</dl>
 
 <h2 id="about">About this project</h2>
 <p>Code: <a href="https://github.com/Spider333/outpost">github.com/Spider333/outpost</a>, MIT licence. Snapchain is GPL-3.0; Outpost only runs its official Docker image and contains none of its code.</p>
