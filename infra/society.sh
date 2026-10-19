@@ -55,7 +55,16 @@ case "$action" in
     cat >"$DIR/gate/gate.ts.tmp"
     [ -s "$DIR/gate/gate.ts.tmp" ] || die "no gate source on stdin"
     mv "$DIR/gate/gate.ts.tmp" "$DIR/gate/gate.ts"
+    # No access log (no `log` in the site), and the loggers that write a request's URI, query,
+    # headers or client IP are dropped: http.log (incl. the error log when the gate is down),
+    # http.handlers (reverse_proxy) and http.stdlib (TLS handshake errors). Start-up and
+    # certificate messages stay.
     cat >"$DIR/caddy/Caddyfile" <<EOF
+{
+	log {
+		exclude http.log http.handlers http.stdlib
+	}
+}
 ${OUTPOST_SOCIETY_HOST} {
 	reverse_proxy 127.0.0.1:${GATE_PORT}
 	header -Server
