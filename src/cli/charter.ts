@@ -14,6 +14,7 @@ import {
   signCharter,
   verifyCharter,
   type AppKey,
+  type Optimism,
   type Charter,
   type CharterBody,
   type Census,
@@ -30,22 +31,29 @@ async function load(src: string | undefined): Promise<unknown> {
   return JSON.parse(readFileSync(src, "utf8"));
 }
 
-async function loadVerified(hub: Hub, src: string | undefined): Promise<Charter> {
+async function loadVerified(hub: Hub, src: string | undefined, chain?: Optimism): Promise<Charter> {
   const c = await load(src);
-  const v = await verifyCharter(c, hub);
+  const v = await verifyCharter(c, hub, chain);
   if (!v.ok) throw new Error(`charter rejected: ${v.problems.join("; ")}`);
   return c as Charter;
 }
 
-function describeVerification(c: Charter, v: Awaited<ReturnType<typeof verifyCharter>>): string {
+function describeVerification(c: Charter, v: Awaited<ReturnType<typeof verifyCharter>>, chain?: Optimism): string {
   if (!v.ok) return `REJECTED: ${v.problems.join("; ")}`;
   const who =
     v.issuerCheck === "custody"
-      ? `signed by the custody address of FID ${c.issuer!.fid} (${v.signer}), checked on your node`
+      ? `signed by the custody address of FID ${c.issuer!.fid} (${v.signer}), checked ${chain ? `on Optimism via ${chain.url}` : "on your node"}`
       : v.issuerCheck === "no-issuer"
         ? `signed by ${v.signer}. It names no issuer FID, so only the address vouches for it`
         : `signed by ${v.signer}`;
-  return `OK: "${c.name}", ${c.members.length} members, ${who}`;
+  return `OK: "${c.name}", ${c.members.length} members, ${who}${c.nodes?.length ? `\nsociety nodes: ${c.nodes.join(", ")}` : ""}`;
+}
+
+// One line on what verification dropped, for commands that read messages.
+export function verificationNote(hub: Hub): string {
+  const v = hub.verifier;
+  if (!v?.checked) return "";
+  return v.failed ? `warning: ${v.summary()}` : `all ${v.checked} messages from the node passed verification`;
 }
 
 export function printCensus(c: Census, names: Map<number, string>) {
@@ -61,7 +69,7 @@ export function printCensus(c: Census, names: Map<number, string>) {
   }
 }
 
-export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
+export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, chain?: Optimism) {
   const [sub, a, b] = args;
   switch (sub) {
     case "new": {
@@ -97,20 +105,20 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
       const signed = await signCharter(body, account);
       writeFileSync(b, JSON.stringify(signed, null, 2) + "\n");
       console.log(`signed by ${account.address}. Wrote ${b}.`);
-      const v = await verifyCharter(signed, hub);
-      console.log(describeVerification(signed, v));
+      const v = await verifyCharter(signed, hub, chain);
+      console.log(describeVerification(signed, v, chain));
       if (!v.ok) process.exitCode = 1;
       return;
     }
     case "verify": {
       const c = (await load(a)) as Charter;
-      const v = await verifyCharter(c, hub);
-      console.log(describeVerification(c, v));
+      const v = await verifyCharter(c, hub, chain);
+      console.log(describeVerification(c, v, chain));
       if (!v.ok) process.exitCode = 1;
       return;
     }
     case "census": {
-      const c = await loadVerified(hub, a);
+      const c = await loadVerified(hub, a, chain);
       const days = b ? Number(b) : 7;
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("days must be 1 to 90");
       const t0 = Date.now();
@@ -121,10 +129,11 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
       console.log(`"${c.name}"`);
       printCensus(result, names);
       console.log(`computed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+      console.log(verificationNote(hub));
       return;
     }
     case "feed": {
-      const c = await loadVerified(hub, a);
+      const c = await loadVerified(hub, a, chain);
       const limit = b ? Number(b) : 20;
       if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("limit must be 1 to 500");
       const items = await charterFeed(new FeedBuilder(hub), c, { limit });
@@ -133,10 +142,11 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey) {
         console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${it.author?.username ? "@" + it.author.username : "fid:" + it.fid}`);
         console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}`);
       }
+      console.log(verificationNote(hub));
       return;
     }
     case "join": {
-      const c = await loadVerified(hub, a);
+      const c = await loadVerified(hub, a, chain);
       const k = key();
       const already = new Set(await followingOf(hub, k.fid));
       const todo = c.members.filter((m) => m !== k.fid && !already.has(m));
