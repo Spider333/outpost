@@ -53,7 +53,8 @@ confirm() {
 
 state_get() {
   [ -f "$STATE_FILE" ] || return 0
-  grep -E "^$1=" "$STATE_FILE" | tail -1 | cut -d= -f2- || true
+  # 2>/dev/null: the watchdog or a destroy can remove the file between the check and the read.
+  grep -E "^$1=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true
 }
 
 state_set() {
@@ -702,7 +703,7 @@ watchdog_status() {
 }
 
 watchdog_run() {
-  local interval="${OUTPOST_WATCHDOG_INTERVAL:-300}" last="" started=0 since now deadline stall line reason
+  local interval="${OUTPOST_WATCHDOG_INTERVAL:-300}" last="" started=0 since now deadline stall line reason pending=""
   since="$(date +%s)"
   while true; do
     if [ ! -f "$STATE_FILE" ]; then
@@ -715,8 +716,12 @@ watchdog_run() {
     stall="$(state_get WATCHDOG_STALL_HOURS)"
     stall="${stall:-2}"
     now="$(date +%s)"
-    reason=""
-    if [ "$now" -ge "$deadline" ]; then
+    # Once it has decided to delete, it retries until the deletion is done: after a partial
+    # delete the server no longer answers, so the stall clock can no longer be trusted.
+    reason="$pending"
+    if [ -n "$reason" ]; then
+      :
+    elif [ "$now" -ge "$deadline" ]; then
       reason="time limit reached"
     else
       line="$(node_progress)"
@@ -742,6 +747,7 @@ watchdog_run() {
         rm -f "$WATCHDOG_PID"
         return 0
       fi
+      pending="$reason"
       say "$(date -u +%H:%M) destroy failed; trying again in $interval seconds"
     fi
     sleep "$interval"

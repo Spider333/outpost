@@ -83,9 +83,10 @@ echo "ok: leaves a moving node alone; watchdog stop keeps the server"
 # 5. SSH down, after the node has started, for longer than the stall limit is not a stall;
 # progress after it comes back keeps the server; a manual destroy ends the watchdog.
 start 100 "catching up: furthest shard is 500 blocks behind"
+"$OP" watchdog start --hours 100 --stall-hours 4 >/dev/null
 sleep 2
 : >"$FAKE_STATE/ssh-down"
-sleep 5
+sleep 6
 server_exists || fail "deleted while SSH was down"
 echo "catching up: furthest shard is 400 blocks behind" >"$FAKE_STATE/progress"
 rm -f "$FAKE_STATE/ssh-down"
@@ -140,9 +141,21 @@ for _ in 1 2 3 4 5; do kill -0 "$(wd_pid)" 2>/dev/null || break; sleep 1; done
 ! kill -0 "$(wd_pid)" 2>/dev/null || fail "watchdog still running after the volume was deleted"
 echo "ok: do, volume delete failing (503): retries until the volume is deleted"
 
+# 8c. A stall-triggered delete fails after the server is gone (volume answers 503): the
+# watchdog retries at once, not only at the time limit.
+start 100 "catching up: furthest shard is 500 blocks behind"
+: >"$FAKE_STATE/volume-503"
+for _ in $(seq 1 10); do server_exists || break; sleep 1; done
+! server_exists || fail "stall: server not deleted"
+sleep 3
+rm -f "$FAKE_STATE/volume-503"
+for _ in $(seq 1 8); do ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || break; sleep 1; done
+! ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "stall: leftover volume not retried before the time limit"
+echo "ok: a failed stall delete is retried until done"
+
 # 9b. A watchdog of another checkout (same command, other path) is not killed by stop.
 mkdir -p "$WORK/other"
-printf '#!/usr/bin/env bash\nsleep 1000\n' >"$WORK/other/outpost"
+printf '#!/usr/bin/env bash\nexec sleep 1000\n' >"$WORK/other/outpost"
 chmod +x "$WORK/other/outpost"
 "$WORK/other/outpost" watchdog run &
 other=$!
