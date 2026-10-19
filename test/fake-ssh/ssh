@@ -5,6 +5,8 @@
 S="${FAKE_STATE:?}"
 for a in "$@"; do [ "$a" = "-O" ] && exit 0; done # tunnel control (check, exit)
 [ -e "$S/ssh-down" ] && exit 255
+# Like a command that hangs on the server.
+[ -e "$S/ssh-hang" ] && exec sleep 1000
 # A deleted server does not answer either.
 up=0; for f in "$S"/droplet.* "$S"/hz.server.*; do [ -e "$f" ] && up=1; done
 [ "$up" -eq 1 ] || exit 255

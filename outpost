@@ -103,12 +103,23 @@ node_host() {
 # destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts.
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=30)
 
-node_ssh() {
+node_ssh() { node_ssh_for 0 "$@"; }
+
+# Like node_ssh, but with $1 > 0 the ssh is killed after $1 seconds, so a command that hangs
+# on the server (a stuck Docker daemon) cannot block the caller. perl's alarm survives exec,
+# and perl is on Linux and macOS (which has no `timeout`).
+node_ssh_for() {
+  local secs="$1"
+  shift
   mkdir -p "$STATE_DIR"
   chmod 700 "$STATE_DIR"
   local key host
   host="$(node_host)"
   key="$(ssh_key_path)"
+  if [ "$secs" -gt 0 ]; then
+    perl -e 'alarm shift; exec @ARGV or exit 127' "$secs" ssh -i "$key" "${SSH_OPTS[@]}" "root@$host" "$@"
+    return
+  fi
   ssh -i "$key" "${SSH_OPTS[@]}" "root@$host" "$@"
 }
 
@@ -379,7 +390,7 @@ cmd_node() {
 # Prints one line: snapshot progress, catch-up state, or "synced".
 node_progress() {
   # shellcheck disable=SC2016 # runs on the server; expands there
-  node_ssh 'set -o pipefail
+  node_ssh_for "${OUTPOST_SSH_CHECK_SECS:-60}" 'set -o pipefail
     info=$(curl -s -m 5 http://127.0.0.1:3381/v1/info || true)
     if [ -n "$info" ]; then
       # All shards. Shard 0 has no casts, but app keys are checked there.
@@ -657,11 +668,17 @@ check_hours() {
 fmt_time() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -r "$1" '+%Y-%m-%d %H:%M UTC'; }
 
 # Checks the command line too: after a restart the saved pid can belong to another program,
-# or to the watchdog of another checkout. (Not checked: a second state dir in this checkout.)
+# or to the watchdog of another checkout. It must be exactly bash running this checkout's
+# outpost. (Not checked: a second state dir in this checkout.)
 watchdog_running() {
-  local pid
+  local pid cmd
   pid="$(cat "$WATCHDOG_PID" 2>/dev/null || true)"
-  [ -n "$pid" ] && ps -p "$pid" -o command= 2>/dev/null | grep -qF "$OUTPOST_DIR/outpost watchdog run"
+  [ -n "$pid" ] || return 1
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null)" || return 1
+  case "$cmd" in
+    bash" $OUTPOST_DIR/outpost watchdog run" | */bash" $OUTPOST_DIR/outpost watchdog run") return 0 ;;
+  esac
+  return 1
 }
 
 watchdog_start() {

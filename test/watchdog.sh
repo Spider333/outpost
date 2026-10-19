@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 export FAKE_STATE="$WORK/provider" OUTPOST_STATE_DIR="$WORK/outpost"
 export PATH="$ROOT/test/fake-ssh:$ROOT/test/fake-providers:$PATH"
-export OUTPOST_HOUR_SECS=1 OUTPOST_WATCHDOG_INTERVAL=1
+export OUTPOST_HOUR_SECS=1 OUTPOST_WATCHDOG_INTERVAL=1 OUTPOST_SSH_CHECK_SECS=2
 mkdir -p "$FAKE_STATE"
 ssh-keygen -q -t ed25519 -N "" -f "$WORK/key"
 export OUTPOST_SSH_KEY="$WORK/key"
@@ -47,6 +47,8 @@ out="$("$OP" status)"
 sleep 4
 server_exists || fail "deleted before the time limit (no node yet is not a stall)"
 gone_within 8 || fail "not deleted at the time limit"
+# The droplet goes first; wait for the watchdog to finish the rest before counting.
+for _ in 1 2 3 4 5; do kill -0 "$(wd_pid)" 2>/dev/null || break; sleep 1; done
 [ "$(find "$FAKE_STATE" -type f ! -name calls.log ! -name progress | wc -l)" -eq 0 ] || fail "time limit: resources left"
 grep -q "time limit reached" "$OUTPOST_STATE_DIR/watchdog.log" || fail "time limit: no log line"
 echo "ok: deletes at the time limit, not before"
@@ -153,16 +155,27 @@ for _ in $(seq 1 8); do ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || break; slee
 ! ls "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "stall: leftover volume not retried before the time limit"
 echo "ok: a failed stall delete is retried until done"
 
-# 9b. A watchdog of another checkout (same command, other path) is not killed by stop.
-mkdir -p "$WORK/other"
-printf '#!/usr/bin/env bash\nexec sleep 1000\n' >"$WORK/other/outpost"
-chmod +x "$WORK/other/outpost"
-"$WORK/other/outpost" watchdog run &
-other=$!
-echo "$other" >"$OUTPOST_STATE_DIR/watchdog.pid"
-"$OP" watchdog stop >/dev/null
-kill -0 "$other" 2>/dev/null || fail "watchdog stop killed another checkout's watchdog"
-kill "$other"; wait "$other" 2>/dev/null || true
+# 8d. A progress check that hangs on the server does not block the time limit.
+start 3 "catching up: furthest shard is 500 blocks behind"
+: >"$FAKE_STATE/ssh-hang"
+gone_within 12 || fail "not deleted at the time limit while the progress check hung"
+rm -f "$FAKE_STATE/ssh-hang"
+echo "ok: a hung progress check does not block the time limit"
+
+# 9b. A watchdog of another checkout is not killed by stop: one at another path, and one at a
+# path that ends with this checkout's path. The stand-in stays a bash process (no exec), like
+# a real watchdog, and holds no long-lived child.
+for dir in "$WORK/other" "$WORK/nest$ROOT"; do
+  mkdir -p "$dir"
+  printf '#!/usr/bin/env bash\nwhile :; do sleep 1; done\n' >"$dir/outpost"
+  chmod +x "$dir/outpost"
+  "$dir/outpost" watchdog run &
+  other=$!
+  echo "$other" >"$OUTPOST_STATE_DIR/watchdog.pid"
+  "$OP" watchdog stop >/dev/null
+  kill -0 "$other" 2>/dev/null || fail "watchdog stop killed the watchdog of $dir"
+  kill "$other"; wait "$other" 2>/dev/null || true
+done
 echo "ok: another checkout's watchdog is not killed"
 
 # 9. A saved pid that now belongs to another program (after a restart) is left alone.
