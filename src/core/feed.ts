@@ -119,10 +119,8 @@ export class FeedBuilder {
         for (const m of page.items) {
           const b = m.data.userDataBody;
           if (!b) continue;
-          if (this.hub.verifier && (await this.apps.appOf(fid, m.signer)).keyCheck === "false") {
-            this.hub.verifier.drop("signer"); // a name or picture set with a key that is not theirs
-            continue;
-          }
+          // A name or picture set with a key that is not theirs, or that could not be checked.
+          if (this.hub.verifier && !this.hub.verifier.admits((await this.apps.appOf(fid, m.signer)).keyCheck)) continue;
           if (b.type === "USER_DATA_TYPE_USERNAME") prof.username = b.value;
           else if (b.type === "USER_DATA_TYPE_DISPLAY") prof.displayName = b.value;
           else if (b.type === "USER_DATA_TYPE_PFP") prof.pfp = b.value;
@@ -176,9 +174,9 @@ export class FeedBuilder {
       const refs = await mapLimit(batch, concurrency, (m) => this.apps.appOf(m.data.fid, m.signer));
       batch.forEach((m, j) => {
         const ref = refs[j]!;
-        // Signed by a key that provably is not the author's: a forgery, never shown.
-        if (ref.keyCheck === "false") return this.hub.verifier?.drop("signer");
         if (out.length < limit && passesFilter(ref, filter)) {
+          // A forged key is never shown; an unchecked one only when the member asked (verify.ts).
+          if (this.hub.verifier && !this.hub.verifier.admits(ref.keyCheck)) return;
           const item = toItem(m, ref);
           if (item) {
             out.push(item);

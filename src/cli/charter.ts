@@ -53,7 +53,8 @@ function describeVerification(c: Charter, v: Awaited<ReturnType<typeof verifyCha
 export function verificationNote(hub: Hub): string {
   const v = hub.verifier;
   if (!v?.checked) return "";
-  return v.failed ? `warning: ${v.summary()}` : `all ${v.checked} messages from the node passed verification`;
+  if (!v.failed && !v.unverified) return v.summary();
+  return `warning: ${v.summary()}${v.unverified && !v.showUnverified ? " Run again with --show-unverified to see them, marked." : ""}`;
 }
 
 export function printCensus(c: Census, names: Map<number, string>) {

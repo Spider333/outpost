@@ -38,9 +38,10 @@ import type { HexString, HubMessage } from "./hub.js";
 export type DropReason = "altered" | "signature" | "mismatch" | "signer";
 
 // "onchain": the KeyRegistry lists the key for this FID. "confirmed": a second node lists it as
-// one of the FID's active keys. "unverified": not checkable (no RPC or second node, or they
-// failed). "false": the key is not (or no longer) the FID's: on Optimism, or per the second node.
-export type KeyCheck = "onchain" | "confirmed" | "unverified" | "false";
+// one of the FID's active keys. "own": the member's own app key, held by this client.
+// "unverified": not checkable (no RPC or second node, or they failed); held back unless the
+// member asks to see them. "false": the key is not (or no longer) the FID's: never shown.
+export type KeyCheck = "onchain" | "confirmed" | "own" | "unverified" | "false";
 
 export interface KeyRegistry {
   keyState(fid: number, key: HexString): Promise<"added" | "removed" | "none">;
@@ -215,8 +216,12 @@ export async function checkMessage(m: HubMessage): Promise<"ok" | "altered" | "s
 
 export class Verifier {
   checked = 0;
+  // Messages whose key could not be checked: hidden unless `showUnverified`. Not failures.
+  unverified = 0;
+  showUnverified = false;
   readonly dropped: Record<DropReason, number> = { altered: 0, signature: 0, mismatch: 0, signer: 0 };
   private keys = new Map<string, Promise<KeyCheck>>();
+  private own = new Set<string>();
 
   constructor(
     readonly chain?: KeyRegistry,
@@ -229,6 +234,32 @@ export class Verifier {
 
   drop(reason: DropReason) {
     this.dropped[reason]++;
+  }
+
+  // Whether a message signed with a key in state `k` may be used. Fails closed: a forged key
+  // is dropped, an unchecked one is held back (and counted) unless the member asked for it.
+  admits(k: KeyCheck | undefined): boolean {
+    if (k === "false") {
+      this.drop("signer");
+      return false;
+    }
+    if (k === "unverified") {
+      this.unverified++;
+      return this.showUnverified;
+    }
+    return true;
+  }
+
+  // Counts start again (caches stay), e.g. when the member switches showUnverified on.
+  reset() {
+    this.checked = 0;
+    this.unverified = 0;
+    for (const k of Object.keys(this.dropped) as DropReason[]) this.dropped[k] = 0;
+  }
+
+  // The member's own app key: this client holds it, so what it signed needs no second opinion.
+  trust(fid: number, key: HexString) {
+    this.own.add(`${fid}:${key.toLowerCase()}`);
   }
 
   // The messages that pass, rebuilt from their signed bytes; `asked` says whether a message
@@ -248,6 +279,7 @@ export class Verifier {
   // `claimedOnchain`: the node says this is an onchain key. Errors give "unverified" and are
   // not remembered, so the next look tries again.
   keyCheck(fid: number, key: HexString, claimedOnchain: boolean): Promise<KeyCheck> {
+    if (this.own.has(`${fid}:${key.toLowerCase()}`)) return Promise.resolve("own");
     const k = `${fid}:${key.toLowerCase()}:${claimedOnchain}`;
     let p = this.keys.get(k);
     if (!p) {
@@ -272,6 +304,8 @@ export class Verifier {
     return (await this.second.listsKey(fid, key)) ? "confirmed" : "false";
   }
 
+  // Tells "failed verification" (the node altered or forged something) apart from "could not
+  // be checked" (no answer about a key). Never says "all passed" while either happened.
   summary(): string {
     const d = this.dropped;
     const parts = [
@@ -280,6 +314,15 @@ export class Verifier {
       d.signer && `${d.signer} signed by a key that is not the author's`,
       d.mismatch && `${d.mismatch} not matching the request`,
     ].filter(Boolean);
-    return `Your node sent ${this.failed} of ${this.checked} messages that failed verification${parts.length ? ` (${parts.join(", ")})` : ""}; they are not shown.`;
+    const out: string[] = [];
+    if (this.failed) out.push(`Your node sent ${this.failed} of ${this.checked} messages that failed verification${parts.length ? ` (${parts.join(", ")})` : ""}; they are not shown.`);
+    if (this.unverified) {
+      out.push(
+        this.showUnverified
+          ? `${this.unverified} messages are shown although their signing key could not be checked (the second node is off or did not answer); they are marked "signer not verified".`
+          : `${this.unverified} messages were hidden because their signing key could not be checked (the second node is off or did not answer).`,
+      );
+    }
+    return out.join(" ") || `All ${this.checked} messages from the node passed verification.`;
   }
 }
