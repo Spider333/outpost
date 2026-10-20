@@ -28,12 +28,12 @@ Tutorial, with the output of every step from a real run: https://spider333.githu
 You need:
 
 - A DigitalOcean (`doctl`) or Hetzner (`hcloud`) account, logged in. Or any Ubuntu 24.04
-  server with root SSH and 1.2 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
+  server with root SSH and at least 1 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
 - Node.js 20 or newer, for the client.
 - A test account for Farcaster that already has storage.
 
 ```
-./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean or Hetzner), billed by the hour
+./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean; 1 TB on Hetzner), billed by the hour
 ./outpost node        # start a Snapchain read node on it; first sync took about 6 hours on our test server
 ./outpost client      # open http://127.0.0.1:8381
 ```
@@ -48,6 +48,10 @@ When you are done:
 Every command is safe to run twice. `./outpost provision --dry-run` and
 `./outpost destroy --dry-run` print the exact provider commands without running them.
 `./outpost status` shows the server and how far the node has synced.
+
+Just trying it? `./outpost provision --watchdog 24` deletes the server for you after 24 hours,
+or after 2 hours with no progress. Ran it? [VOUCHER.md](VOUCHER.md) has a checklist and a
+draft cast.
 
 ## Before you paste a recovery phrase
 
@@ -74,7 +78,14 @@ flowchart LR
 ```
 
 - **provision** creates a server, a 1.2 TB volume (`--disk` to change) and a firewall that opens
-  only SSH (22/tcp) and gossip (3382/udp).
+  only SSH (22/tcp) and gossip (3382/udp). On Hetzner the volume is 1 TB, because new Hetzner
+  accounts can hold at most 1024 GB of volumes; the data fits, since Outpost never keeps the
+  snapshot and the database on the volume at once.
+- **watchdog**: `provision --watchdog <hours>`, or `./outpost watchdog start --hours <n>` later,
+  deletes the server, volume and firewall when the time is up, or when the node shows the same
+  progress for 2 hours (`--stall-hours`) once it has started. It runs on your computer, because
+  deleting needs your provider login, which never goes to the server. If the computer sleeps,
+  it acts when it wakes. `./outpost watchdog stop` keeps the server; `./outpost status` shows it.
 - **node** runs the official `farcasterxyz/snapchain` image, pinned to 0.14.3, as a read node.
   The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone submit
   messages through it. It does not use the official installer, which needs a terminal and can
@@ -155,8 +166,8 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
   become a mention. There is no notifications view.
 - `./outpost cli selftest` asks the node to validate messages, which a society node's gate does
   not allow. Run it over your own node's SSH tunnel.
-- Outpost prints DigitalOcean prices only. New Hetzner accounts can have a volume size limit below
-  1.2 TB; ask Hetzner support to raise it if `provision` fails.
+- Outpost prints DigitalOcean prices only. On Hetzner it asks for a 1 TB volume, because new
+  Hetzner accounts can hold at most 1024 GB of volumes.
 - The node costs money for as long as it exists, whether or not you use the client.
 
 ## Shard 0 did not load
@@ -174,17 +185,20 @@ npm ci
 npm run typecheck
 npm test                         # unit tests, including known test vectors
 bash test/providers.sh           # provision and destroy, twice each, against fake doctl and hcloud
+bash test/watchdog.sh            # the watchdog, with a one-second hour (not in CI: timing-sensitive)
 bash test/snapshot-restore.sh    # Linux only: the snapshot loader against a local fake bucket
 ```
 
-CI runs all of these and shellcheck on pull requests and pushes to `main`. Tests against a live node
-are in [CONTRIBUTING.md](CONTRIBUTING.md). Outputs from real runs on mainnet and a local devnet
-are saved in [docs/evidence/](docs/evidence/README.md).
+CI runs all of these except the watchdog test, plus shellcheck, on pull requests and pushes to
+`main`. Tests against a live node are in [CONTRIBUTING.md](CONTRIBUTING.md). Outputs from real
+runs on mainnet and a local devnet are saved in [docs/evidence/](docs/evidence/README.md).
 
 ## Project layout
 
 ```
-outpost              the CLI: provision, node, client, status, cli, uninstall, destroy
+outpost              the CLI: provision, node, client, status, cli, uninstall, destroy, watchdog,
+                     society, members
+VOUCHER.md           checklist and draft cast for people who vouch for a run
 infra/               cloud-init, node setup, snapshot loader, phone access, society mode
 src/core/            protocol code: node HTTP client, message checks, accounts, app keys,
                      writes, feed, app attribution, charters, census (Node and browsers)
