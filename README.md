@@ -159,8 +159,8 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 
 - Outpost does not create accounts or buy storage. Bring an account that already has storage.
 - The recovery-phrase login is for test accounts. With a real account, use the wallet path.
-- An account made in the Farcaster app keeps its custody key inside that app, and the app's
-  built-in wallet signs with a different address. So such an account cannot connect to Outpost
+- An account made in the Farcaster app keeps its custody key inside that app, and as far as we
+  can tell the app's built-in wallet uses a separate address. So such an account cannot connect to Outpost
   without exporting its recovery phrase, which we advise against. The app's own "approve a
   connected app" flow would work, but it adds an onchain key with full access and no expiry that
   Outpost cannot revoke, so Outpost does not use it. Try Outpost with a test account, and keep
