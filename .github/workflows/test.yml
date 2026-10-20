@@ -19,7 +19,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: bash test/providers.sh
+      - run: bash test/watchdog.sh
       # Linux only (GNU df and split). Run as root like the real loader.
       - run: sudo bash test/snapshot-restore.sh
       # shellcheck is preinstalled on GitHub's Ubuntu runners.
-      - run: shellcheck outpost infra/*.sh test/*.sh
+      - run: shellcheck outpost infra/*.sh test/*.sh scripts/*.sh
