@@ -2,8 +2,17 @@
 
 Fixes for Snapchain, the Farcaster docs and the hub-monorepo examples, found while building
 Outpost. The drafts with a branch name are branches in local clones of the upstream repos (the
-`upstream/` folder, which is not part of this repo). None has been pushed or opened yet. Each is
-tested on our node before it is opened, and the Tested column says what has been run.
+`upstream/` folder, which is not part of this repo). Each is tested on our node before it is
+opened, and the Tested column says what has been run.
+
+Opened on 20 Oct 2026:
+- 1: [snapchain #1055](https://github.com/farcasterxyz/snapchain/pull/1055)
+- 4: [hub-monorepo #2745](https://github.com/farcasterxyz/hub-monorepo/pull/2745), with yarn.lock regenerated
+- 5: issue [snapchain #1056](https://github.com/farcasterxyz/snapchain/issues/1056)
+- 6: issue [snapchain #1057](https://github.com/farcasterxyz/snapchain/issues/1057)
+
+Not opened: 2 overlaps snapchain #1049 and 3 overlaps docs #470 (both opened by others on
+19 Oct); 7 is not compiled yet.
 
 Already covered by someone else's open PR, so we skip them:
 snapchain #1036 (issue #1030), #1041 (bootstrap needs a TTY), #1040 (README requirements),
