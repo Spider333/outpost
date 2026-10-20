@@ -159,6 +159,12 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 
 - Outpost does not create accounts or buy storage. Bring an account that already has storage.
 - The recovery-phrase login is for test accounts. With a real account, use the wallet path.
+- An account made in the Farcaster app keeps its custody key inside that app, and the app's
+  built-in wallet signs with a different address. So such an account cannot connect to Outpost
+  without exporting its recovery phrase, which we advise against. The app's own "approve a
+  connected app" flow would work, but it adds an onchain key with full access and no expiry that
+  Outpost cannot revoke, so Outpost does not use it. Try Outpost with a test account, and keep
+  using the Farcaster app for your main one.
 - App labels come from the key that signed each cast. Keys that people signed for themselves all
   show as "own key", and a cast whose key is no longer listed shows as "unknown key".
 - Casts you write are text up to 1,024 bytes (the limit for a normal account) with up to 4
