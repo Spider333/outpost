@@ -816,9 +816,12 @@ watchdog_stop() {
   if [ ! -f "$STATE_FILE" ]; then say "watchdog off; there is no server here any more"; return 0; fi
   state_set WATCHDOG_DEADLINE ""
   # Killing the watchdog does not stop a destroy it has already started; it only stops retries.
-  if [ "$was_running" -eq 1 ] && [ -n "$deleting" ]; then
+  if [ "$was_running" -eq 1 ] && [ "$deleting" = running ]; then
     say "watchdog off, but it had already started deleting the server. That attempt carries on and"
     say "is not retried: check with ./outpost status, and run ./outpost destroy if anything is left."
+  elif [ "$was_running" -eq 1 ] && [ "$deleting" = retry ]; then
+    say "watchdog off. Its last attempt to delete the server failed, so the server may still exist:"
+    say "run ./outpost destroy to finish deleting it."
   else
     say "watchdog off: the server stays until you run ./outpost destroy"
   fi
@@ -878,12 +881,13 @@ watchdog_run() {
     fi
     if [ -n "$reason" ]; then
       say "$(date -u +%H:%M) $reason: deleting the server"
-      state_set WATCHDOG_DELETING "$now"
+      state_set WATCHDOG_DELETING running
       if "$OUTPOST_DIR/outpost" destroy --yes; then
         rm -f "$WATCHDOG_PID"
         return 0
       fi
       pending="$reason"
+      [ ! -f "$STATE_FILE" ] || state_set WATCHDOG_DELETING retry
       say "$(date -u +%H:%M) destroy failed; trying again in $interval seconds"
     fi
     sleep "$interval"

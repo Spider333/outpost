@@ -226,3 +226,14 @@ out="$("$OP" watchdog stop)"
 unset FAKE_DELETE_SECS
 gone_within 10 || fail "stop during delete: the delete did not finish"
 echo "ok: stop during a delete says the delete carries on"
+
+# 13. Stop while waiting to retry a failed delete says the server may still exist.
+start 1 "node container is not running"
+: >"$FAKE_STATE/volume-503"
+for _ in $(seq 1 15); do grep -q "destroy failed" "$OUTPOST_STATE_DIR/watchdog.log" 2>/dev/null && break; sleep 1; done
+grep -q "destroy failed" "$OUTPOST_STATE_DIR/watchdog.log" || fail "stop between retries: no failed delete to retry"
+out="$("$OP" watchdog stop)"
+[[ "$out" == *"last attempt to delete the server failed"* && "$out" != *"carries on"* ]] || fail "stop between retries said: $out"
+rm -f "$FAKE_STATE/volume-503"
+"$OP" destroy --yes >/dev/null
+echo "ok: stop between retries says the delete did not finish"
