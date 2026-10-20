@@ -3,6 +3,8 @@
 x-common: &common
   image: farcasterxyz/snapchain:0.14.3
   init: true
+  # Cap each node log at 3 x 50 MB. Uncapped logs filled the devbox disk on 19 Oct.
+  logging: { driver: json-file, options: { max-size: "50m", max-file: "3" } }
 services:
   node1:
     <<: *common
