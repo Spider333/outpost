@@ -327,7 +327,7 @@ cmd_provision() {
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || die "server name must be lowercase letters, digits and dashes"
-  [ -z "$watch" ] || check_hours --watchdog "$watch"
+  if [ -n "$watch" ]; then check_hours --watchdog "$watch"; watch=$((10#$watch)); fi
   provider="$(pick_provider "$provider")"
   # New Hetzner accounts can hold at most 1024 GB of volumes, so Hetzner gets 1000 GB.
   if [ -z "$disk" ]; then
@@ -763,8 +763,12 @@ HOUR_SECS="${OUTPOST_HOUR_SECS:-3600}" # tests shorten the hour
 WATCHDOG_PID="$STATE_DIR/watchdog.pid"
 WATCHDOG_LOG="$STATE_DIR/watchdog.log"
 
+# Hours are read as decimal (08 is 8; bash would read it as octal) and capped at 720 (30 days),
+# so a typo cannot overflow the deadline. Callers then use $((10#$value)).
 check_hours() {
-  if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -lt 1 ]; then die "$1 takes a whole number of hours, at least 1"; fi
+  if ! [[ "$2" =~ ^[0-9]{1,4}$ ]] || [ $((10#$2)) -lt 1 ] || [ $((10#$2)) -gt 720 ]; then
+    die "$1 takes a whole number of hours from 1 to 720"
+  fi
 }
 
 fmt_time() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -r "$1" '+%Y-%m-%d %H:%M UTC'; }
@@ -787,12 +791,14 @@ watchdog_start() {
   local hours="$1" stall="$2" deadline
   check_hours --hours "$hours"
   check_hours --stall-hours "$stall"
+  hours=$((10#$hours)) stall=$((10#$stall))
   if [ -n "${OUTPOST_HOST:-}" ] || [ -z "$(state_get NAME)" ] || [ -z "$(state_get PROVIDER)" ]; then
     die "the watchdog only deletes a server made here by ./outpost provision"
   fi
   if watchdog_running; then kill "$(cat "$WATCHDOG_PID")" 2>/dev/null || true; fi
   deadline=$(($(date +%s) + hours * HOUR_SECS))
   state_set WATCHDOG_DEADLINE "$deadline"
+  state_set WATCHDOG_DELETING ""
   state_set WATCHDOG_STALL_HOURS "$stall"
   nohup "$OUTPOST_DIR/outpost" watchdog run >>"$WATCHDOG_LOG" 2>&1 </dev/null &
   echo $! >"$WATCHDOG_PID"
@@ -803,10 +809,19 @@ watchdog_start() {
 }
 
 watchdog_stop() {
-  if watchdog_running; then kill "$(cat "$WATCHDOG_PID")" 2>/dev/null || true; fi
+  local was_running=0 deleting
+  deleting="$(state_get WATCHDOG_DELETING)"
+  if watchdog_running; then was_running=1; kill "$(cat "$WATCHDOG_PID")" 2>/dev/null || true; fi
   rm -f "$WATCHDOG_PID"
-  if [ -f "$STATE_FILE" ]; then state_set WATCHDOG_DEADLINE ""; fi
-  say "watchdog off: the server stays until you run ./outpost destroy"
+  if [ ! -f "$STATE_FILE" ]; then say "watchdog off; there is no server here any more"; return 0; fi
+  state_set WATCHDOG_DEADLINE ""
+  # Killing the watchdog does not stop a destroy it has already started; it only stops retries.
+  if [ "$was_running" -eq 1 ] && [ -n "$deleting" ]; then
+    say "watchdog off, but it had already started deleting the server. That attempt carries on and"
+    say "is not retried: check with ./outpost status, and run ./outpost destroy if anything is left."
+  else
+    say "watchdog off: the server stays until you run ./outpost destroy"
+  fi
 }
 
 watchdog_status() {
@@ -833,7 +848,8 @@ watchdog_run() {
     deadline="$(state_get WATCHDOG_DEADLINE)"
     [ -n "$deadline" ] || { say "$(date -u +%H:%M) watchdog turned off"; return 0; }
     stall="$(state_get WATCHDOG_STALL_HOURS)"
-    stall="${stall:-2}"
+    [[ "$stall" =~ ^[0-9]{1,4}$ ]] || stall=2
+    stall=$((10#$stall))
     now="$(date +%s)"
     # Once it has decided to delete, it retries until the deletion is done: after a partial
     # delete the server no longer answers, so the stall clock can no longer be trusted.
@@ -862,6 +878,7 @@ watchdog_run() {
     fi
     if [ -n "$reason" ]; then
       say "$(date -u +%H:%M) $reason: deleting the server"
+      state_set WATCHDOG_DELETING "$now"
       if "$OUTPOST_DIR/outpost" destroy --yes; then
         rm -f "$WATCHDOG_PID"
         return 0

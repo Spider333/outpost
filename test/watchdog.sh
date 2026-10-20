@@ -194,3 +194,35 @@ find "$FAKE_STATE" -type f -delete
 ! server_exists || fail "--watchdog 0 still created a server"
 ! OUTPOST_HOST=192.0.2.1 "$OP" watchdog start >/dev/null 2>&1 || fail "watchdog started for an OUTPOST_HOST server"
 echo "ok: refuses bad hours and servers it did not make"
+
+# 11. Hours are decimal (08 is 8, 0024 is 24), and anything over 720 or too long is refused
+# before a server exists.
+for bad in 721 99999999999999999999 1e3 -5 8.5; do
+  find "$FAKE_STATE" -type f -delete
+  ! "$OP" provision --provider "do" --yes --no-wait --watchdog "$bad" >/dev/null 2>&1 || fail "--watchdog $bad accepted"
+  ! server_exists || fail "--watchdog $bad still created a server"
+done
+for h in 08 0024; do
+  start "$h" "node container is not running"
+  left=$(( $(grep '^WATCHDOG_DEADLINE=' "$OUTPOST_STATE_DIR/state" | cut -d= -f2) - $(date +%s) ))
+  want=$((10#$h))
+  if [ "$left" -lt $((want - 2)) ] || [ "$left" -gt "$want" ]; then fail "--watchdog $h set $left hours, not $want"; fi
+  kill -0 "$(wd_pid)" 2>/dev/null || fail "--watchdog $h: watchdog not running"
+  finish "--watchdog $h"
+done
+start 100 "node container is not running"
+"$OP" watchdog start --hours 09 --stall-hours 03 >/dev/null || fail "watchdog start --hours 09 failed"
+grep -qx 'WATCHDOG_STALL_HOURS=3' "$OUTPOST_STATE_DIR/state" || fail "--stall-hours 03 not stored as 3"
+finish "watchdog start --hours 09"
+echo "ok: hours with leading zeros are decimal; huge or out-of-range hours are refused first"
+
+# 12. Stop while the watchdog is already deleting says so, and the delete still finishes.
+export FAKE_DELETE_SECS=4
+start 1 "node container is not running"
+for _ in $(seq 1 10); do grep -q "deleting the server" "$OUTPOST_STATE_DIR/watchdog.log" 2>/dev/null && break; sleep 1; done
+grep -q "deleting the server" "$OUTPOST_STATE_DIR/watchdog.log" || fail "stop during delete: the delete never started"
+out="$("$OP" watchdog stop)"
+[[ "$out" == *"already started deleting"* && "$out" != *"the server stays"* ]] || fail "stop during delete said: $out"
+unset FAKE_DELETE_SECS
+gone_within 10 || fail "stop during delete: the delete did not finish"
+echo "ok: stop during a delete says the delete carries on"

@@ -15,7 +15,8 @@ case "$1 $2 $3" in
   "compute droplet create") echo "d-1 $4 203.0.113.7" > "$S/droplet.$4"
     # Like DigitalOcean on a bad day: --volumes is accepted but nothing is attached.
     [ -n "${FAKE_SKIP_ATTACH:-}" ] || : > "$S/attached" ;;
-  "compute droplet delete") rm -f "$S/droplet.$4" "$S/attached"
+  "compute droplet delete") [ -z "${FAKE_DELETE_SECS:-}" ] || sleep "$FAKE_DELETE_SECS"
+    rm -f "$S/droplet.$4" "$S/attached"
     # Like the network dropping in the middle of a destroy.
     if [ -e "$S/drop-after-droplet-delete" ]; then : >"$S/api-down"; fi ;;
   "compute volume list") list volume
