@@ -97,12 +97,14 @@ options:
                       ${DEFAULT_OPTIMISM_RPC}; "off" skips them)
   --check-node <url>  second node asked about gasless app keys, which have no onchain record
                       (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}; "off" skips it)
+  --show-unverified   also show casts whose signing key could not be checked (marked); by
+                      default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
 
 Every message read from the node is verified here (hash, signature, account) before use.
 `;
 
-function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "check-node"?: string }): { hub: Hub; chain?: Optimism } {
+function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "check-node"?: string; "show-unverified"?: boolean }): { hub: Hub; chain?: Optimism } {
   const rpc = v.rpc ?? process.env.OUTPOST_OPTIMISM_RPC ?? DEFAULT_OPTIMISM_RPC;
   const chain = rpc === "off" ? undefined : new Optimism(rpc);
   const url = v.node ?? process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381";
@@ -114,7 +116,11 @@ function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "ch
   const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? DEFAULT_CHECK_NODE;
   const second = check === "off" ? undefined : secondNode(checkNodeUrl(check), auth.url);
   if (check !== "off" && !second) console.error("note: the second node is the node being read, so gasless keys are not checked");
-  return { hub: new Hub({ ...auth, verifier: new Verifier(chain, second) }), chain };
+  const verifier = new Verifier(chain, second);
+  verifier.showUnverified = !!v["show-unverified"];
+  const own = loadKey();
+  if (own) verifier.trust(own.fid, own.publicKey);
+  return { hub: new Hub({ ...auth, verifier }), chain };
 }
 
 
@@ -225,7 +231,11 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   // Onchain keys are checked on Optimism; gasless keys with the second node, if one is set.
   const own = loadKey()?.publicKey.toLowerCase();
   const keyNote = (it: FeedItem) =>
-    it.app.keyCheck === "onchain" || it.signer.toLowerCase() === own ? "" : it.app.keyCheck === "confirmed" ? "  [signer confirmed by second node]" : "  [signer not verified]";
+    it.app.keyCheck === "onchain" || it.app.keyCheck === "own" || it.signer.toLowerCase() === own
+      ? ""
+      : it.app.keyCheck === "confirmed"
+        ? "  [signer confirmed by second node]"
+        : "  [signer not verified]";
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
     console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`);
@@ -303,6 +313,7 @@ async function main(argv: string[]) {
       "token-file": { type: "string" },
       rpc: { type: "string" },
       "check-node": { type: "string" },
+      "show-unverified": { type: "boolean" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },

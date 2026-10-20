@@ -144,9 +144,10 @@ const readUrl = society?.node ?? location.origin;
 const second = checkUrl ? secondNode(checkUrl, readUrl) : undefined;
 const verifier = new Verifier(chain, second);
 const hub = new Hub({ url: readUrl, token: society?.token, verifier });
-const feed = new FeedBuilder(hub);
+let feed = new FeedBuilder(hub);
 
 let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
+if (key) verifier.trust(key.fid, key.publicKey);
 // Mainnet unless the local server says it fronts a test devnet.
 let network = FarcasterNetwork.MAINNET;
 let pendingCustody: Custody | undefined;
@@ -184,14 +185,26 @@ async function checkNode() {
   }
 }
 
-// What the verifier dropped so far. The node is not asked; these checks run in this page.
+// What the verifier dropped or held back so far. The node is not asked; these checks run here.
 function showVerification() {
   const el = $("verify-status");
   if (!verifier.checked) return;
-  el.textContent = verifier.failed
-    ? `${verifier.summary()} Rarely an honest node trips this too, when the app that posted a message encoded it unusually.`
-    : `All ${verifier.checked} messages from the node passed verification in this page.`;
+  el.replaceChildren(verifier.summary());
+  if (verifier.failed) el.append(" (A failed check can rarely come from an honest node, when the app that posted the message encoded it unusually.)");
+  if (verifier.unverified && !verifier.showUnverified) {
+    el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading...", showUnverified) }, "Show them anyway"));
+  }
   el.classList.toggle("bad", verifier.failed > 0);
+  el.classList.toggle("warn", !verifier.failed && verifier.unverified > 0);
+}
+
+// For this visit only: show messages whose key could not be checked, marked. Fresh caches, so
+// profiles are rebuilt too and the counts describe what is on screen.
+async function showUnverified() {
+  verifier.showUnverified = true;
+  verifier.reset();
+  feed = new FeedBuilder(hub);
+  await loadFeed();
 }
 
 // ---- node settings
@@ -294,6 +307,7 @@ function wireConnect() {
       });
       pendingCustody = undefined; // drop the custody signer; only the app key is kept
       key = k;
+      verifier.trust(k.fid, k.publicKey);
       say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
       renderAccount();
       await loadFeed(k.fid);
@@ -473,7 +487,7 @@ function castCard(it: FeedItem): HTMLLIElement {
       h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
       h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
       // Your own key needs no proof; any other key must be on Optimism or listed by the second node.
-      it.app.keyCheck === "onchain" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
+      it.app.keyCheck === "onchain" || it.app.keyCheck === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
         ? null
         : it.app.keyCheck === "confirmed"
           ? h(

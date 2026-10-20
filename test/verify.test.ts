@@ -112,15 +112,23 @@ test("a malicious node: altered text, bad signature and a key falsely claimed fo
   assert.match(verifier.summary(), /^Your node sent 3 of 5 messages that failed verification \(1 altered, 1 with a bad signature, 1 signed by a key that is not the author's\)/);
 });
 
-test("a key the node calls gasless cannot be checked: kept, marked unverified", async () => {
+test("a key that cannot be checked (no second node): hidden by default and counted, shown marked on request", async () => {
   const k = throwaway();
   const cast = await asNodeJson("signed with a gasless key", k);
+  const node = fakeNode({ casts: [cast], signers: [gasless(AUTHOR, await keyOf(k))] });
   const verifier = new Verifier(registry([]));
-  const hub = new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [cast], signers: [gasless(AUTHOR, await keyOf(k))] }) });
-  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10 });
-  assert.equal(items.length, 1);
-  assert.equal(items[0]!.app.keyCheck, "unverified");
+  assert.equal((await new FeedBuilder(new Hub({ url: "http://node.test", verifier, fetch: node })).fromAuthors([AUTHOR], { limit: 10 })).length, 0);
+  assert.equal(verifier.unverified, 1);
   assert.equal(verifier.failed, 0);
+  assert.doesNotMatch(verifier.summary(), /passed/);
+  assert.match(verifier.summary(), /^1 messages were hidden because their signing key could not be checked/);
+
+  const shown = new Verifier(registry([]));
+  shown.showUnverified = true;
+  const items = await new FeedBuilder(new Hub({ url: "http://node.test", verifier: shown, fetch: node })).fromAuthors([AUTHOR], { limit: 10 });
+  assert.equal(items.length, 1);
+  assert.equal(items[0]!.app.keyCheck, "unverified"); // the web and CLI mark it "signer not verified"
+  assert.match(shown.summary(), /shown although their signing key could not be checked/);
 });
 
 test("an onchain key the author removed is dropped; no RPC means unverified, and RPC errors are not cached", async () => {
@@ -283,4 +291,43 @@ test("every message type: callers get the message rebuilt from signed data, and 
   const got = await new Hub({ url: "http://node.test", verifier, fetch: async () => new Response(JSON.stringify(served)) }).castById(AUTHOR, served.hash);
   assert.deepEqual(got, real.cast);
   assert.notEqual(got, served);
+});
+
+test("fail closed: with the second node down, a forged gasless cast is hidden and counted as unverified, not as passed", async () => {
+  const fake = throwaway();
+  const forged = await asNodeJson("the host's own key, called gasless", fake);
+  const second = secondListing([], { down: true, calls: 0 });
+  const verifier = new Verifier(registry([[AUTHOR, AUTHOR_KEY]]), second.node);
+  const node = fakeNode({ casts: [forged, real.quote!], signers: [onchain(AUTHOR, AUTHOR_KEY), gasless(AUTHOR, await keyOf(fake))], userData: [real.userData!] });
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: node });
+  const hidden = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.deepEqual(hidden.map((i) => i.hash), [real.quote!.hash]);
+  assert.equal(verifier.unverified, 1);
+  assert.equal(verifier.failed, 0);
+  assert.doesNotMatch(verifier.summary(), /All .* passed/);
+
+  // "Show them anyway": shown, still marked unverified; the down state was not remembered.
+  verifier.showUnverified = true;
+  verifier.reset();
+  const shown = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.deepEqual(new Map(shown.map((i) => [i.hash, i.app.keyCheck])), new Map([[forged.hash, "unverified"], [real.quote!.hash, "onchain"]]));
+
+  // Second node back: it does not list the key, so the forgery is dropped as a failure.
+  second.state.down = false;
+  verifier.showUnverified = false;
+  verifier.reset();
+  const back = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.deepEqual(back.map((i) => i.hash), [real.quote!.hash]);
+  assert.deepEqual({ unverified: verifier.unverified, signer: verifier.dropped.signer }, { unverified: 0, signer: 1 });
+});
+
+test("the member's own app key is never held back, even with no way to check keys", async () => {
+  const mine = throwaway();
+  const cast = await asNodeJson("my own cast", mine);
+  const verifier = new Verifier();
+  verifier.trust(AUTHOR, await keyOf(mine));
+  const hub = new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [cast], signers: [gasless(AUTHOR, await keyOf(mine))] }) });
+  const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10 });
+  assert.equal(items[0]?.app.keyCheck, "own");
+  assert.equal(verifier.unverified, 0);
 });

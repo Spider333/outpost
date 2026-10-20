@@ -56,11 +56,8 @@ export async function census(hub: Hub, c: CharterBody, opts: { days?: number; no
       if (!page.nextPageToken || oldest === undefined || oldest < cutoff) break;
       pageToken = page.nextPageToken;
     }
-    const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer))).filter((r) => {
-      if (r.keyCheck !== "false") return true;
-      hub.verifier?.drop("signer"); // signed by a key that is provably not the member's: not counted
-      return false;
-    });
+    // Casts signed with a forged key, or (unless asked) a key that could not be checked, are not counted.
+    const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer))).filter((r) => hub.verifier?.admits(r.keyCheck) ?? true);
     return { stats: { fid, casts: refs.length, lastCast }, refs };
   });
 
