@@ -53,9 +53,9 @@ for p in "do" hetzner; do
   [ -e "$fw" ] || fail "$p: society on did not open 443/tcp"
   [ -e "$C/outpost-society" ] || fail "$p: society on did not start Caddy"
   [ -e "$C/outpost-gate" ] || fail "$p: society on did not start the gate"
-  grep -qx "		exclude http.log http.handlers http.stdlib" "$SRV/caddy/Caddyfile" || fail "$p: Caddyfile lets Caddy log request URIs and client IPs"
+  grep -qx "		exclude http.log http.handlers http.stdlib tls.handshake" "$SRV/caddy/Caddyfile" || fail "$p: Caddyfile lets Caddy log request URIs and client IPs"
   # All of it: no request logs, a proxy to the gate on $host, nothing else (no files, no page).
-  want="$(printf '{\n\tlog {\n\t\texclude http.log http.handlers http.stdlib\n\t}\n}\n%s {\n\treverse_proxy 127.0.0.1:3390\n\theader -Server\n}' "$host")"
+  want="$(printf '{\n\tlog {\n\t\texclude http.log http.handlers http.stdlib tls.handshake\n\t}\n}\n%s {\n\treverse_proxy 127.0.0.1:3390\n\theader -Server\n}' "$host")"
   [ "$(cat "$SRV/caddy/Caddyfile")" = "$want" ] || fail "$p: Caddyfile is not exactly the society one:
 $(cat "$SRV/caddy/Caddyfile")"
   cmp -s "$SRV/gate/gate.ts" "$ROOT/src/server/gate.ts" || fail "$p: the gate on the server is not src/server/gate.ts"

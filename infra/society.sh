@@ -57,12 +57,12 @@ case "$action" in
     mv "$DIR/gate/gate.ts.tmp" "$DIR/gate/gate.ts"
     # No access log (no `log` in the site), and the loggers that write a request's URI, query,
     # headers or client IP are dropped: http.log (incl. the error log when the gate is down),
-    # http.handlers (reverse_proxy) and http.stdlib (TLS handshake errors). Start-up and
-    # certificate messages stay.
+    # http.handlers (reverse_proxy), http.stdlib (TLS handshake errors) and tls.handshake
+    # (client addresses, at debug level). Start-up and certificate messages stay.
     cat >"$DIR/caddy/Caddyfile" <<EOF
 {
 	log {
-		exclude http.log http.handlers http.stdlib
+		exclude http.log http.handlers http.stdlib tls.handshake
 	}
 }
 ${OUTPOST_SOCIETY_HOST} {
