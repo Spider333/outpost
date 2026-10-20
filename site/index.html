@@ -36,7 +36,6 @@ pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14
 pre.cmd { border-left: 3px solid var(--accent); }
 pre.out { color: #c9d1d9; }
 pre.out::before { content: "output"; display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-pre.pending { border-style: dashed; color: var(--muted); }
 .lede { font-size: 19px; color: var(--muted); margin-top: 0; }
 .danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 14px 16px; margin: 3rem 0 0; }
 .danger h2, .danger h3 { border: 0; margin: 0 0 6px; padding: 0; color: var(--bad); font-size: 19px; }
@@ -210,7 +209,7 @@ cd outpost
 <p>Eight steps, from renting a server to deleting it. Every output is copied from a real run; when a run was not on a fresh node, the step says so. Boxes with a green edge explain each idea where it first matters, and every term is also listed under <a href="#terms">Terms</a>.</p>
 
 <h3 id="t-provision">1. Rent a server</h3>
-<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a <a href="#g-snapshot">snapshot</a> of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). On Hetzner it asks for 1 TB, because new Hetzner accounts can hold at most 1024 GB of volumes. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a <a href="#g-snapshot">snapshot</a> of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). On Hetzner it asks for 1 TB, because new Hetzner accounts can hold at most 1024 GB of volumes. Hetzner is not tested on a real server yet: our real runs used DigitalOcean, and the Hetzner commands have only run against a simulated Hetzner in our tests. We expect a full node to fit in 1 TB but have not measured it there. It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
 <pre class="cmd">./outpost provision --provider do
 # or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
@@ -268,7 +267,7 @@ client: http://127.0.0.1:8381
 node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)</pre>
 <p class="muted">We ran it as <code>OUTPOST_TUNNEL_PORT=13394 ./outpost client</code>, because the default local port, 13381, was already in use on our machine. Yours will say 13381 unless you change it.</p>
 <p>On a phone, run <code>./outpost client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
-<pre class="out pending" data-pending="phone">PENDING: ./outpost client --phone output (needs a provider token to open 443).</pre>
+<p class="muted">Not tested on a real server yet: <code>--phone</code> has only run in our tests, against a simulated cloud provider, so there is no real output to show here.</p>
 <p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./outpost cli login</code>.</p>
 
 <div class="concept">
