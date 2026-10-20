@@ -61,6 +61,10 @@ signed the message. The client also checks that the key belongs to the author:
   a second node the member picks whether the key is one of the author's active keys
   (default `https://snap.farcaster.xyz:3381`, Farcaster's public node; `src/core/secondnode.ts`).
   A cast signed with a key the second node does not list is dropped.
+- If neither can vouch for a key, for example because the second node is down or switched off,
+  the cast is hidden and counted, never reported as passed. The member can choose to show such
+  casts for that visit ("Show them anyway", or `--show-unverified` on the command line); they are
+  then marked "signer not verified". The member's own app key is always trusted.
 
 **Lock a member in.** The member's account and app key work with any node. A charter can list
 several society nodes (`nodes` in `charter.json`, covered by its signature), and the client lets
