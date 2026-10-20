@@ -184,7 +184,8 @@ function extraField(node: unknown, signed: unknown): boolean {
   if (signed === null || typeof signed !== "object") return true;
   if (Array.isArray(node)) return !Array.isArray(signed) || node.length !== signed.length || node.some((v, i) => extraField(v, signed[i]));
   const s = signed as Record<string, unknown>;
-  return Object.entries(node).some(([k, v]) => v !== null && v !== undefined && (!(k in s) || extraField(v, s[k])));
+  // Object.hasOwn, not `in`: `in` also finds inherited names such as constructor or toString.
+  return Object.entries(node).some(([k, v]) => v !== null && v !== undefined && (!Object.hasOwn(s, k) || extraField(v, s[k])));
 }
 
 // The message rebuilt from its signed bytes, or why it failed.

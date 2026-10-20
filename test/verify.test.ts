@@ -293,6 +293,20 @@ test("every message type: callers get the message rebuilt from signed data, and 
   assert.notEqual(got, served);
 });
 
+test("an added field named like a built-in (constructor, toString, __proto__) also marks a message altered", async () => {
+  for (const [name, m] of Object.entries(real)) {
+    const body = Object.keys(m.data).find((k) => k.endsWith("Body"))!;
+    for (const field of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      for (const at of [(x: HubMessage) => (x.data as unknown as Record<string, object>)[body]!, (x: HubMessage) => x.data, (x: HubMessage) => x]) {
+        const x = copy(m);
+        // defineProperty makes an own property even for __proto__, as JSON.parse does.
+        Object.defineProperty(at(x), field, { value: "honest words", enumerable: true, writable: true, configurable: true });
+        assert.equal(await checkMessage(x), "altered", `${name} ${field}`);
+      }
+    }
+  }
+});
+
 test("fail closed: with the second node down, a forged gasless cast is hidden and counted as unverified, not as passed", async () => {
   const fake = throwaway();
   const forged = await asNodeJson("the host's own key, called gasless", fake);
