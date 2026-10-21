@@ -123,17 +123,21 @@ function ago(ms: number): string {
 const params = new URLSearchParams(location.search);
 // The page's own origin (`./outpost client` forwards /v1/* to your node), unless you chose a
 // society node: in the panel, or by accepting an invite link (#node=...&token=...). A link alone
-// never switches nodes: the invite is removed from the address bar and you are asked first.
+// never switches nodes: the invite is removed from the address bar and you are asked first, on the
+// page (a browser popup at load can be missed or suppressed, and then the invite is lost).
 let inviteError: string | undefined;
+let invite: Society | undefined;
 try {
-  const invite = takeInvite(location, history);
-  if (invite && confirm(`Use the society node at ${invite.node}?\n\nIts host will see what you read and can withhold or delay messages. This page checks every message itself; the host cannot post as you.`)) {
-    store(SOCIETY_STORAGE, invite);
-  }
+  invite = takeInvite(location, history);
 } catch (e) {
   inviteError = `Invite link not used: ${errText(e)}`;
 }
 const society = store<Society>(SOCIETY_STORAGE);
+if (invite && invite.node === society?.node && invite.token === society.token) invite = undefined; // already in use
+// An invite opened in this tab while the page is open only changes the fragment: start over to read it.
+addEventListener("hashchange", () => {
+  if (/(^#|&)(node|token)=/.test(location.hash)) location.reload();
+});
 // Key and custody checks read Optimism through this RPC, never through the node. "" turns them off.
 const rpc = store<string>(RPC_STORAGE) ?? DEFAULT_OPTIMISM_RPC;
 const chain = rpc ? new Optimism(rpc) : undefined;
@@ -177,9 +181,13 @@ async function checkNode() {
     pill.className = "pill bad";
     if (e instanceof HubError && e.status === 401) {
       say(`The society node at ${hub.url} no longer accepts your access token: the host removed it, or it was mistyped. Ask the host for a new invite link, or go back to your own node under "Node and checks".`, true);
+    } else if (!society) {
+      // Typical on a static host such as GitHub Pages: no node behind this page, and its 404 page is no help.
+      const reason = e instanceof HubError && e.message.includes("returned non-JSON") ? `HTTP ${e.status}, not a node` : errText(e);
+      say(`No node answers at ${hub.url} (${reason}). If someone sent you an invite link, open it again and press Join. Or enter a society node's address and your access token under "Node and checks".`, true);
+      ($("node-settings") as HTMLDetailsElement).open = true;
     } else {
-      say(`Cannot reach ${society ? "the society node" : "your node"} at ${hub.url}. ${errText(e)}`, true);
-      if (!society) ($("node-settings") as HTMLDetailsElement).open = true;
+      say(`Cannot reach the society node at ${hub.url}. ${errText(e)}`, true);
     }
     return false;
   }
@@ -248,6 +256,26 @@ function wireNodeSettings() {
       location.reload();
     }),
   );
+}
+
+// An invite only fills in this card. Join saves the node and reloads onto it; Not now changes nothing.
+function askToJoin(inv: Society): Promise<void> {
+  $("invite-node").textContent = inv.node;
+  $("invite").hidden = false;
+  $("invite-join").focus();
+  return new Promise((resolve) => {
+    const done = () => {
+      $("invite").hidden = true;
+      resolve();
+    };
+    $("invite-join").addEventListener("click", () => {
+      const saved = store<Society>(SOCIETY_STORAGE, inv);
+      if (saved?.node === inv.node && saved.token === inv.token) return location.reload();
+      inviteError = "Invite link not used: this browser does not let the page save it. Allow this site to store data (in Safari: turn off Settings > Safari > Block All Cookies), then open the invite link again.";
+      done();
+    });
+    $("invite-skip").addEventListener("click", done);
+  });
 }
 
 // ---- connect
@@ -719,6 +747,7 @@ async function main() {
   wireFeed();
   wireCharter();
   await renderAccount();
+  if (invite) await askToJoin(invite);
   if (await checkNode()) {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
     if (charter) await showCharter(charter, "saved in this browser").catch((e) => say(errText(e), true));

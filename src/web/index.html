@@ -18,6 +18,15 @@
   <p id="verify-status" class="muted small" aria-live="polite"></p>
 
   <main>
+    <section id="invite" class="card" hidden aria-labelledby="invite-h">
+      <h2 id="invite-h">Join a society node</h2>
+      <p>This invite link connects you to the society node at <strong id="invite-node"></strong>. Its host will see what you read and can withhold or delay messages. This page checks every message itself: the host cannot post as you.</p>
+      <div class="row wrap">
+        <button id="invite-join" class="primary" type="button">Join</button>
+        <button id="invite-skip" type="button">Not now</button>
+      </div>
+    </section>
+
     <details id="node-settings" class="card">
       <summary>Node and checks</summary>
       <p class="muted small">By default this page reads from the node behind <code>./outpost client</code>. To use a society node someone else runs, open their invite link, or enter its address and your access token here. This page checks every message itself: the node's host cannot post as you or change a message. They can see what you read, withhold or delay messages, and remove your access, and a message signed with a key this page cannot check is marked "signer not verified".</p>

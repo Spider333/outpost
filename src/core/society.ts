@@ -40,8 +40,10 @@ export function parseInvite(fragment: string): Society | undefined {
 
 // Takes the invite out of the address bar right away, so the token does not stay in the
 // history, a bookmark or a screenshot. Removed even when the link turns out to be malformed.
+// The fragment is read first: in a browser, replaceState empties location.hash too.
 export function takeInvite(loc: { hash: string; pathname: string; search: string }, history: { replaceState(data: unknown, unused: string, url: string): void }): Society | undefined {
-  if (!/(^#|&)(node|token)=/.test(loc.hash)) return undefined;
+  const hash = loc.hash;
+  if (!/(^#|&)(node|token)=/.test(hash)) return undefined;
   history.replaceState(null, "", loc.pathname + loc.search);
-  return parseInvite(loc.hash);
+  return parseInvite(hash);
 }
