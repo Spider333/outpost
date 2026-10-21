@@ -324,8 +324,21 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <ul class="checks">
   <li>A DigitalOcean or Hetzner account with its command-line tool logged in (<code>doctl</code> or <code>hcloud</code>), or any Ubuntu 24.04 server with root SSH and at least 1 TB of disk.</li>
   <li>Node.js 20 or newer.</li>
+  <li>macOS or Linux. On Windows, use WSL; we have not tested it there.</li>
   <li>A <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>. Read the <a href="#warn-h">warning below</a> first.</li>
 </ul>
+<details class="out-fold">
+<summary>First time with DigitalOcean or Hetzner? Set up the command-line tool</summary>
+<p><strong>DigitalOcean.</strong> Make an account at digitalocean.com and add a payment method. Install <code>doctl</code> (<a href="https://docs.digitalocean.com/reference/doctl/how-to/install/">install guide</a>; on a Mac, <code>brew install doctl</code>). In the control panel, open API, choose Generate New Token, give it Full Access and a 30-day expiry (the watchdog and <code>./outpost destroy</code> still need it later). Then log in with it:</p>
+<pre class="cmd">doctl auth init
+# check: prints your account e-mail and droplet limit
+doctl account get</pre>
+<p><strong>Hetzner.</strong> Make an account at hetzner.com/cloud and create a project. Install <code>hcloud</code> (<a href="https://github.com/hetznercloud/cli">install guide</a>; on a Mac, <code>brew install hcloud</code>). In the project, open Security, then API tokens, and generate a token with Read &amp; Write access. Then log in with it:</p>
+<pre class="cmd">hcloud context create outpost
+# check: lists your servers (an empty list is fine)
+hcloud server list</pre>
+<p class="muted">Both commands ask you to paste the token. Keep it out of chats, casts and AI assistants, and delete it in the control panel when you are done.</p>
+</details>
 <pre class="cmd">git clone https://github.com/Spider333/outpost
 cd outpost
 # rent a server with a 1.2 TB disk (1 TB on Hetzner), billed by the hour
