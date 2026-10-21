@@ -336,10 +336,18 @@ server_off() {
   [ "${row##* }" = off ]
 }
 
-# Moves the server to plan $1, shutting it down for it: a few minutes offline. Does nothing if
-# it is on that plan already. If the resize fails, the server is started again on its old plan.
+server_power_on() {
+  case "$(state_get PROVIDER)" in
+    "do") run doctl compute droplet-action power-on "$1" --wait ;;
+    hetzner) run hcloud server poweron "$1" ;;
+  esac
+}
+
+# Moves the server to plan $1, shutting it down for it: a few minutes offline. If it is on that
+# plan already it only makes sure it is running (a resize stopped halfway can leave it off). If
+# the provider refuses the resize, the server is started again on its old plan and this fails.
 resize_server() {
-  local target="$1" provider name row="" id cur="" ok=1
+  local target="$1" provider name row="" id cur="" status="" ok=1
   provider="$(state_get PROVIDER)"
   name="$(state_get NAME)"
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -348,8 +356,16 @@ resize_server() {
   else
     row="$(server_row)" || die "cannot look up $name, so nothing was changed. Try again."
     [ -n "$row" ] || die "$name is not listed at $provider, so it cannot be resized"
-    read -r id cur _ <<<"$row"
-    if [ "$cur" = "$target" ]; then say "$name is already $target"; return 0; fi
+    read -r id cur status <<<"$row"
+    if [ "$cur" = "$target" ]; then
+      if [ "$status" = off ]; then
+        say "$name is $target but off; starting it"
+        server_power_on "$id"
+        wait_for_ssh
+      fi
+      say "$name is already $target"
+      return 0
+    fi
   fi
   tunnel_down
   say "shutting down $name to move it from ${cur:-its plan} to $target; it starts again by itself in a few minutes"
@@ -375,13 +391,11 @@ resize_server() {
     "do") run doctl compute droplet-action resize "$id" --size "$target" --wait || ok=0 ;;
     hetzner) run hcloud server change-type --keep-disk "$id" "$target" || ok=0 ;;
   esac
-  if [ "$DRY_RUN" -eq 1 ] || server_off; then
-    case "$provider" in
-      "do") run doctl compute droplet-action power-on "$id" --wait ;;
-      hetzner) run hcloud server poweron "$id" ;;
-    esac
+  if [ "$DRY_RUN" -eq 1 ] || server_off; then server_power_on "$id"; fi
+  if [ "$ok" -eq 0 ]; then
+    printf 'error: %s\n' "could not move $name to $target, so it stays ${cur:-as it was}. If ./outpost status cannot reach it, start it in your provider's console." >&2
+    return 1
   fi
-  [ "$ok" -eq 1 ] || die "could not move $name to $target, so it stays ${cur:-as it was}. If ./outpost status cannot reach it, start it in your provider's console."
   wait_for_ssh
 }
 
@@ -459,7 +473,7 @@ cmd_node() {
   host="$(node_host)"
   # Made small by provision: size it up for the snapshot load first (see "server size").
   if [ -z "${OUTPOST_HOST:-}" ] && [ -n "$(state_get SMALL_SIZE)" ] && [ "$(state_get SHRUNK)" != 1 ]; then
-    resize_server "$(state_get SYNC_SIZE)"
+    resize_server "$(state_get SYNC_SIZE)" || exit 1
   fi
   say "setting up the read node on $host"
   node_ssh 'mkdir -p /usr/local/lib/outpost && cat >/usr/local/lib/outpost/node-setup.sh' <"$OUTPOST_DIR/infra/node-setup.sh"
@@ -882,18 +896,21 @@ To run small, make a new one with this version: ./outpost destroy, then ./outpos
     [ -n "$row" ] || die "$name is not listed at $(state_get PROVIDER), so it cannot be resized"
     if [ "$(printf '%s' "$row" | awk '{print $2}')" = "$small" ]; then
       if [ "$(state_get SHRUNK)" = 1 ]; then
-        say "$name is already $small"
+        resize_server "$small" # says so, and starts it if a shrink stopped before that
       else
         say "$name is still $small, the size it was made at. ./outpost node sizes it up for the first sync."
       fi
       return 0
     fi
-    line="$(node_progress)"
-    case "$line" in
-      synced*) ;;
-      *) die "the node is not synced yet ($line).
+    # A shrink that stopped halfway has checked the node already, and may have left it off.
+    if [ "$(state_get SHRUNK)" != 1 ]; then
+      line="$(node_progress)"
+      case "$line" in
+        synced*) ;;
+        *) die "the node is not synced yet ($line).
 Loading the snapshot and catching up need the big server. Run this again when ./outpost status says synced." ;;
-    esac
+      esac
+    fi
   fi
   say "This shuts down $name and starts it again as $small: a few minutes offline."
   say "The chain data on the volume, the address, the firewall and society members all stay."
@@ -903,10 +920,10 @@ Loading the snapshot and catching up need the big server. Run this again when ./
     [ -z "$before" ] || [ -z "$after" ] || say "The droplet goes from \$$before to \$$after a month; the volume costs the same."
   fi
   confirm "Shrink it now?" || die "cancelled"
-  # Set first, so node never sizes it up again even if this stops halfway. If the resize fails
-  # the server stays big, which node would not change anyway.
+  # Set first: if this stops halfway, node will not size the server up again, and a second
+  # shrink finishes the job without asking an unreachable node whether it is synced.
   state_set SHRUNK 1
-  resize_server "$small"
+  if ! resize_server "$small"; then state_set SHRUNK ""; exit 1; fi
   [ "$DRY_RUN" -eq 1 ] && return 0
   say "waiting for the node to open its database and answer (up to 10 minutes)"
   for _ in $(seq 1 40); do
