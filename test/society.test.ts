@@ -21,6 +21,13 @@ test("invite link: node and token are read, and the fragment is removed from the
   assert.equal(replaced.length, 2);
 });
 
+test("invite link: read before the address bar is cleaned, because a browser's location changes with it", () => {
+  const loc = { pathname: "/outpost/app/", search: "", hash: `#node=${encodeURIComponent(NODE)}&token=${TOKEN}` };
+  const history = { replaceState: (_d: unknown, _u: string, url: string) => void (loc.hash = new URL(url, "https://spider333.github.io").hash) };
+  assert.deepEqual(takeInvite(loc, history), { node: NODE, token: TOKEN });
+  assert.equal(loc.hash, "");
+});
+
 test("invite link: only https nodes (or this machine), and a header-safe token", () => {
   assert.throws(() => parseInvite(`#node=${encodeURIComponent("http://203.0.113.7")}&token=${TOKEN}`), /https/);
   assert.throws(() => parseInvite(`#node=${encodeURIComponent("javascript:alert(1)")}&token=${TOKEN}`), /https/);
