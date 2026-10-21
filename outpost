@@ -5,11 +5,12 @@
 #   ./outpost node        start a Snapchain read node on it; no API keys
 #   ./outpost client      run the web client on your machine, talking to your node
 #
-# Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
+# Also: ./outpost status, ./outpost shrink (once synced: an 8 GB server instead of 32 GB, for a
+# quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
 # ./outpost watchdog start|stop|status (deletes a trial server for you)
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
 # ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list
-# Every command is safe to run twice. Add --dry-run to provision/destroy to see the
+# Every command is safe to run twice. Add --dry-run to provision/shrink/destroy to see the
 # exact provider commands without running them.
 
 set -euo pipefail
@@ -197,19 +198,21 @@ do_ensure_attached() {
 }
 
 provision_do() {
-  local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4" disk="$5"
+  local name="$1" region="${2:-fra1}" size="${3:-s-8vcpu-32gb-amd}" key="$4" disk="$5" small="${6:-s-2vcpu-8gb-amd}"
   require_cli doctl "See https://docs.digitalocean.com/reference/doctl/how-to/install/ then run: doctl auth init"
   local ip=""
   [ "$DRY_RUN" -eq 0 ] && ip="$(do_server_ip "$name")"
   if [ -n "$ip" ]; then
     say "droplet $name already exists at $ip"
     do_ensure_attached "$name"
+    keep_sizes_if_ours "$name"
     state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
     return 0
   fi
-  say "DigitalOcean: droplet $name ($size) in $region with a $disk GB volume."
+  say "DigitalOcean: droplet $name in $region with a $disk GB volume. It starts small ($small);"
+  say "./outpost node sizes it up to $size for the first sync, and ./outpost shrink takes it back down."
   say "Billed by the hour while it exists: the volume about \$$(awk -v g="$disk" 'BEGIN { printf "%.2f", g * 0.10 / 730 }')/h, plus the droplet"
-  say "(s-8vcpu-32gb-amd is \$0.25/h). October 2026 list prices; check yours."
+  say "(s-2vcpu-8gb-amd is \$0.06/h, s-8vcpu-32gb-amd \$0.25/h). October 2026 list prices; check yours."
   confirm "Create it now?" || die "cancelled"
 
   local fp ud
@@ -236,7 +239,7 @@ provision_do() {
   fi
   ud="$(mktemp)"
   render_cloud_init "$key.pub" "$ud"
-  run doctl compute droplet create "$name" --region "$region" --size "$size" --image ubuntu-24-04-x64 \
+  run doctl compute droplet create "$name" --region "$region" --size "$small" --image ubuntu-24-04-x64 \
     --ssh-keys "$fp" --user-data-file "$ud" --volumes "$vol_id" --tag-name "$name" --wait
   rm -f "$ud"
   [ "$DRY_RUN" -eq 1 ] && return 0
@@ -244,20 +247,30 @@ provision_do() {
   ip="$(do_server_ip "$name")"
   [ -n "$ip" ] || die "droplet created but has no public IP yet; run ./outpost provision again in a minute"
   state_set PROVIDER "do"; state_set NAME "$name"; state_set IP "$ip"
+  state_set SYNC_SIZE "$size"; state_set SMALL_SIZE "$small"; state_set SHRUNK ""
+}
+
+# The sizes in the state belong to a server made here. A server that was already there under
+# another name gets none, so shrink will not resize a server whose disk it does not know.
+keep_sizes_if_ours() {
+  [ "$1" = "$(state_get NAME)" ] && return 0
+  state_set SYNC_SIZE ""; state_set SMALL_SIZE ""; state_set SHRUNK ""
 }
 
 provision_hetzner() {
-  local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4" disk="$5"
+  local name="$1" location="${2:-fsn1}" type="${3:-ccx33}" key="$4" disk="$5" small="${6:-ccx13}"
   require_cli hcloud "See https://github.com/hetznercloud/cli then run: hcloud context create outpost"
   local ip=""
   [ "$DRY_RUN" -eq 0 ] && ip="$(hcloud server ip "$name" 2>/dev/null || true)"
   if [ -n "$ip" ]; then
     say "server $name already exists at $ip"
+    keep_sizes_if_ours "$name"
     state_set PROVIDER hetzner; state_set NAME "$name"; state_set IP "$ip"
     return 0
   fi
-  say "Hetzner: server $name ($type) in $location with a $disk GB volume."
-  say "Billed by the hour while it exists. Check current prices for $type and volumes before you go on."
+  say "Hetzner: server $name in $location with a $disk GB volume. It starts small ($small);"
+  say "./outpost node sizes it up to $type for the first sync, and ./outpost shrink takes it back down."
+  say "Billed by the hour while it exists. Check current prices for $small, $type and volumes before you go on."
   # Seen 2026-10-18: a new account's 2000 GB create failed with "volumes size limit exceeded".
   if [ "$disk" -gt 1024 ]; then
     warn "new Hetzner accounts can hold at most 1024 GB of volumes in total, so this create may fail. 1000 GB is enough."
@@ -289,12 +302,87 @@ JSON
   fi
   ud="$(mktemp)"
   render_cloud_init "$key.pub" "$ud"
-  run hcloud server create --name "$name" --type "$type" --image ubuntu-24.04 --location "$location" \
+  run hcloud server create --name "$name" --type "$small" --image ubuntu-24.04 --location "$location" \
     --ssh-key "$keyname" --user-data-from-file "$ud" --firewall "$name-fw" --volume "$name-data" --automount
   rm -f "$ud"
   [ "$DRY_RUN" -eq 1 ] && return 0
   ip="$(hcloud server ip "$name")"
   state_set PROVIDER hetzner; state_set NAME "$name"; state_set IP "$ip"
+  state_set SYNC_SIZE "$type"; state_set SMALL_SIZE "$small"; state_set SHRUNK ""
+}
+
+# ---- server size
+
+# Loading the snapshot needs about 32 GB of RAM; a synced node uses about 3 GB (fcprize-node,
+# 2026-10-21). So provision makes the server small, node sizes it up for the first sync, and
+# shrink takes it back down. Only CPU and RAM change. The disk stays the small plan's, which is
+# what lets the server go back down: neither provider shrinks a disk. The chain data is on the
+# volume, and the address, firewall and society members stay as they are.
+
+# Prints "<id> <size> <status>" for the server in the state (status is "off" when it is off),
+# or nothing if the provider does not list it.
+server_row() {
+  local name
+  name="$(state_get NAME)"
+  case "$(state_get PROVIDER)" in
+    "do") plist doctl compute droplet list --format ID,Name,SizeSlug,Status --no-header | awk -v n="$name" '$2==n {print $1, $3, $4; exit}' ;;
+    hetzner) plist hcloud server list -o noheader -o columns=name,type,status | awk -v n="$name" '$1==n {print $1, $2, $3; exit}' ;;
+  esac
+}
+
+server_off() {
+  local row
+  row="$(server_row)" || return 1
+  [ "${row##* }" = off ]
+}
+
+# Moves the server to plan $1, shutting it down for it: a few minutes offline. Does nothing if
+# it is on that plan already. If the resize fails, the server is started again on its old plan.
+resize_server() {
+  local target="$1" provider name row="" id cur="" ok=1
+  provider="$(state_get PROVIDER)"
+  name="$(state_get NAME)"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    id="<droplet-id of $name>"
+    [ "$provider" = hetzner ] && id="$name"
+  else
+    row="$(server_row)" || die "cannot look up $name, so nothing was changed. Try again."
+    [ -n "$row" ] || die "$name is not listed at $provider, so it cannot be resized"
+    read -r id cur _ <<<"$row"
+    if [ "$cur" = "$target" ]; then say "$name is already $target"; return 0; fi
+  fi
+  tunnel_down
+  say "shutting down $name to move it from ${cur:-its plan} to $target; it starts again by itself in a few minutes"
+  if [ "$DRY_RUN" -eq 1 ] || ! server_off; then
+    # A clean shutdown lets Snapchain close its database. After 3 minutes, pull the plug.
+    case "$provider" in
+      "do") run doctl compute droplet-action shutdown "$id" --wait || true ;;
+      hetzner) run hcloud server shutdown "$id" || true ;;
+    esac
+    if [ "$DRY_RUN" -eq 0 ]; then
+      for _ in $(seq 1 36); do server_off && break; sleep 5; done
+    fi
+    if [ "$DRY_RUN" -eq 0 ] && ! server_off; then
+      warn "$name did not shut down within 3 minutes; powering it off"
+      case "$provider" in
+        "do") run doctl compute droplet-action power-off "$id" --wait ;;
+        hetzner) run hcloud server poweroff "$id" ;;
+      esac
+    fi
+  fi
+  # CPU and RAM only: doctl leaves the disk unless given --resize-disk, hcloud needs --keep-disk.
+  case "$provider" in
+    "do") run doctl compute droplet-action resize "$id" --size "$target" --wait || ok=0 ;;
+    hetzner) run hcloud server change-type --keep-disk "$id" "$target" || ok=0 ;;
+  esac
+  if [ "$DRY_RUN" -eq 1 ] || server_off; then
+    case "$provider" in
+      "do") run doctl compute droplet-action power-on "$id" --wait ;;
+      hetzner) run hcloud server poweron "$id" ;;
+    esac
+  fi
+  [ "$ok" -eq 1 ] || die "could not move $name to $target, so it stays ${cur:-as it was}. If ./outpost status cannot reach it, start it in your provider's console."
+  wait_for_ssh
 }
 
 wait_for_ssh() {
@@ -311,13 +399,14 @@ wait_for_ssh() {
 }
 
 cmd_provision() {
-  local provider="" name="${OUTPOST_NAME:-outpost-node}" region="" size="" disk="${OUTPOST_DISK_GB:-}" wait=1 watch=""
+  local provider="" name="${OUTPOST_NAME:-outpost-node}" region="" size="" small="" disk="${OUTPOST_DISK_GB:-}" wait=1 watch=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --provider) provider="$2"; shift 2 ;;
       --name) name="$2"; shift 2 ;;
       --region|--location) region="$2"; shift 2 ;;
       --size|--type) size="$2"; shift 2 ;;
+      --small-size|--small-type) small="$2"; shift 2 ;;
       --disk) disk="$2"; shift 2 ;;
       --watchdog) watch="$2"; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
@@ -341,8 +430,8 @@ cmd_provision() {
   key="$(ssh_key_path)"
   state_set SSH_KEY "$key"
   case "$provider" in
-    "do") provision_do "$name" "$region" "$size" "$key" "$disk" ;;
-    hetzner) provision_hetzner "$name" "$region" "$size" "$key" "$disk" ;;
+    "do") provision_do "$name" "$region" "$size" "$key" "$disk" "$small" ;;
+    hetzner) provision_hetzner "$name" "$region" "$size" "$key" "$disk" "$small" ;;
   esac
   # Armed before waiting for SSH, so a server that never comes up is deleted too.
   if [ -n "$watch" ]; then
@@ -368,6 +457,10 @@ cmd_node() {
   done
   local host
   host="$(node_host)"
+  # Made small by provision: size it up for the snapshot load first (see "server size").
+  if [ -z "${OUTPOST_HOST:-}" ] && [ -n "$(state_get SMALL_SIZE)" ] && [ "$(state_get SHRUNK)" != 1 ]; then
+    resize_server "$(state_get SYNC_SIZE)"
+  fi
   say "setting up the read node on $host"
   node_ssh 'mkdir -p /usr/local/lib/outpost && cat >/usr/local/lib/outpost/node-setup.sh' <"$OUTPOST_DIR/infra/node-setup.sh"
   node_ssh 'cat >/usr/local/lib/outpost/snapshot-restore.sh' <"$OUTPOST_DIR/infra/snapshot-restore.sh"
@@ -384,9 +477,15 @@ cmd_node() {
     local line
     line="$(node_progress)"
     if [ "$line" != "$last" ]; then say "$(date -u +%H:%M) $line"; last="$line"; fi
-    case "$line" in synced*) say "next: ./outpost client"; return 0 ;; esac
+    case "$line" in synced*) say "next: ./outpost client"; shrink_hint; return 0 ;; esac
     sleep 60
   done
+}
+
+shrink_hint() {
+  if [ -z "${OUTPOST_HOST:-}" ] && [ -n "$(state_get SMALL_SIZE)" ] && [ "$(state_get SHRUNK)" != 1 ]; then
+    say "the server is still the size the first sync needs: ./outpost shrink moves it to $(state_get SMALL_SIZE), which costs less"
+  fi
 }
 
 # Prints one line: snapshot progress, catch-up state, or "synced".
@@ -640,7 +739,10 @@ cmd_status() {
   else
     say "provider: $(state_get PROVIDER)  server: $(state_get NAME)  ip: $(state_get IP)"
   fi
-  say "node: $(node_progress)"
+  local line
+  line="$(node_progress)"
+  say "node: $line"
+  case "$line" in synced*) shrink_hint ;; esac
   if [ -z "${OUTPOST_HOST:-}" ]; then watchdog_status; fi
 }
 
@@ -753,6 +855,71 @@ cmd_destroy() {
     fi
     say "done. Billing for these resources has stopped."
   fi
+}
+
+# ---- shrink
+
+# Once synced, moves the server to the small plan it was made with (see "server size").
+cmd_shrink() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --yes|-y) ASSUME_YES=1; shift ;;
+      *) die "unknown option for shrink: $1" ;;
+    esac
+  done
+  local name small row line before after
+  name="$(state_get NAME)"
+  if [ -n "${OUTPOST_HOST:-}" ] || [ -z "$name" ] || [ -z "$(state_get PROVIDER)" ]; then
+    die "shrink only resizes a server made here by ./outpost provision"
+  fi
+  small="$(state_get SMALL_SIZE)"
+  [ -n "$small" ] || die "$name was not made small by ./outpost provision (older versions made it at full size).
+Its disk is bigger than a small plan's and no provider shrinks a disk, so the server cannot go down.
+To run small, make a new one with this version: ./outpost destroy, then ./outpost provision."
+  if [ "$DRY_RUN" -eq 0 ]; then
+    row="$(server_row)" || die "cannot look up $name, so nothing was changed. Try again."
+    [ -n "$row" ] || die "$name is not listed at $(state_get PROVIDER), so it cannot be resized"
+    if [ "$(printf '%s' "$row" | awk '{print $2}')" = "$small" ]; then
+      if [ "$(state_get SHRUNK)" = 1 ]; then
+        say "$name is already $small"
+      else
+        say "$name is still $small, the size it was made at. ./outpost node sizes it up for the first sync."
+      fi
+      return 0
+    fi
+    line="$(node_progress)"
+    case "$line" in
+      synced*) ;;
+      *) die "the node is not synced yet ($line).
+Loading the snapshot and catching up need the big server. Run this again when ./outpost status says synced." ;;
+    esac
+  fi
+  say "This shuts down $name and starts it again as $small: a few minutes offline."
+  say "The chain data on the volume, the address, the firewall and society members all stay."
+  if [ "$DRY_RUN" -eq 0 ] && [ "$(state_get PROVIDER)" = "do" ]; then
+    before="$(do_price "$(printf '%s' "$row" | awk '{print $2}')")"
+    after="$(do_price "$small")"
+    [ -z "$before" ] || [ -z "$after" ] || say "The droplet goes from \$$before to \$$after a month; the volume costs the same."
+  fi
+  confirm "Shrink it now?" || die "cancelled"
+  # Set first, so node never sizes it up again even if this stops halfway. If the resize fails
+  # the server stays big, which node would not change anyway.
+  state_set SHRUNK 1
+  resize_server "$small"
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  say "waiting for the node to open its database and answer (up to 10 minutes)"
+  for _ in $(seq 1 40); do
+    line="$(node_progress)"
+    case "$line" in synced*|"catching up"*) break ;; esac
+    sleep 15
+  done
+  say "node: $line"
+  say "done. Check again any time with ./outpost status"
+}
+
+do_price() {
+  plist doctl compute size list --format Slug,PriceMonthly --no-header | awk -v s="$1" '$1==s {print $2; exit}' || true
 }
 
 # ---- watchdog
@@ -916,7 +1083,7 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
@@ -930,6 +1097,7 @@ main() {
     members) cmd_members "$@" ;;
     cli) cmd_cli "$@" ;;
     status) cmd_status "$@" ;;
+    shrink) cmd_shrink "$@" ;;
     uninstall) cmd_uninstall "$@" ;;
     destroy) cmd_destroy "$@" ;;
     watchdog) cmd_watchdog "$@" ;;
