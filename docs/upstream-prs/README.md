@@ -14,6 +14,7 @@ Opened on 20 Oct 2026:
 Opened on 21 Oct 2026:
 - 8: [snapchain #1067](https://github.com/farcasterxyz/snapchain/pull/1067), fixes issue #1030 (#1036 was closed unmerged by its author on 20 Oct)
 - 9: [snapchain #1068](https://github.com/farcasterxyz/snapchain/pull/1068)
+- 10: [snapchain #1069](https://github.com/farcasterxyz/snapchain/pull/1069)
 
 Not opened: 2 overlaps snapchain #1049 and 3 overlaps docs #470 (both opened by others on
 19 Oct); 7 is not compiled yet.
@@ -33,6 +34,7 @@ profile URL), #1053 (running-a-node cost), #1043 and docs #468 (another entrant'
 | 7 | snapchain `http/signer-key-add-proof` | Return the stored KEY_ADD message with each gasless signer on `/v1/signer`, `/v1/signersByFid` and the matching gRPC calls (HTTP `keyAddMessage`, gRPC `Signer.key_add_message = 13`), so clients can check the custody signature themselves instead of trusting the node or a second node; additive only | not compiled yet (no Rust toolchain where it was written); the proto file checks with protoc; 1 new test and 2 updated test checks, not run |
 | 8 | snapchain `fix/upgrade-without-operator-fid` | `snapchain.sh upgrade` no longer exits before starting the node when `HUB_OPERATOR_FID=0`: `setup_crontab` picks a random weekday instead of `exit 1`, and a numeric FID is kept as typed instead of becoming 0 when it has no fname | A/B in a throwaway ubuntu:24.04 container (real bash, cron, curl, jq; docker and Grafana stubbed): main exits 1 and never starts the node for FID 0 and for FID 3355358, the fix exits 0 and starts it; usernames still resolve; table in the PR |
 | 9 | snapchain `docs/channel-endpoints` | New HTTP and gRPC Channels API pages for the 13 channel routes/RPCs (`channelOwner` ... `isFollowingChannel`), with a warning that channels need engine V21, which is only scheduled on devnet | every example is real output from a local 4-validator 0.14.3 devnet (channels, members, pin, moderation and follows created through the admin RPC and signed messages); all 13 routes checked over HTTP and gRPC; mainnet behaviour checked on our read node; `vocs build` passes |
+| 10 | snapchain `docs/node-firewall-rules` | AWS guide firewall rules as a text table instead of screenshots, and corrected: the screenshots opened gossip 3382 as TCP (it is QUIC over UDP; nothing listens on TCP 3382) and opened the unauthenticated HTTP/gRPC APIs 3381/3383 to 0.0.0.0/0. Now SSH from My IP plus 3382/UDP, APIs only to known clients; managing-a-node no longer says 3381–3383 must be public | our mainnet read node: 3382 socket is UDP only and answers QUIC from the internet, 3381/3383 bound to 127.0.0.1 and unreachable from outside, node synced (blockDelay 0–2 s) with 7 peers; AWS labels checked against AWS docs; `vocs build` passes |
 
 Seen on mainnet, already being handled upstream, so no draft from us:
 - `castsByParent` (all-shard reads) always returns a `nextPageToken`; the last one decodes to
