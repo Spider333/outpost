@@ -232,7 +232,7 @@ for p in "do" hetzner; do
   out="$("$ROOT/outpost" shrink --dry-run 2>&1)" || fail "$p: shrink --dry-run failed: $out"
   if [ "$p" = "do" ]; then want="droplet-action resize"; else want="change-type --keep-disk outpost-node $small"; fi
   [[ "$out" == *"$want"* && "$out" == *"$small"* ]] || fail "$p: shrink --dry-run did not show the resize: $out"
-  [ "$(server)" = "$big on" ] && [ -z "$(resizes)" ] || fail "$p: shrink --dry-run changed the server"
+  if [ "$(server)" != "$big on" ] || [ -n "$(resizes)" ]; then fail "$p: shrink --dry-run changed the server"; fi
   ! grep -qx "SHRUNK=1" "$STATE" || fail "$p: shrink --dry-run marked the server shrunk"
 
   # Stopped after the shutdown, before the resize: the server is off, so the node cannot say it
@@ -261,14 +261,14 @@ for p in "do" hetzner; do
   grep -qx "SHRUNK=1" "$STATE" || fail "$p: shrink did not record it"
   : >"$FAKE_STATE/calls.log"
   out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink twice failed: $out"
-  [[ "$out" == *"already $small"* ]] && [ -z "$(resizes)" ] || fail "$p: shrink twice: $out"
+  if [[ "$out" != *"already $small"* ]] || [ -n "$(resizes)" ]; then fail "$p: shrink twice: $out"; fi
   # Stopped after the resize, before the server was started again: shrink starts it.
   set_off
   out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink of a small server left off failed: $out"
   [ "$(server)" = "$small on" ] || fail "$p: shrink left a small server off: $(server)"
   : >"$FAKE_STATE/calls.log"
   "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node after shrink failed"
-  [ "$(server)" = "$small on" ] && [ -z "$(resizes)" ] || fail "$p: node sized a shrunk server up again"
+  if [ "$(server)" != "$small on" ] || [ -n "$(resizes)" ]; then fail "$p: node sized a shrunk server up again"; fi
   [[ "$("$ROOT/outpost" status)" != *"./outpost shrink"* ]] || fail "$p: status still points to shrink"
   "$ROOT/outpost" destroy --yes >/dev/null
   echo "ok: $p provision small, node sizes up once, shrink only once synced, twice is a no-op"
