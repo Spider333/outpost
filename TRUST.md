@@ -102,6 +102,14 @@ Fixing this properly needs Snapchain to return the signature that added each gas
 client could then check it against the account's custody address on Optimism, with no second
 node.
 
+## What picture hosts learn
+
+With "Show pictures" on (the default), the web client loads profile pictures and image embeds
+straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
+which of its pictures were shown, so roughly which accounts were on screen. A picture cannot
+change a message or post anything. Only https URLs are loaded, and no referrer is sent. Untick
+"Show pictures" above the feed to stop these requests.
+
 ## What the gate enforces
 
 The gate (`src/server/gate.ts`, tests in `test/gate.test.ts`) sits between the web server and

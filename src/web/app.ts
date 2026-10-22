@@ -43,12 +43,14 @@ import {
   type FeedItem,
   type HexString,
 } from "../core/index.js";
+import { httpsUrl, initial, isImageEmbed } from "./media.js";
 
 const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
 const SOCIETY_STORAGE = "outpost.society";
 const RPC_STORAGE = "outpost.rpc";
 const CHECKNODE_STORAGE = "outpost.checknode";
+const PICTURES_STORAGE = "outpost.pictures";
 
 // Set by scripts/build.mjs: the git commit this bundle was built from.
 declare const __OUTPOST_COMMIT__: string;
@@ -164,6 +166,8 @@ let myFollowing = new Set<number>();
 const chipState = new Map<string, "include" | "exclude">();
 let appNames = new Map<number, string>();
 let charter: Charter | undefined = store<Charter>(CHARTER_STORAGE);
+// Profile pictures and image embeds load from their own hosts, not from the node.
+let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
 
 // ---- node status
 
@@ -480,6 +484,31 @@ function actionButton(label: string, pressed: boolean, onToggle: (now: boolean) 
   return btn;
 }
 
+function letterAvatar(it: FeedItem): HTMLSpanElement {
+  return h("span", { class: "avatar letter", "aria-hidden": "true" }, initial(it.author?.displayName ?? it.author?.username));
+}
+
+// The author's picture from their signed profile, or their initial when there is none or it fails.
+function avatar(it: FeedItem): HTMLElement {
+  const src = pictures ? httpsUrl(it.author?.pfp) : undefined;
+  if (!src) return letterAvatar(it);
+  const img = h("img", { class: "avatar", src, alt: "", width: "40", height: "40", loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" });
+  img.addEventListener("error", () => img.replaceWith(letterAvatar(it)), { once: true });
+  return img;
+}
+
+function embedLink(u: string): HTMLAnchorElement {
+  return h("a", { href: u, target: "_blank", rel: "noopener noreferrer" }, u);
+}
+
+function embed(u: string): HTMLElement {
+  if (!pictures || !isImageEmbed(u)) return embedLink(u);
+  const img = h("img", { src: u, alt: "Image attached to this cast", loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" });
+  const a = h("a", { class: "cast-image", href: u, target: "_blank", rel: "noopener noreferrer" }, img);
+  img.addEventListener("error", () => a.replaceWith(embedLink(u)), { once: true });
+  return a;
+}
+
 function castCard(it: FeedItem): HTMLLIElement {
   const name = it.author?.username ? `@${it.author.username}` : `fid ${it.fid}`;
   const target = { fid: it.fid, hash: it.hash };
@@ -508,36 +537,39 @@ function castCard(it: FeedItem): HTMLLIElement {
   return h(
     "li",
     { class: "cast" },
+    avatar(it),
     h(
       "div",
-      { class: "cast-head" },
-      h("span", { class: "name" }, it.author?.displayName ?? name),
-      h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
-      h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
-      // Your own key needs no proof; any other key must be on Optimism or listed by the second node.
-      it.app.keyCheck === "onchain" || it.app.keyCheck === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
-        ? null
-        : it.app.keyCheck === "confirmed"
-          ? h(
-              "span",
-              { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` },
-              "signer confirmed by second node",
-            )
-          : h(
-              "span",
-              {
-                class: "key-tag",
-                title:
-                  "The signature is valid, but this page could not prove the key belongs to this account: it is not on Optimism and no second node could be asked (off, unreachable, or the same node). The node could have signed this with its own key.",
-              },
-              "signer not verified",
-            ),
+      { class: "cast-body" },
+      h(
+        "div",
+        { class: "cast-head" },
+        h("span", { class: "name" }, it.author?.displayName ?? name),
+        h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
+        h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
+        // Your own key needs no proof; any other key must be on Optimism or listed by the second node.
+        it.app.keyCheck === "onchain" || it.app.keyCheck === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
+          ? null
+          : it.app.keyCheck === "confirmed"
+            ? h(
+                "span",
+                { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` },
+                "signer confirmed by second node",
+              )
+            : h(
+                "span",
+                {
+                  class: "key-tag",
+                  title:
+                    "The signature is valid, but this page could not prove the key belongs to this account: it is not on Optimism and no second node could be asked (off, unreachable, or the same node). The node could have signed this with its own key.",
+                },
+                "signer not verified",
+              ),
+      ),
+      it.text ? h("p", { class: "cast-text" }, it.text) : null,
+      embeds.length ? h("div", { class: "cast-embeds" }, ...embeds.flatMap((u) => [embed(u), " "])) : null,
+      actions,
     ),
-    it.text ? h("p", { class: "cast-text" }, it.text) : null,
-    embeds.length
-      ? h("div", { class: "cast-embeds" }, ...embeds.flatMap((u) => [h("a", { href: u, target: "_blank", rel: "noopener noreferrer" }, u), " "]))
-      : null,
-    actions,
   );
 }
 
@@ -568,7 +600,20 @@ async function loadFeed(fid?: number) {
   say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
 }
 
+function showPicturesNote() {
+  $("pictures-note").textContent = pictures ? "Pictures load straight from where their owners host them; those sites see your IP address." : "";
+}
+
 function wireFeed() {
+  const box = $<HTMLInputElement>("pictures");
+  box.checked = pictures;
+  showPicturesNote();
+  box.addEventListener("change", () => {
+    pictures = box.checked;
+    store(PICTURES_STORAGE, pictures);
+    showPicturesNote();
+    renderFeed();
+  });
   $("view-form").addEventListener("submit", (e) => {
     e.preventDefault();
     void busy(null, "", async () => {
