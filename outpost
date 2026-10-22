@@ -446,7 +446,9 @@ tunnel_up() {
     curl -fsm 10 -o /dev/null "http://127.0.0.1:$TUNNEL_PORT/v1/info" && return 0
     ssh -S "$sock" -O exit "root@$host" >/dev/null 2>&1 || true
   fi
-  ssh -i "$key" "${SSH_OPTS[@]}" -f -N -M -S "$sock" -o ExitOnForwardFailure=yes \
+  # ControlMaster=auto, not -M: after a crash or kill -9 the socket file stays behind, and -M then
+  # runs a tunnel nothing can stop. auto removes the stale socket and becomes the master.
+  ssh -i "$key" "${SSH_OPTS[@]}" -f -N -o ControlMaster=auto -S "$sock" -o ExitOnForwardFailure=yes \
     -L "127.0.0.1:$TUNNEL_PORT:127.0.0.1:3381" "root@$host"
 }
 
