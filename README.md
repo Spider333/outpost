@@ -53,6 +53,12 @@ Just trying it? `./outpost provision --watchdog 24` deletes the server for you a
 or after 2 hours with no progress. Ran it? [VOUCHER.md](VOUCHER.md) has a checklist and a
 draft cast.
 
+With an AI coding assistant that can run commands (Claude Code, Codex, Cursor), paste:
+
+```
+Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat.
+```
+
 ## Before you paste a recovery phrase
 
 A recovery phrase is the custody key of an account. Whoever has it can transfer the account,
