@@ -250,7 +250,12 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
 }
 
 async function cmdUninstall(hub: Hub) {
-  const key = requireKey();
+  const key = loadKey();
+  if (!key) {
+    console.log(`no app key from ./outpost cli login at ${keyPath()}, so nothing to revoke here.`);
+    console.log("A key added in the web client lives in that browser: open the client, then 'Your app key' > 'Revoke this key (uninstall)'.");
+    return;
+  }
   const active = await hub.signer(key.fid, key.publicKey);
   if (active) {
     await revokeAppKey(hub, key, { timeoutMs: 60_000 });

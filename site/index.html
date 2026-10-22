@@ -273,8 +273,8 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   </div>
   <div class="stat">
     <p class="stat-k">How long it takes</p>
-    <p class="stat-v">About 6 hours</p>
-    <p>For the first sync on our test server: 1 hour 43 minutes to load a <a href="#g-snapshot">snapshot</a> of the network, then 4 hours 11 minutes to catch up on the blocks since. The client works once loading is done. The newest casts appear as the node catches up.</p>
+    <p class="stat-v">6 to 8 hours</p>
+    <p>For the first sync. On our test server: 1 hour 43 minutes to load a <a href="#g-snapshot">snapshot</a> of the network, then 4 hours 11 minutes to catch up on the blocks since. Our first outside tester's run took 7 hours 33 minutes. The client works once loading is done. The newest casts appear as the node catches up.</p>
   </div>
   <div class="stat">
     <p class="stat-k">Your copy of the network</p>
@@ -358,6 +358,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <pre class="cmd">doctl auth init
 # check: prints your account e-mail and droplet limit
 doctl account get</pre>
+<p class="muted">New DigitalOcean accounts may be refused the 1.2 TB volume ("invalid size specified"). Then ask their support to raise your volume limit, or use Hetzner or a server you already have.</p>
 <p><strong>Hetzner.</strong> Make an account at hetzner.com/cloud and create a project. Install <code>hcloud</code> (<a href="https://github.com/hetznercloud/cli">install guide</a>; on a Mac, <code>brew install hcloud</code>). In the project, open Security, then API tokens, and generate a token with Read &amp; Write access. Then log in with it:</p>
 <pre class="cmd">hcloud context create outpost
 # check: lists your servers (an empty list is fine)
@@ -368,12 +369,12 @@ hcloud server list</pre>
 cd outpost
 # rent a server with a 1.2 TB disk (1 TB on Hetzner), billed by the hour
 ./outpost provision
-# start a read node; the first sync took about 6 hours on our test server
+# start a read node; the first sync takes 6 to 8 hours
 ./outpost node
 # then open http://127.0.0.1:8381
 ./outpost client</pre>
 <p>When you are done:</p>
-<pre class="cmd"># revoke the app key; no recovery phrase needed
+<pre class="cmd"># revoke the CLI's app key; a key added in the web client: "Revoke this key" there
 ./outpost uninstall
 # delete the server and stop paying
 ./outpost destroy</pre>
@@ -462,7 +463,7 @@ next: ./outpost client</pre>
 </details>
 <p class="muted">This is a second run on our already synced node, so it found the node running and returned at once. On a new server the last lines show download and loading progress until the node is synced.</p>
 <p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
-<p>Our test server was a DigitalOcean one with 8 vCPU, 32 GB RAM and a 1.2 TB volume, on 18 to 19 October 2026: loading took 1 hour 43 minutes and catching up 4 hours 11 minutes. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. <code>./outpost status</code> shows where it is:</p>
+<p>Our test server was a DigitalOcean one with 8 vCPU, 32 GB RAM and a 1.2 TB volume, on 18 to 19 October 2026: loading took 1 hour 43 minutes and catching up 4 hours 11 minutes. Our first outside tester, on 22 October 2026, went from start to synced in 7 hours 33 minutes. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. <code>./outpost status</code> shows where it is:</p>
 <pre class="out">node: loading snapshot: shard 1: 200 of 2672 chunks loaded, 20 GB on disk</pre>
 <p>Once it has caught up:</p>
 <pre class="cmd">./outpost status</pre>
@@ -710,6 +711,7 @@ warning: Your node sent 1 of 4160 messages that failed verification (1 altered);
 revoked app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde for FID 3355358. No recovery phrase was needed.
 deleted ~/.config/outpost/appkey.json
 keys added in the web client are revoked from its 'Your app key' panel.</pre>
+<p>Connected in the web client instead? That key lives only in your browser, so <code>./outpost uninstall</code> cannot see it: open the client and use "Revoke this key (uninstall)" under "Your app key".</p>
 <p>Casts the key signed stay on the network after it is revoked. (Checked on mainnet with Snapchain 0.14.3: our test cast is still there after its key is revoked.) Delete them first with <code>./outpost cli delete &lt;hash&gt;</code> if you want them gone.</p>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
 <pre class="cmd">./outpost destroy</pre>
