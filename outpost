@@ -102,8 +102,9 @@ node_host() {
 }
 
 # Host keys are kept per project, so a new server that reuses an old IP (common after
-# destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts.
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=30)
+# destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts. Agent forwarding
+# stays off even if ~/.ssh/config turns it on, so a compromised server cannot use your keys.
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ForwardAgent=no -o ConnectTimeout=15 -o ServerAliveInterval=30)
 
 node_ssh() { node_ssh_for 0 "$@"; }
 

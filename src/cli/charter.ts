@@ -19,7 +19,7 @@ import {
   type CharterBody,
   type Census,
 } from "../core/index.js";
-import { askHidden } from "./prompt.js";
+import { askHidden, printable } from "./prompt.js";
 
 async function load(src: string | undefined): Promise<unknown> {
   if (!src) throw new Error("give a charter file or URL");
@@ -39,14 +39,14 @@ async function loadVerified(hub: Hub, src: string | undefined, chain?: Optimism)
 }
 
 function describeVerification(c: Charter, v: Awaited<ReturnType<typeof verifyCharter>>, chain?: Optimism): string {
-  if (!v.ok) return `REJECTED: ${v.problems.join("; ")}`;
+  if (!v.ok) return `REJECTED: ${printable(v.problems.join("; "))}`;
   const who =
     v.issuerCheck === "custody"
       ? `signed by the custody address of FID ${c.issuer!.fid} (${v.signer}), checked ${chain ? `on Optimism via ${chain.url}` : "on your node"}`
       : v.issuerCheck === "no-issuer"
         ? `signed by ${v.signer}. It names no issuer FID, so only the address vouches for it`
         : `signed by ${v.signer}`;
-  return `OK: "${c.name}", ${c.members.length} members, ${who}${c.nodes?.length ? `\nsociety nodes: ${c.nodes.join(", ")}` : ""}`;
+  return `OK: "${printable(c.name)}", ${c.members.length} members, ${who}${c.nodes?.length ? `\nsociety nodes: ${printable(c.nodes.join(", "))}` : ""}`;
 }
 
 // One line on what verification dropped, for commands that read messages.
@@ -66,7 +66,7 @@ export function printCensus(c: Census, names: Map<number, string>) {
   console.log("  apps members posted from:");
   for (const a of c.apps) {
     const label = a.app.kind === "app" ? `${names.get(a.app.requestFid!) ?? "fid " + a.app.requestFid} (app fid ${a.app.requestFid})` : a.app.kind === "self" ? "own key" : "unknown key";
-    console.log(`    ${String(a.casts).padStart(5)}  ${label}`);
+    console.log(printable(`    ${String(a.casts).padStart(5)}  ${label}`));
   }
 }
 
@@ -127,7 +127,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       const feed = new FeedBuilder(hub);
       const appFids = result.apps.flatMap((x) => (x.app.kind === "app" ? [x.app.requestFid!] : []));
       const names = new Map((await Promise.all(appFids.map((f) => feed.profile(f).catch(() => ({ fid: f }))))).map((p) => [p.fid, ("username" in p && p.username) || `fid ${p.fid}`]));
-      console.log(`"${c.name}"`);
+      console.log(printable(`"${c.name}"`));
       printCensus(result, names);
       console.log(`computed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
       console.log(verificationNote(hub));
@@ -138,10 +138,10 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       const limit = b ? Number(b) : 20;
       if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("limit must be 1 to 500");
       const items = await charterFeed(new FeedBuilder(hub), c, { limit });
-      console.log(`"${c.name}" feed, ${items.length} casts, through its lens:`);
+      console.log(printable(`"${c.name}" feed, ${items.length} casts, through its lens:`));
       for (const it of items) {
-        console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${it.author?.username ? "@" + it.author.username : "fid:" + it.fid}`);
-        console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}`);
+        console.log(printable(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${it.author?.username ? "@" + it.author.username : "fid:" + it.fid}`));
+        console.log(`  ${printable(it.text.replace(/\s+/g, " ")).slice(0, 200)}`);
       }
       console.log(verificationNote(hub));
       return;
@@ -151,7 +151,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       const k = key();
       const already = new Set(await followingOf(hub, k.fid));
       const todo = c.members.filter((m) => m !== k.fid && !already.has(m));
-      console.log(`"${c.name}": following ${todo.length} members you do not follow yet (${c.members.length - todo.length} already followed or you).`);
+      console.log(printable(`"${c.name}": following ${todo.length} members you do not follow yet (${c.members.length - todo.length} already followed or you).`));
       let confirmed = 0;
       for (const m of todo) {
         const r = await follow(hub, k, m, { timeoutMs: 15_000 });

@@ -21,6 +21,13 @@ never sends it to GitHub. The client stores the node address and token, then rem
 the address bar (`takeInvite` in `src/core/society.ts`). A member who would rather not trust the
 GitHub build runs the same client from their own clone with `./outpost client`.
 
+The browser keeps the member's app key in storage for the address `spider333.github.io`. Every
+GitHub Pages site of the same author shares that address, this tutorial included, and a script on
+any of them could read the key. The build attestation covers only the client's own three files
+(`app/index.html`, `app/app.js`, `app/style.css`). So trusting the hosted client means trusting
+every page published there. A separate address for the client would close this; it does not have
+one yet. With `./outpost client` the key is stored for your own `localhost` instead.
+
 ## What the host cannot do
 
 **Post as a member.** The member's app key is created in their own browser and stays there
@@ -90,6 +97,11 @@ the member switch.
   a cast signed with a made-up gasless key passes. Choose a second node run by someone else.
 - **Fake a follow or a like.** Follows and reactions get the hash and signature checks but not
   the key check.
+- **Show a username the account does not own.** The client checks that a username was set with
+  one of the account's own keys (`profile` in `src/core/feed.ts`), but not that the account owns
+  the name. An honest node rejects such a name; a host's node can serve it, so an account the host
+  controls can appear as any @name. A name on someone else's account still needs one of that
+  account's keys, checked the same way as the key of a cast.
 
 ## What the second node learns
 
@@ -144,3 +156,8 @@ Any member can check these from outside with their own token:
 
 If the server was not made by `./outpost provision`, open 443/tcp in its firewall yourself.
 `--phone` and society mode both use 443, so only one can be on at a time.
+
+`--phone` serves the client from your own server at `https://<ip>.sslip.io`, so the phone keeps
+its app key in that site's storage. `./outpost destroy` gives the IP back to the provider, and
+whoever gets it next can serve a page at the same address that reads the key. Before you destroy
+the server, tap "Revoke this key (uninstall)" on the phone.
