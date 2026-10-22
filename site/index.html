@@ -6,6 +6,16 @@
 <meta name="color-scheme" content="dark">
 <title>Outpost: your own node and client for Farcaster</title>
 <meta name="description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Outpost: your own node and client for Farcaster">
+<meta property="og:description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
+<meta property="og:url" content="https://spider333.github.io/outpost/">
+<meta property="og:image" content="https://spider333.github.io/outpost/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Outpost: your own Farcaster node and client. Three commands, no API keys. Beside it, the web client's feed on a phone.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%237cc4ff' fill-opacity='.2'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%237cc4ff'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #0e1013; --surface: #161a1f; --surface-2: #1c2128; --line: #2a2f37; --text: #e7e9ec; --muted: #9aa3ad;
@@ -122,6 +132,15 @@ ul.checks li::before { content: ""; position: absolute; left: 4px; top: 0.55em; 
   .flow .link::before { content: "\2195"; margin: 0; }
 }
 
+/* screenshots */
+.shots { margin: 1.5rem 0 0; display: grid; grid-template-columns: minmax(0, 26fr) minmax(0, 74fr); gap: 12px; align-items: start; }
+.shots img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.shots figcaption { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
+@media (max-width: 640px) {
+  .shots { grid-template-columns: minmax(0, 1fr); }
+  .shots .shot-phone { max-width: 320px; }
+}
+
 /* what is different */
 .diffs { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .diffs li { max-width: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; font-size: 15px; line-height: 1.55; color: var(--muted); }
@@ -135,6 +154,7 @@ pre { font-family: var(--mono); font-size: 14px; line-height: 1.45; background: 
 .code pre { margin: 0; }
 pre.cmd { border-left: 3px solid var(--accent); background: #12161b; }
 .code pre.cmd { padding-right: 76px; }
+pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
 pre.out { color: #c9d1d9; }
 pre.out::before { content: "output"; display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
 .copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 system-ui, sans-serif; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
@@ -273,6 +293,11 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li>A web client at <code>http://127.0.0.1:8381</code> that shows your following feed and can cast, reply, like, recast and follow.</li>
   <li>An <a href="#g-app-key">app key</a> that can cast, react and follow, and nothing else.</li>
 </ul>
+<figure class="shots">
+  <a class="shot-phone" href="client-phone.webp"><img src="client-phone.webp" width="780" height="1688" loading="lazy" alt="The web client on a phone: the feed of FID 99 with app filter buttons (warpcast 64, own key 15, neynar 12 and more), a Show pictures box, and casts with their authors' profile pictures."></a>
+  <a class="shot-wide" href="client-desktop.webp"><img src="client-desktop.webp" width="2000" height="1520" loading="lazy" alt="The web client on a laptop: two casts from the feed of FID 37, each with its author's profile picture and an attached image shown in the feed."></a>
+  <figcaption>The web client, reading mainnet from a Snapchain read node on 22 October 2026: the following feeds of FID 99 (phone) and FID 37 (laptop). Open either image for full size.</figcaption>
+</figure>
 <h3>Who it is for</h3>
 <p>Farcaster users who are at ease in a terminal, and developers who want to see the protocol from the node up. You will rent a server and run a few commands. A community can share one node: its members use it from a browser and pay nothing (<a href="#t-share">step 8</a>).</p>
 </section>
@@ -356,6 +381,10 @@ cd outpost
   <p class="muted">Every command is safe to run twice. <code>./outpost provision --dry-run</code> prints the exact provider commands without running them.</p>
   <p class="muted">Just trying it? <code>./outpost provision --watchdog 24</code> deletes the server for you after 24 hours, or after 2 hours with no progress, so a forgotten server cannot keep billing you. It runs on your computer; <code>./outpost watchdog stop</code> keeps the server.</p>
 </div>
+<h3>With an AI coding assistant</h3>
+<p>Paste this into an assistant that can run commands on your computer, such as Claude Code, Codex or Cursor:</p>
+<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat.</pre>
+<p class="muted">The assistant runs the same commands as above, so the same costs apply. Keep tokens and recovery phrases out of the chat: the assistant's provider would see them.</p>
 
 <section class="danger" aria-labelledby="warn-h">
   <h2 id="warn-h">Before you paste a recovery phrase</h2>
