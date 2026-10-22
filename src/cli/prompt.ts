@@ -33,3 +33,9 @@ export function ask(question: string): Promise<string> {
 export async function confirm(question: string): Promise<boolean> {
   return /^y(es)?$/i.test(await ask(`${question} [y/N] `));
 }
+
+// Text from the network, made safe to print. Control characters would let a cast move the
+// cursor, rewrite lines already on screen or, in some terminals, set the clipboard.
+export function printable(s: string): string {
+  return s.replace(/\p{Cc}/gu, "");
+}

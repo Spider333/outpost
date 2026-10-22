@@ -42,7 +42,7 @@ import {
   type HexString,
   type Reaction,
 } from "../core/index.js";
-import { askHidden, confirm } from "./prompt.js";
+import { askHidden, confirm, printable } from "./prompt.js";
 import { cmdCharter, verificationNote } from "./charter.js";
 import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
 
@@ -157,10 +157,10 @@ function report(what: string, r: { hash: HexString; confirmed: boolean }) {
 async function cmdStatus(hub: Hub) {
   const info = await hub.info();
   const { synced, maxDelay } = syncState(info);
-  console.log(`node ${hub.url}  version ${info.version}`);
+  console.log(printable(`node ${hub.url}  version ${info.version}`));
   for (const s of info.shardInfos) {
     const note = s.shardId === 0 ? " (block shard: app keys and storage)" : "";
-    console.log(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages${note}`);
+    console.log(printable(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages${note}`));
   }
   console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
 }
@@ -185,8 +185,8 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
 
   const account = await resolveAccount(hub, custody.address);
   console.log(`\ncustody address  ${account.custody}`);
-  console.log(`FID              ${account.fid}`);
-  console.log(`storage units    ${account.storageUnits}`);
+  console.log(printable(`FID              ${account.fid}`));
+  console.log(printable(`storage units    ${account.storageUnits}`));
   if (account.storageUnits === 0) throw new Error("this account has no storage, so the network will reject its messages.");
   console.log(`app key          can cast, react and follow; expires ${ttlDays} days after last use`);
   if (!(await confirm("Sign the app key authorization for this FID?"))) return;
@@ -211,7 +211,7 @@ async function cmdWhoami(hub: Hub) {
     console.log("status: NOT active on your node (revoked, expired, or not merged yet)");
     return;
   }
-  console.log(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`);
+  console.log(printable(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`));
   if (s.expiresAt) console.log(`expires: ${new Date(s.expiresAt * 1000).toISOString()} unless used before then`);
 }
 
@@ -238,14 +238,14 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
         : "  [signer not verified]";
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
-    console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`);
-    console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
+    console.log(printable(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`));
+    console.log(`  ${printable(it.text.replace(/\s+/g, " ")).slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
     console.log(`  ${it.fid}:${it.hash}`);
   }
   const mix = new Map<string, number>();
   for (const it of items) mix.set(label(it), (mix.get(label(it)) ?? 0) + 1);
   console.log(`\n${items.length} cast${items.length === 1 ? "" : "s"} in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
-  for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${k}`);
+  for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(printable(`  ${String(n).padStart(3)}  ${k}`));
   console.log(verificationNote(hub));
 }
 
@@ -295,7 +295,7 @@ async function cmdSelftest(hub: Hub) {
     const res = await hub.validate(msg);
     const ok = res.valid === expected;
     if (!ok) failures++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${name}: node says valid=${res.valid}, expected ${expected}`);
+    console.log(printable(`${ok ? "PASS" : "FAIL"}  ${name}: node says valid=${res.valid}, expected ${expected}`));
   }
   console.log(failures ? `\n${failures} check(s) failed` : `\nall ${cases.length} checks passed against ${hub.url}`);
   if (failures) process.exitCode = 1;
@@ -380,6 +380,6 @@ async function main(argv: string[]) {
 }
 
 main(process.argv.slice(2)).catch((e: unknown) => {
-  console.error(`error: ${e instanceof HubError || e instanceof Error ? e.message : String(e)}`);
+  console.error(printable(`error: ${e instanceof HubError || e instanceof Error ? e.message : String(e)}`));
   process.exitCode = 1;
 });

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests infra/snapshot-restore.sh against a fake snapshot bucket on 127.0.0.1 (Linux only: the
 # script targets Ubuntu servers). Checks: a clean load matches the source byte for byte, a rerun
-# skips loaded shards, a missing chunk fails without leaving a half shard in .rocks, and the next
-# run resumes and finishes.
+# skips loaded shards, a missing chunk fails without leaving a half shard in .rocks, the next
+# run resumes and finishes, and a chunk name that could escape the buffer is refused.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"
@@ -86,5 +86,20 @@ MAX_AHEAD=3 bash -c "$fn"'; fetch_one "$@"' _ "$w/d" "$w/buf" \
   "http://127.0.0.1:$PORT/FARCASTER_NETWORK_MAINNET/1/snapshot-test.tar.gz" 1 chunk_0001.bin 2>"$w/err" || true
 [ -e "$w/buf/chunk_0001.bin.ok" ] || fail "a download worker died on an empty progress file: $(cat "$w/err")"
 echo "ok: an empty progress file does not kill a download worker"
+
+# 6. A chunk name that is not a plain file name is refused before anything is downloaded. The
+# name below climbs out of the chunk buffer to $T/escaped.bin, and the bucket serves a file for it.
+mv "$T/data" "$T/data.second"
+idx="$T/bucket/FARCASTER_NETWORK_MAINNET/1/latest.json"
+up=""
+for _ in $(seq 1 30); do up="$up../"; done
+mkdir -p "$T/bucket$T"
+cp "$kb1/chunk_0001.bin" "$T/bucket$T/escaped.bin"
+jq --arg c "$up${T#/}/escaped.bin" '.chunks[0] = $c' "$idx" >"$T/latest.bad"
+mv "$T/latest.bad" "$idx"
+if run; then fail "load with a chunk name outside the buffer succeeded"; fi
+grep -q "chunk name that is not a plain file name" "$T/log" || fail "the bad chunk name was not reported"
+if [ -e "$T/escaped.bin" ] || [ -e "$T/escaped.bin.part" ]; then fail "a chunk was written outside the buffer"; fi
+echo "ok: a chunk name that is not a plain file name is refused"
 
 find "$T" -delete

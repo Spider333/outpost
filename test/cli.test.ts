@@ -13,10 +13,9 @@ const run = promisify(execFile);
 const FID = 4242;
 
 // A node serving one cast signed with a key it calls gasless. The second node is a closed port.
-async function fakeNode(): Promise<{ url: string; server: Server }> {
+async function fakeNode(text = "cast whose key nobody can check"): Promise<{ url: string; server: Server }> {
   const signer = new NobleEd25519Signer(crypto.getRandomValues(new Uint8Array(32)));
   const key = bytesToHex((await signer.getSignerKey())._unsafeUnwrap());
-  const text = "cast whose key nobody can check";
   const ts = Math.floor((Date.now() - 1609459200000) / 1000) - 60;
   const m = (await makeCastAdd({ text, type: CastType.CAST, embeds: [], embedsDeprecated: [], mentions: [], mentionsPositions: [] }, { fid: FID, network: FarcasterNetwork.MAINNET, timestamp: ts }, signer))._unsafeUnwrap();
   const cast = {
@@ -56,6 +55,20 @@ test("CLI: a cast whose key cannot be checked is hidden by default; --show-unver
     assert.match(shown, /cast whose key nobody can check/);
     assert.match(shown, /\[signer not verified\]/);
     assert.match(shown, /shown although their signing key could not be checked/);
+  } finally {
+    server.close();
+  }
+});
+
+test("CLI: control characters in a cast never reach the terminal", async () => {
+  // Cursor up and erase the line, an OSC 52 clipboard write ended by BEL, and a one-byte C1 CSI.
+  const { url, server } = await fakeNode("hello\x1b[1A\x1b[2Kfake line\x1b]52;c;ZWNobyBwd25lZA==\x07 world \u009b31m café ✓");
+  try {
+    const env = { ...process.env, OUTPOST_HOME: mkdtempSync(join(tmpdir(), "outpost-cli-test-")) };
+    const args = ["--import", "tsx", "src/cli/main.ts", "feed", "--fid", String(FID), "--node", url, "--rpc", "off", "--check-node", "http://127.0.0.1:1", "--show-unverified"];
+    const out = (await run(process.execPath, args, { env })).stdout;
+    assert.doesNotMatch(out, /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/u);
+    assert.ok(out.includes("hello[1A[2Kfake line]52;c;ZWNobyBwd25lZA== world 31m café ✓"), out);
   } finally {
     server.close();
   }

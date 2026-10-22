@@ -104,6 +104,14 @@ for s in $SHARDS; do
   # Keep the first index we saw, so a resumed run asks for the same chunks.
   [ -s "$d/latest.json" ] || curl -fsS -m 60 -o "$d/latest.json" "$BUCKET/$NETWORK/$s/latest.json"
   base="$BUCKET/$(jq -r .key_base "$d/latest.json")"
+  # Chunk names become file names, and this runs as root: a name like ../../etc/cron.d/x
+  # must never reach curl -o. Checked in jq, on the JSON strings themselves. Drop the index
+  # too, so the next run asks for a fresh one.
+  if ! jq -e '.chunks | type == "array" and all(type == "string" and test("\\A[A-Za-z0-9_][A-Za-z0-9._-]*\\z"))' "$d/latest.json" >/dev/null; then
+    rm -f "$d/latest.json"
+    echo "the snapshot index for shard $s has a chunk name that is not a plain file name" >&2
+    exit 1
+  fi
   jq -r '.chunks[]' "$d/latest.json" >"$d/chunks"
   n=$(wc -l <"$d/chunks")
   rm -f "$buf"/*.failed "$buf"/*.part
