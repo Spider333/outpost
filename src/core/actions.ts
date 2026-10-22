@@ -151,7 +151,3 @@ export async function unreact(hub: Hub, key: AppKey, r: Reaction, target: CastTa
   const msg = await buildReactionRemove(key, r, target);
   return submitAndConfirm(hub, msg, async () => ((await hub.reactionById(key.fid, type, target)) ? undefined : true), wait);
 }
-
-export function castText(m: HubMessage): string {
-  return m.data.castAddBody?.text ?? "";
-}

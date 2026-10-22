@@ -9,7 +9,7 @@
 // If the charter names an issuer FID, the signer must be that FID's custody address, which
 // anyone can check on Optimism's IdRegistry (or, less strictly, against their node).
 
-import { keccak256, recoverTypedDataAddress, toBytes, type Hex, type LocalAccount, type WalletClient } from "viem";
+import { keccak256, recoverTypedDataAddress, toBytes, type Hex, type LocalAccount } from "viem";
 import { passesFilter, type AppFilter, type AppRef, type AppSelector } from "./apps.js";
 import type { FeedItem } from "./feed.js";
 import { Hub, type HexString } from "./hub.js";
@@ -110,17 +110,11 @@ export function checkShape(c: unknown): string[] {
   return p;
 }
 
-// Anything that can sign EIP-712 typed data for an address: a viem LocalAccount
-// (from a key or phrase), or a wallet wrapped with walletCharterSigner().
+// Anything that can sign EIP-712 typed data for an address, such as a viem LocalAccount
+// (from a key or phrase).
 export interface CharterSigner {
   address: Hex;
   signTypedData(td: ReturnType<typeof typedData>): Promise<Hex>;
-}
-
-export function walletCharterSigner(wallet: WalletClient): CharterSigner {
-  const account = wallet.account;
-  if (!account) throw new Error("wallet has no account selected");
-  return { address: account.address, signTypedData: (td) => wallet.signTypedData({ ...td, account }) };
 }
 
 export async function signCharter(body: CharterBody, signer: CharterSigner | LocalAccount): Promise<Charter> {
