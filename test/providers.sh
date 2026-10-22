@@ -197,6 +197,13 @@ out="$(FAKE_VOLUME_LIMIT=1 "$ROOT/outpost" provision --provider "do" --yes --no-
 ! ls "$FAKE_STATE"/droplet.* "$FAKE_STATE"/volume.* >/dev/null 2>&1 || fail "do: created a server or volume after the volume limit"
 echo "ok: do volume limit explains the way out and creates nothing billable"
 
+# A volume request that fails after the volume was made (timeout): never claim nothing is billed.
+find "$FAKE_STATE" -type f -delete
+out="$(FAKE_VOLUME_TIMEOUT=1 "$ROOT/outpost" provision --provider "do" --yes --no-wait 2>&1)" && fail "do: provision succeeded after a failed volume call"
+[[ "$out" == *"exists and is billed"* && "$out" != *"nothing billable"* ]] || fail "do: a volume made despite the error was not reported: $out"
+"$ROOT/outpost" destroy --provider "do" --yes >/dev/null
+echo "ok: do volume made despite an error is reported as billed"
+
 # No terminal and no --yes (an AI assistant running it): ask for --yes, create nothing.
 find "$FAKE_STATE" -type f -delete
 out="$("$ROOT/outpost" provision --provider "do" --no-wait </dev/null 2>&1)" && fail "do: provision without a terminal or --yes went ahead"

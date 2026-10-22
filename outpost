@@ -225,13 +225,21 @@ provision_do() {
   fi
   if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
     # New accounts are often limited to small volumes and get "422 ... invalid size specified"
-    # (a tester's new account, 22 Oct 2026). Nothing billable exists yet at this point.
-    run doctl compute volume create "$name-data" --region "$region" --size "${disk}GiB" --fs-type ext4 --desc "outpost snapchain data" \
-      || die "DigitalOcean did not create the ${disk} GB volume, so nothing billable was created.
+    # (a tester's new account, 22 Oct 2026). A failed call can still have made the volume (a
+    # timeout), so look before saying nothing is billed.
+    if ! run doctl compute volume create "$name-data" --region "$region" --size "${disk}GiB" --fs-type ext4 --desc "outpost snapchain data"; then
+      local vols
+      vols="$(plist doctl compute volume list --format Name --no-header)" \
+        || die "the volume request failed and the volume list could not be read, so it is unclear whether a volume was made. Check Volumes in your DigitalOcean dashboard before running this again or switching providers."
+      if printf '%s\n' "$vols" | grep -qx "$name-data"; then
+        die "DigitalOcean reported an error, but the volume $name-data exists and is billed by the hour. Run ./outpost provision again to continue, or ./outpost destroy to delete it."
+      fi
+      die "DigitalOcean did not create the ${disk} GB volume (it is not in your volume list), so nothing billable was created.
 If it said \"invalid size specified\", your account is limited to smaller volumes (common on new accounts). Either:
   ask DigitalOcean support to raise your volume limit to ${disk} GiB in $region, then run this again;
   use Hetzner: ./outpost provision --provider hetzner;
   or use a server you already have (Ubuntu 24.04, root SSH, at least 1 TB of disk): OUTPOST_HOST=<ip> ./outpost node"
+    fi
     [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   # DigitalOcean rejects a firewall that names a tag which does not exist yet (HTTP 422).
