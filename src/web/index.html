@@ -110,6 +110,7 @@
       <p id="feed-title" class="muted"></p>
       <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
       <p class="muted small">Tap an app once to show only it, again to hide it, again to reset. Apps are read from each post's key, so tools that use the poster's own key appear as "own key".</p>
+      <label class="check"><input id="pictures" type="checkbox"> Show pictures</label>
       <ol id="feed" class="feed"></ol>
       <button id="more" type="button" hidden>Load more</button>
     </section>
@@ -167,7 +168,7 @@
   </main>
 
   <footer class="muted small">
-    <span id="node-note">Reads and writes go only to your own node.</span> Every message is checked in this page before it is shown. Open source, MIT. <span id="build"></span>
+    <span id="node-note">Reads and writes go only to your own node.</span> <span id="pictures-note"></span> Every message is checked in this page before it is shown. Open source, MIT. <span id="build"></span>
   </footer>
   <script type="module" src="app.js"></script>
 </body>

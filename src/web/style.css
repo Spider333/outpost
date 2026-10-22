@@ -138,14 +138,19 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .chip[data-state="exclude"] { text-decoration: line-through; color: var(--muted); border-style: dashed; }
 
 .feed { list-style: none; margin: 0; padding: 0; }
-.cast { border-top: 1px solid var(--line); padding: 12px 0; }
+.cast { border-top: 1px solid var(--line); padding: 12px 0; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; }
 .cast:first-child { border-top: 0; }
+.cast-body { min-width: 0; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--line); }
+.avatar.letter { display: grid; place-items: center; font-weight: 600; color: var(--muted); }
 .cast-head { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 14px; align-items: baseline; }
 .cast-head .name { font-weight: 600; color: var(--text); }
 .cast-head .meta { color: var(--muted); font-size: 13px; }
 .cast-text { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .cast-embeds { margin: 4px 0; font-size: 14px; overflow-wrap: anywhere; }
 .cast-embeds a { color: var(--accent); }
+.cast-image { display: block; margin: 6px 0; }
+.cast-image img { display: block; max-width: 100%; max-height: 24rem; height: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .cast-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .cast-actions button { min-height: 36px; font-size: 13px; padding: 4px 10px; }
 .cast-actions button[aria-pressed="true"] { color: var(--ok); border-color: var(--ok); }
