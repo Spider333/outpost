@@ -185,8 +185,8 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
 
   const account = await resolveAccount(hub, custody.address);
   console.log(`\ncustody address  ${account.custody}`);
-  console.log(`FID              ${account.fid}`);
-  console.log(`storage units    ${account.storageUnits}`);
+  console.log(printable(`FID              ${account.fid}`));
+  console.log(printable(`storage units    ${account.storageUnits}`));
   if (account.storageUnits === 0) throw new Error("this account has no storage, so the network will reject its messages.");
   console.log(`app key          can cast, react and follow; expires ${ttlDays} days after last use`);
   if (!(await confirm("Sign the app key authorization for this FID?"))) return;

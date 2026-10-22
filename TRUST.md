@@ -26,7 +26,7 @@ GitHub Pages site of the same author shares that address, this tutorial included
 any of them could read the key. The build attestation covers only the client's own three files
 (`app/index.html`, `app/app.js`, `app/style.css`). So trusting the hosted client means trusting
 every page published there. A separate address for the client would close this; it does not have
-one yet. With `./outpost client` the key is stored for your own `localhost` instead.
+one yet. With `./outpost client` the key is stored for `127.0.0.1` on your own computer instead.
 
 ## What the host cannot do
 
