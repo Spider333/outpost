@@ -41,11 +41,13 @@ The commit is also shown at the bottom of the client.
 
 **Alter a message or make one up with someone's real key.** The client checks every message it
 reads, in the member's own browser: the hash must match the message content and the Ed25519
-signature must be valid for that hash (`verifyMessage` in `src/core/verify.ts`). Everything the
+signature must be valid for that hash (`verifyMessage` in `src/core/verify.ts`). Every message the
 client shows is rebuilt from those signed bytes; the node's reply is only input to the check and
-is never displayed. A message that fails, or that comes with any field the signed bytes do not
-contain, is not shown, and the client says how many it dropped. The node's own validation is
-never asked. Test: the malicious-node cases in `test/verify.test.ts`.
+is never displayed. Pictures are the exception: the signature covers a picture's URL, not the
+image its host sends back (see "What picture hosts learn"). A message that fails, or that comes
+with any field the signed bytes do not contain, is not shown, and the client says how many it
+dropped. The node's own validation is never asked. Test: the malicious-node cases in
+`test/verify.test.ts`.
 
 **Answer a question with the wrong data.** Messages must match what was asked for: casts by
 account F really are by F, a channel feed really is that channel, a cast looked up by hash
@@ -106,9 +108,10 @@ node.
 
 With "Show pictures" on (the default), the web client loads profile pictures and image embeds
 straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
-which of its pictures were shown, so roughly which accounts were on screen. A picture cannot
-change a message or post anything. Only https URLs are loaded, and no referrer is sent. Untick
-"Show pictures" above the feed to stop these requests.
+which of its pictures were shown, so roughly which accounts were on screen. The signature covers
+the URL, not the image, so a host can swap the image without changing the signed profile or cast.
+A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
+is sent. Untick "Show pictures" above the feed to stop these requests.
 
 ## What the gate enforces
 
