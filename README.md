@@ -16,9 +16,10 @@ app key.
   about $0.41/h: an 8 vCPU / 32 GB droplet at $0.25/h plus a 1.2 TB volume at about $0.16/h
   (October 2026 list prices). `./outpost destroy` deletes the server, volume and firewall and
   stops the bill.
-- **How long it takes**: the first sync took about 6 hours on our test server (DigitalOcean,
-  8 vCPU, 32 GB RAM, 1.2 TB volume, 18 to 19 October 2026): 1 h 43 min to load the snapshot,
-  4 h 11 min to catch up. The client works once loading is done.
+- **How long it takes**: the first sync takes 6 to 8 hours. On our test server (DigitalOcean,
+  8 vCPU, 32 GB RAM, 1.2 TB volume, 18 to 19 October 2026) it was 1 h 43 min to load the snapshot
+  and 4 h 11 min to catch up; our first outside tester's run on 22 October 2026 took 7 h 33 min.
+  The client works once loading is done.
 
 Tutorial, with the output of every step from a real run: https://spider333.github.io/outpost/
 (source: [site/index.html](site/index.html)).
@@ -29,19 +30,21 @@ You need:
 
 - A DigitalOcean (`doctl`) or Hetzner (`hcloud`) account, logged in. Or any Ubuntu 24.04
   server with root SSH and at least 1 TB of disk: `OUTPOST_HOST=<ip> ./outpost node`.
+  New DigitalOcean accounts may be refused the 1.2 TB volume ("invalid size specified"); then
+  ask their support to raise the volume limit, or use Hetzner or a server you already have.
 - Node.js 20 or newer, for the client.
 - A test account for Farcaster that already has storage.
 
 ```
 ./outpost provision   # rent a server with a 1.2 TB disk (DigitalOcean; 1 TB on Hetzner), billed by the hour
-./outpost node        # start a Snapchain read node on it; first sync took about 6 hours on our test server
+./outpost node        # start a Snapchain read node on it; the first sync takes 6 to 8 hours
 ./outpost client      # open http://127.0.0.1:8381
 ```
 
 When you are done:
 
 ```
-./outpost uninstall   # revoke the app key; no recovery phrase needed
+./outpost uninstall   # revoke the CLI's app key; a key added in the web client: "Revoke this key" there
 ./outpost destroy     # delete the server and stop paying
 ```
 
