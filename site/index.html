@@ -163,6 +163,7 @@ pre.out::before { content: "output"; display: block; font-size: 11px; color: var
 details.out-fold { margin: 10px 0; }
 details.out-fold summary { cursor: pointer; color: var(--accent); font-size: 15px; padding: 4px 0; }
 details.out-fold summary code { color: var(--text); }
+details.out-fold li { margin: 0 0 10px; }
 
 /* callouts */
 .danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: var(--radius); padding: 18px 20px; margin: 4rem 0 0; }
@@ -350,7 +351,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li>A DigitalOcean or Hetzner account with its command-line tool logged in (<code>doctl</code> or <code>hcloud</code>), or any Ubuntu 24.04 server with root SSH and at least 1 TB of disk.</li>
   <li>Node.js 20 or newer.</li>
   <li>macOS or Linux. On Windows, use WSL; we have not tested it there.</li>
-  <li>A <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>. Read the <a href="#warn-h">warning below</a> first.</li>
+  <li>To post: a <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>. Read the <a href="#warn-h">warning below</a> first. No test account? You can still read: the client shows the feed of any FID or username.</li>
 </ul>
 <details class="out-fold">
 <summary>First time with DigitalOcean or Hetzner? Set up the command-line tool</summary>
@@ -384,8 +385,20 @@ cd outpost
 </div>
 <h3>With an AI coding assistant</h3>
 <p>Paste this into an assistant that can run commands on your computer, such as Claude Code, Codex or Cursor:</p>
-<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat.</pre>
-<p class="muted">The assistant runs the same commands as above, so the same costs apply. Keep tokens and recovery phrases out of the chat: the assistant's provider would see them.</p>
+<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat. Leave doctl auth init (or hcloud context create) and ./outpost cli login to me: they ask for secrets in a hidden prompt that only works in a real terminal. You cannot answer the yes/no prompts of provision and destroy, so once I say OK, run them with --yes.</pre>
+<p class="muted">The assistant runs the same commands as above, so the same costs apply. Keep tokens and recovery phrases out of the chat: the assistant's provider would see them. If a recovery phrase lands in the chat by mistake, treat that account as exposed and stop using it.</p>
+
+<details class="out-fold">
+<summary>Something went wrong? What our first outside tester hit, and what to do</summary>
+<ul>
+  <li><code>422 failed to create volume: invalid size specified</code> from <code>./outpost provision</code>: your DigitalOcean account is limited to smaller volumes, which is common on new accounts. Nothing billable was created. Ask their support to raise the volume limit, use <code>--provider hetzner</code>, or use a server you already have: <code>OUTPOST_HOST=&lt;ip&gt; ./outpost node</code>.</li>
+  <li><code>cancelled</code>, or "no terminal to answer": the command ran without a terminal, which is common under an AI assistant. Run it again with <code>--yes</code>.</li>
+  <li><code>./outpost status</code> says "cannot reach the server over SSH" during the sync: usually a short network drop. The node keeps going on the server; check again in a minute.</li>
+  <li>The client page shows a connection error, or a cast does not send: the client lost its connection to your node (a Wi-Fi change or sleep). It reconnects by itself within about 15 seconds; then try again. If it does not, stop it with Ctrl-C and run <code>./outpost client</code> again.</li>
+  <li><code>./outpost uninstall</code> says there is nothing to revoke: you connected in the web client, so the key lives in that browser. Open the client and use "Revoke this key (uninstall)" under "Your app key".</li>
+  <li>A cast you want gone: the web client cannot delete casts. Run <code>./outpost cli login</code>, then <code>./outpost cli delete &lt;hash&gt;</code>, then <code>./outpost cli uninstall</code>.</li>
+</ul>
+</details>
 
 <section class="danger" aria-labelledby="warn-h">
   <h2 id="warn-h">Before you paste a recovery phrase</h2>
