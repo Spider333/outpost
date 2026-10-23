@@ -142,6 +142,16 @@ case "$action" in
       mv "$SPONSOR/key.tmp" "$SPONSOR/key"
     fi
     chmod 600 "$SPONSOR/key"
+    # If the new sponsor does not start, nothing answers /sponsor/* any more (an old one was just
+    # removed), so Caddy goes back to sending everything to the gate.
+    sponsor_failed() {
+      docker logs outpost-sponsor 2>&1 | tail -5 >&2 || true
+      docker rm -f outpost-sponsor >/dev/null 2>&1 || true
+      rm -f "$SPONSOR/on"
+      write_caddyfile
+      reload_caddy
+      die "$1"
+    }
     : >"$SPONSOR/on"
     docker rm -f outpost-sponsor >/dev/null 2>&1 || true
     # Host networking: it reaches the Optimism RPC and listens on 127.0.0.1 only. It reads the
@@ -153,13 +163,13 @@ case "$action" in
       -e OUTPOST_SPONSOR_MEMBERS=/gate/members \
       -v "$SPONSOR/sponsor.js:/sponsor/sponsor.js:ro" -v "$SPONSOR/key:/sponsor/key:ro" \
       -v "$DIR/gate:/gate:ro" -v "$SPONSOR/state:/state" \
-      "$NODE_IMAGE" node /sponsor/sponsor.js >/dev/null
+      "$NODE_IMAGE" node /sponsor/sponsor.js >/dev/null || sponsor_failed "could not start the sponsor container"
     wallet=""
     for _ in $(seq 1 20); do
       wallet="$(docker logs outpost-sponsor 2>&1 | grep -Eo 'wallet 0x[0-9a-fA-F]{40}' | head -1 | cut -d' ' -f2)" && [ -n "$wallet" ] && break
       sleep 1
     done
-    [ -n "$wallet" ] || { docker logs outpost-sponsor 2>&1 | tail -5 >&2; die "the sponsor did not start"; }
+    [ -n "$wallet" ] || sponsor_failed "the sponsor did not start"
     write_caddyfile
     reload_caddy
     say "sponsor on: members can create an account; you pay its fee (one storage unit) from $wallet"

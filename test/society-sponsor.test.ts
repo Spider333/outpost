@@ -22,7 +22,7 @@ case "$1" in
     case "$*" in
       *"caddy validate"*) exit 0 ;;
       *randomBytes*) echo "0x$(printf 'ab%.0s' $(seq 1 32))" ;;
-      *"--name outpost-sponsor"*) echo outpost-sponsor >>"$running"; echo id ;;
+      *"--name outpost-sponsor"*) [ -z "$FAKE_SPONSOR_FAIL" ] || exit 125; echo outpost-sponsor >>"$running"; echo id ;;
       *) echo id ;;
     esac ;;
   logs) echo "sponsor: wallet ${WALLET} on Optimism; 127.0.0.1:3391" ;;
@@ -38,11 +38,11 @@ function setup() {
   writeFileSync(join(bin, "docker"), FAKE_DOCKER);
   chmodSync(join(bin, "docker"), 0o755);
   writeFileSync(join(dir, "running"), "outpost-society\noutpost-gate\n");
-  const run = (action: string, stdin = "") =>
+  const run = (action: string, stdin = "", extra: Record<string, string> = {}) =>
     spawnSync("bash", [SCRIPT, action], {
       input: stdin,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_DIR: dir, OUTPOST_SOCIETY_DIR: join(dir, "srv"), OUTPOST_SOCIETY_HOST: "1-2-3-4.sslip.io" },
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_DIR: dir, OUTPOST_SOCIETY_DIR: join(dir, "srv"), OUTPOST_SOCIETY_HOST: "1-2-3-4.sslip.io", ...extra },
     });
   return { dir, run, caddy: () => readFileSync(join(dir, "srv/caddy/Caddyfile"), "utf8"), calls: () => readFileSync(join(dir, "calls"), "utf8") };
 }
@@ -94,6 +94,22 @@ test("sponsor-on refuses without society mode and without a bundle", () => {
     assert.match(s.run("sponsor-on", "// bundle").stderr, /society mode is off/);
     writeFileSync(join(s.dir, "running"), "outpost-society\n");
     assert.match(s.run("sponsor-on", "").stderr, /no sponsor bundle/);
+  } finally {
+    rmSync(s.dir, { recursive: true });
+  }
+});
+
+test("a sponsor that fails to start (re)starting gives every request back to the gate", () => {
+  const s = setup();
+  try {
+    assert.equal(s.run("sponsor-on", "// bundle").status, 0);
+    assert.match(s.caddy(), /handle \/sponsor\/\*/);
+    const again = s.run("sponsor-on", "// broken bundle", { FAKE_SPONSOR_FAIL: "1" });
+    assert.notEqual(again.status, 0);
+    assert.match(again.stderr, /could not start the sponsor container/);
+    assert.doesNotMatch(s.caddy(), /sponsor/);
+    assert.ok(!existsSync(join(s.dir, "srv/sponsor/on")));
+    assert.ok(existsSync(join(s.dir, "srv/sponsor/key")), "the wallet key is kept");
   } finally {
     rmSync(s.dir, { recursive: true });
   }

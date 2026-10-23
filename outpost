@@ -677,6 +677,8 @@ cmd_sponsor() {
         val="${!v:-}"
         [ -n "$val" ] || continue
         [[ "$val" =~ ^[0-9]+$ ]] || die "$v must be a whole number"
+        # The sponsor treats only "1" as a dry run; any other value would quietly send real ones.
+        [ "$v" != OUTPOST_SPONSOR_DRY_RUN ] || [[ "$val" =~ ^[01]$ ]] || die "OUTPOST_SPONSOR_DRY_RUN must be 0 or 1"
         env="$env$v=$val "
       done
       ensure_build

@@ -374,10 +374,15 @@ async function openCreate() {
 async function waitForAccount(fid: number, owner: HexString): Promise<AccountInfo> {
   const end = Date.now() + 5 * 60_000;
   for (;;) {
-    const c = await hub.custodyOf(fid).catch(() => undefined);
-    if (c?.toLowerCase() === owner.toLowerCase()) {
-      const { units } = await hub.storageLimits(fid);
-      if (units > 0) return { fid, custody: owner, storageUnits: units };
+    try {
+      const c = await hub.custodyOf(fid);
+      if (c?.toLowerCase() === owner.toLowerCase()) {
+        const { units } = await hub.storageLimits(fid);
+        if (units > 0) return { fid, custody: owner, storageUnits: units };
+      }
+    } catch (e) {
+      // A node that is catching up or briefly away is asked again; a refused token is final.
+      if (e instanceof HubError && e.status === 401) throw e;
     }
     if (Date.now() > end) {
       throw new Error(`FID ${fid} is yours on Optimism, but the node has not seen it after 5 minutes. Reload later and connect it with "I have a test account's recovery phrase" (or your wallet).`);
@@ -406,7 +411,19 @@ async function createAccount(owner: Custody, forKey: () => Promise<Custody>) {
   say(`Account created: FID ${r.fid}. Waiting for the node to see it, usually under a minute...`);
   const account = await waitForAccount(r.fid, owner.address);
   say(`FID ${r.fid} is on the node. Adding Outpost's app key...`);
-  await authorize(await forKey(), account);
+  const signer = await forKey();
+  if (signer.address.toLowerCase() !== owner.address.toLowerCase()) {
+    throw new Error(`Your wallet now uses ${signer.address}, but FID ${r.fid} belongs to ${owner.address}. Switch the wallet back to that account, then choose "My account's owner key is in a browser wallet".`);
+  }
+  try {
+    await authorize(signer, account);
+  } finally {
+    // Once the app key is stored the phrase is not needed here, even if the feed fails to load.
+    if (key?.fid === r.fid) forgetNewPhrase();
+  }
+}
+
+function forgetNewPhrase() {
   newPhrase = undefined;
   $("new-phrase").textContent = "";
   $("new-phrase-box").hidden = true;

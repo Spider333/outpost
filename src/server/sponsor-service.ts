@@ -50,11 +50,20 @@ export interface CountStore {
 export function fileCounts(path: string): CountStore {
   return {
     load() {
+      // Only a missing file means "nothing counted yet". A file that cannot be read or parsed
+      // stops the sponsor instead of resetting the caps.
+      let text: string;
       try {
-        return JSON.parse(readFileSync(path, "utf8")) as Counts;
-      } catch {
-        return { day: "", today: 0, members: {} };
+        text = readFileSync(path, "utf8");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return { day: "", today: 0, members: {} };
+        throw e;
       }
+      const c = JSON.parse(text) as Counts;
+      if (typeof c?.day !== "string" || typeof c.today !== "number" || typeof c.members !== "object" || c.members === null) {
+        throw new Error(`the counts file ${path} is damaged`);
+      }
+      return c;
     },
     save(c) {
       // A new file moved over the old one, so a crash never leaves half of it.
@@ -213,7 +222,7 @@ export function sponsor(o: SponsorOptions) {
     if (req.method === "GET" && path === "/sponsor/status") {
       status(name).then(
         (s) => reply(200, s),
-        (e) => reply(502, { error: `cannot read Optimism: ${shortError(e)}` }),
+        (e) => reply(502, { error: `the sponsor cannot answer now: ${shortError(e)}` }),
       );
       return;
     }

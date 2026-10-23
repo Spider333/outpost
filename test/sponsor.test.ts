@@ -5,8 +5,11 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request, type IncomingHttpHeaders } from "node:http";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseRegisterRequest, type RegisterRequest } from "../src/core/sponsor.js";
-import { sponsor, GAS_RESERVE, type Counts, type SponsorChain } from "../src/server/sponsor-service.js";
+import { fileCounts, sponsor, GAS_RESERVE, type Counts, type SponsorChain } from "../src/server/sponsor-service.js";
 import { resolveAccount } from "../src/core/account.js";
 import { Hub, HubError, type HexString } from "../src/core/hub.js";
 
@@ -180,6 +183,32 @@ test("a dry run checks the registration but neither sends nor counts it", async 
   assert.equal(r.json.dryRun, true);
   assert.equal(chain.sent.length, 0);
   assert.equal(counts().today, 0);
+});
+
+test("a damaged counts file stops the sponsor instead of resetting the caps", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sponsor-"));
+  const path = join(dir, "counts.json");
+  try {
+    assert.deepEqual(fileCounts(path).load(), { day: "", today: 0, members: {} }); // missing: nothing counted yet
+    fileCounts(path).save({ day: "2026-10-23", today: 1, members: { alice: 1 } });
+    assert.equal(fileCounts(path).load().members.alice, 1);
+    for (const bad of ["{not json", "[]", '{"day":"x"}']) {
+      writeFileSync(path, bad);
+      assert.throws(() => fileCounts(path).load());
+    }
+    // Over HTTP: refused, and nothing is sent.
+    const chain = new FakeChain();
+    const s = sponsor({ chain, members: () => new Map([[sha(ALICE), "alice"]]), counts: fileCounts(path), perMember: 2, perDay: 20, now: () => NOW });
+    const server = createServer(s.handle);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    assert.equal((await call(port, "GET", "/sponsor/status", ALICE)).status, 502);
+    assert.equal((await call(port, "POST", "/sponsor/register", ALICE, body(addr(1)))).status, 502);
+    assert.equal(chain.sent.length, 0);
+    server.close();
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });
 
 test("CORS: preflight for the client's origin only; other paths are 404", async () => {
