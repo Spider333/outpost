@@ -51,11 +51,36 @@
     </details>
 
     <section id="connect" class="card" hidden aria-labelledby="connect-h">
-      <h2 id="connect-h">Connect an account</h2>
-      <p>To post, this client needs its own <em>app key</em>: a key that can cast, react and follow for your account, and nothing else. It expires 30 days after you last use it. Your account's owner key (the custody key) signs one authorization for it.</p>
-      <div class="choices">
-        <button id="use-wallet" class="primary" type="button">Sign with a wallet (recommended)</button>
-        <button id="use-phrase" type="button">Use a test account's recovery phrase</button>
+      <h2 id="connect-h">Post from Outpost</h2>
+      <p>Reading needs no account. To post, you need a Farcaster account whose owner key you hold, in a browser wallet or as a recovery phrase. Outpost then gets its own <em>app key</em>: it can cast, react and follow for you, nothing else, and expires 30 days after you last use it. Which one are you?</p>
+      <div id="connect-choices" class="choices">
+        <button id="new-account" class="primary" type="button">I have no Farcaster account</button>
+        <button id="app-user" type="button">I made my account in the Farcaster app</button>
+        <button id="use-wallet" type="button">My account's owner key is in a browser wallet</button>
+        <button id="use-phrase" type="button">I have a test account's recovery phrase</button>
+      </div>
+
+      <div id="app-box" hidden>
+        <p>The Farcaster app keeps your account's owner key inside the app, so Outpost cannot get a posting key for it yet. You can read every feed here; post from the app for now. Approving Outpost from inside the Farcaster app is next on the list.</p>
+        <p class="muted small">Want to try posting here today? Create a second account with "I have no Farcaster account".</p>
+      </div>
+
+      <div id="create-box" hidden>
+        <p id="create-offer">Checking whether this node can pay for your account...</p>
+        <div id="create-ways" class="choices" hidden>
+          <button id="create-phrase" class="primary" type="button">Make a new account here</button>
+          <button id="create-wallet" type="button">Make it with my browser wallet as the owner</button>
+        </div>
+        <div id="new-phrase-box" hidden>
+          <div class="danger" role="note">
+            <strong>Write these 12 words down now.</strong>
+            <p>They are your new account's master key: whoever has them owns the account, and nobody can give them back to you. This page shows them once and does not save them.</p>
+          </div>
+          <p id="new-phrase" class="phrase mono" tabindex="-1"></p>
+          <button id="copy-phrase" type="button">Copy the words</button>
+          <label class="check"><input id="saved-phrase" type="checkbox"> I saved these 12 words somewhere safe.</label>
+          <button id="create-go" class="primary" type="button" disabled>Create my account</button>
+        </div>
       </div>
 
       <div id="phrase-box" hidden>

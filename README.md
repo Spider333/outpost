@@ -130,8 +130,18 @@ flowchart LR
   up messages gets caught; [TRUST.md](TRUST.md) says how far that goes.
 
 The client connects an account with a wallet signature or a test account's recovery phrase, and
-casts, replies, likes, recasts and follows. The command-line client has the same features:
+casts, replies, likes, recasts and follows. On a society node with a sponsor, someone without an
+account can create one in the client (see below). The command-line client has the same features:
 `./outpost cli --help`.
+
+Which accounts can post from Outpost:
+
+| You have | Then |
+|---|---|
+| No Farcaster account | On a society node with a sponsor: "I have no Farcaster account" makes one in a minute. The society pays the $0.20 fee; you need no ETH, invite code or X account. |
+| An account made in the Farcaster app | Read here, post in the app for now (see Limits). |
+| An account whose owner key is in a browser wallet | "My account's owner key is in a browser wallet". |
+| A test account's recovery phrase | "I have a test account's recovery phrase". |
 
 ## Share your node (society mode)
 
@@ -150,6 +160,22 @@ serves no code. A gate in front of the node gives each member their own token an
 lets only reads and posts through. [TRUST.md](TRUST.md) lists what a host can and cannot do to
 its members, with the code and test behind each point.
 
+Members without a Farcaster account can get one from the client if you pay for it:
+
+```
+./outpost sponsor on            # prints a wallet address on the server; send it a little ETH on Optimism
+./outpost sponsor status        # accounts paid for, and how many more the wallet can pay for
+./outpost sponsor off
+```
+
+The member's browser makes the new account's key (or uses their wallet) and signs the
+registration; the sponsor only pays the fee, one storage unit ($0.20 in October 2026, plus a
+fraction of a cent of gas), through `IdGateway.registerFor`. The account and its key are the
+member's from the first block. Each member gets at most `OUTPOST_SPONSOR_PER_MEMBER` accounts
+(default 2) and all members together `OUTPOST_SPONSOR_PER_DAY` a day (default 20). The wallet's key
+lives on the server, so keep only a little ETH in it. `node --import tsx test/sponsor-live.ts`
+checks a registration against Optimism without spending anything.
+
 ## Settings
 
 Environment variables:
@@ -166,14 +192,16 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 
 ## Limits
 
-- Outpost does not create accounts or buy storage. Bring an account that already has storage.
+- Outpost creates accounts only through a society's sponsor, and buys no extra storage.
 - The recovery-phrase login is for test accounts. With a real account, use the wallet path.
 - An account made in the Farcaster app keeps its custody key inside that app, and as far as we
   can tell the app's built-in wallet uses a separate address. So such an account cannot connect to Outpost
   without exporting its recovery phrase, which we advise against. The app's own "approve a
   connected app" flow would work, but it adds an onchain key with full access and no expiry that
-  Outpost cannot revoke, so Outpost does not use it. Try Outpost with a test account, and keep
-  using the Farcaster app for your main one.
+  Outpost cannot revoke. Supporting it, clearly labelled, is next. Until then, read with Outpost
+  and post from the app, or create a second account on a society node.
+- An account made outside the Farcaster app may be ranked low in that app's feeds at first. Its
+  posts always show in Outpost.
 - App labels come from the key that signed each cast. Keys that people signed for themselves all
   show as "own key", and a cast whose key is no longer listed shows as "unknown key".
 - Casts you write are text up to 1,024 bytes (the limit for a normal account) with up to 4
@@ -212,7 +240,7 @@ runs on mainnet and a local devnet are saved in [docs/evidence/](docs/evidence/R
 
 ```
 outpost              the CLI: provision, node, client, status, cli, uninstall, destroy, watchdog,
-                     society, members
+                     society, members, sponsor
 VOUCHER.md           checklist and draft cast for people who vouch for a run
 AGENTS.md            rules and step checkpoints for AI assistants that run Outpost for someone
 infra/               cloud-init, node setup, snapshot loader, phone access, society mode
@@ -222,6 +250,7 @@ src/cli/             command-line client
 src/web/             web client
 src/server/serve.ts  local server for the web client, forwards /v1 to the node
 src/server/gate.ts   society mode: member tokens, rate limits, read and post only
+src/server/sponsor*  society mode: pays for members' new accounts (registerFor), with caps
 scripts/             build, devnet end-to-end test, live checks, example charters,
                      society node check
 test/                unit tests and shell tests, with fake provider CLIs

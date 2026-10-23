@@ -10,3 +10,4 @@ export * from "./verify.js";
 export * from "./chain.js";
 export * from "./society.js";
 export * from "./secondnode.js";
+export * from "./sponsor.js";
