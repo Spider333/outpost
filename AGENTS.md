@@ -76,4 +76,7 @@ Keep these properties. [TRUST.md](TRUST.md) and [SECURITY.md](SECURITY.md) expla
 - The app key can cast, react and follow, and nothing else. It expires, and it revokes itself
   without the recovery phrase.
 - A recovery phrase is used in memory only. It is never written to disk or sent anywhere.
+- A charter changes only when more than half of its members like a proposal
+  (`src/core/votes.ts`). Each passed change keeps the signed likes, so anyone can recount it,
+  and a log whose majority cannot be re-checked is used only after the person says so.
 - Every `./outpost` command stays safe to run twice.
