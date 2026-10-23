@@ -256,13 +256,20 @@ async function cmdUninstall(hub: Hub) {
     console.log("A key added in the web client lives in that browser: open the client, then 'Your app key' > 'Revoke this key (uninstall)'.");
     return;
   }
-  const active = await hub.signer(key.fid, key.publicKey);
-  if (active) {
-    await revokeAppKey(hub, key, { timeoutMs: 60_000 });
-    console.log(`revoked app key ${key.publicKey} for FID ${key.fid}. No recovery phrase was needed.`);
-  } else {
-    console.log("the key is not active on your node any more; nothing to revoke.");
+  // The key file is the only way to revoke the key without the recovery phrase, so it is deleted
+  // only once the node confirms the revocation. A node that is behind, or has not merged the key
+  // yet, answers "not found" for a key that is live on the network.
+  if (!syncState(await hub.info()).synced) {
+    throw new Error("your node is still syncing, so it cannot tell whether this key is active. Nothing was revoked or deleted. Run `./outpost cli uninstall` again when `./outpost cli status` says synced: yes.");
   }
+  if (!(await hub.signer(key.fid, key.publicKey))) {
+    console.log("your node does not list this key (revoked, expired, or not merged yet), so nothing was revoked.");
+    console.log(`The key file is kept so the key can still revoke itself: ${keyPath()}`);
+    console.log("Try again in a few minutes. Delete that file yourself only once you are sure the key is gone.");
+    return;
+  }
+  await revokeAppKey(hub, key, { timeoutMs: 60_000 });
+  console.log(`revoked app key ${key.publicKey} for FID ${key.fid}. No recovery phrase was needed.`);
   deleteKey();
   console.log(`deleted ${keyPath()}`);
 }

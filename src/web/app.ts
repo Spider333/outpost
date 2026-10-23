@@ -378,11 +378,18 @@ function wireKey() {
     busy(e.currentTarget as HTMLButtonElement, "Revoking...", async () => {
       if (!key) return;
       if (!confirm("Revoke this app key? This client will no longer be able to post for you.")) return;
+      // Same rule as `./outpost cli uninstall`: the stored key is the only way to revoke it without
+      // the recovery phrase, and a node that is behind says "not found" for a live key.
+      if (!syncState(await hub.info()).synced) {
+        say("Your node is still syncing, so it cannot tell whether this key is active. Nothing was revoked or removed. Try again when it has caught up.", true);
+        return;
+      }
       const active = await hub.signer(key.fid, key.publicKey);
       if (active) await revokeAppKey(hub, key, { timeoutMs: 60_000 });
+      else if (!confirm("Your node does not list this key (revoked, expired, or not merged yet), so it cannot be revoked now. Remove it from this browser anyway? It cannot revoke itself after that.")) return;
       store(KEY_STORAGE, null);
       key = undefined;
-      say(active ? "Key revoked. No recovery phrase was needed." : "The key was already inactive. Removed it from this browser.");
+      say(active ? "Key revoked. No recovery phrase was needed." : "Removed the key from this browser without revoking it.");
       renderAccount();
       renderFeed();
     }),
