@@ -3,7 +3,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AppKey } from "../core/index.js";
+import { approvalCache, type ApprovalCache, type AppKey } from "../core/index.js";
 
 export function stateDir(): string {
   return process.env.OUTPOST_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "outpost");
@@ -25,6 +25,18 @@ export function saveKey(key: AppKey): string {
   writeFileSync(p, JSON.stringify(key, null, 2) + "\n", { mode: 0o600 });
   chmodSync(p, 0o600);
   return p;
+}
+
+// Every society-vote approval this CLI has seen (votes.ts), so a later unlike changes nothing.
+export function savedApprovals(): ApprovalCache {
+  const p = join(stateDir(), "approvals.json");
+  return approvalCache(
+    () => (existsSync(p) ? readFileSync(p, "utf8") : undefined),
+    (json) => {
+      mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
+      writeFileSync(p, json, { mode: 0o600 });
+    },
+  );
 }
 
 export function deleteKey(): void {

@@ -47,9 +47,21 @@ export interface KeyRegistry {
   keyState(fid: number, key: HexString): Promise<"added" | "removed" | "none">;
 }
 
+// How a node lists one of an account's keys. `scopes` are message type names such as
+// "MESSAGE_TYPE_REACTION_ADD"; onchain keys have none and may sign any type.
+export interface KeyScopes {
+  onchain: boolean;
+  scopes: string[];
+}
+
 export interface KeyLister {
   listsKey(fid: number, key: HexString): Promise<boolean>;
+  keyScopes?(fid: number, key: HexString): Promise<KeyScopes | undefined>;
 }
+
+// For votes: "ok" when the key provably belongs to the account and may sign the message type,
+// "unchecked" when that cannot be shown now, "no" when it provably does not or may not.
+export type VoteKey = "ok" | "unchecked" | "no";
 
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -303,6 +315,35 @@ export class Verifier {
     if (state === "removed" || (state === "none" && claimedOnchain)) return "false";
     if (!this.second) return "unverified";
     return (await this.second.listsKey(fid, key)) ? "confirmed" : "false";
+  }
+
+  // For votes (votes.ts): may `key` sign a message of `type` (e.g. "MESSAGE_TYPE_REACTION_ADD")
+  // for `fid`? A gasless key signs only the types its KEY_ADD named, and Snapchain refuses the
+  // rest (engine.rs, active_key.admits), so its scopes are checked as well. "unchecked": a removed
+  // onchain key, a gasless key the second node no longer lists, or nothing to ask. Since engine
+  // V14 a removed key's old messages stay on the network, so such a vote may be genuine, but
+  // nothing shows it was signed before the key went.
+  async voteKey(fid: number, key: HexString, type: string): Promise<VoteKey> {
+    if (this.own.has(`${fid}:${key.toLowerCase()}`)) return "ok";
+    let state: "added" | "removed" | "none" | undefined;
+    try {
+      state = await this.chain?.keyState(fid, key);
+    } catch {
+      if (!this.second) return "unchecked";
+    }
+    if (state === "added") return "ok";
+    if (state === "removed") return "unchecked";
+    if (!this.second?.keyScopes) return "unchecked";
+    let listed: KeyScopes | undefined;
+    try {
+      listed = await this.second.keyScopes(fid, key);
+    } catch {
+      return "unchecked";
+    }
+    if (!listed) return "unchecked";
+    // Optimism says this is not an onchain key, yet the second node lists it as one.
+    if (listed.onchain) return state === "none" ? "no" : "ok";
+    return listed.scopes.includes(type) ? "ok" : "no";
   }
 
   // Tells "failed verification" (the node altered or forged something) apart from "could not

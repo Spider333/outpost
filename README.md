@@ -124,6 +124,9 @@ flowchart LR
   Join follows its members; Leave drops the lens and keeps your keys, follows and posts. A census
   panel shows members, active members, casts per day and the apps members post from, all
   computed from your node. Examples are in [examples/](examples/).
+- **Society votes.** Members change their charter by liking a proposal, in any Farcaster app.
+  It passes when more than half of the members have liked it, and anyone can recount it from
+  their own node. See [Society votes](#society-votes).
 
 - **Every message checked.** The client checks the hash and signature of every message it reads,
   and that the signing key belongs to the author, before showing it. A node that alters or makes
@@ -132,6 +135,43 @@ flowchart LR
 The client connects an account with a wallet signature or a test account's recovery phrase, and
 casts, replies, likes, recasts and follows. The command-line client has the same features:
 `./outpost cli --help`.
+
+## Society votes
+
+Members add or remove members and moderators by vote. Four rules (`src/core/votes.ts`):
+
+1. A proposal is a member's cast that names the charter's current version and lists the changes,
+   each account as a mention.
+2. An approval is a member's like on it, from any app. Once a client has seen it, it counts for
+   good.
+3. It passes when more than half of the members of that version approve. Leaving needs only your
+   own approval.
+4. The charter becomes a log: the founder's signed charter, then each passed proposal with the
+   signed likes that passed it. A log that branches is shown, never merged.
+
+There are no deadlines: Farcaster timestamps are set by the author and can be backdated, so a
+"closes on Friday" rule could not be checked afterwards. A proposal stops counting once another
+passes, because it names an older version.
+
+```
+./outpost cli charter propose society.log.json --add dwr --remove 1234   # posts and approves it
+./outpost cli charter proposals society.log.json   # adds what passed to the file, lists the rest
+./outpost cli charter verify society.log.json      # recount every amendment from your node
+./outpost cli charter announce society.log.json    # reply under the proposal with the result
+./outpost cli charter import theirs.json society.log.json   # take a newer log from a member
+```
+
+A plain founder-signed `charter.json` is a log with no amendments yet. The web client does the
+same in the Society card: open proposals with their approvals, Approve, Propose a change,
+Recount, and Download log.
+
+To try it without mainnet accounts, `npm run build && node --import tsx test/votes-demo.ts` runs
+a fake node with a 5-member society and an open proposal, and prints the steps.
+
+Limits: votes are public; members who stay silent count as "no", so a society freezes if half
+of its members go quiet (they can leave, or the founder can start a new charter); a recount
+labels approvals whose keys were revoked since, and says so when a majority rests on them. What
+a recount proves is in [TRUST.md](TRUST.md#what-a-society-vote-proves).
 
 ## Share your node (society mode)
 
@@ -216,7 +256,8 @@ outpost              the CLI: provision, node, client, status, cli, uninstall, d
 VOUCHER.md           checklist and draft cast for people who vouch for a run
 infra/               cloud-init, node setup, snapshot loader, phone access, society mode
 src/core/            protocol code: node HTTP client, message checks, accounts, app keys,
-                     writes, feed, app attribution, charters, census (Node and browsers)
+                     writes, feed, app attribution, charters, census, society votes (Node and
+                     browsers)
 src/cli/             command-line client
 src/web/             web client
 src/server/serve.ts  local server for the web client, forwards /v1 to the node

@@ -125,6 +125,32 @@ the URL, not the image, so a host can swap the image without changing the signed
 A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
 is sent. Untick "Show pictures" above the feed to stop these requests.
 
+## What a society vote proves
+
+A passed amendment is kept in the charter log with the signed proposal and the signed likes that
+passed it (`src/core/votes.ts`, tests in `test/votes.test.ts`). A recount (`charter verify`, or
+Recount in the web client) checks, from the reader's own node and key sources:
+
+- every signature and hash, so a changed byte anywhere in the log fails;
+- that the proposal names the version it changes, and that each version follows the last;
+- that the proposer and every approver were members of that version, each counted once;
+- that every like is a mainnet like of that exact proposal, signed by a key of the account that
+  may sign likes: an onchain key, or a gasless key whose scope includes likes (Snapchain refuses
+  other likes, but a hand-made log could contain them);
+- that more than half of the members approved.
+
+It does not prove when anyone voted: Farcaster timestamps can be backdated, which is why votes
+have no deadline. It cannot re-check a key that was revoked after the vote. Since Snapchain
+engine V14 a removed key's old messages stay on the network, so such an approval may be
+genuine, but nothing shows it was signed before the key went. A recount labels these approvals,
+and says "not recountable from scratch" when the majority rests on them. The client that
+accepted the amendment at the time checked those keys then, and keeps its own log. A log from
+someone else with such an amendment is only taken after the reader confirms it.
+
+A host cannot vote for a member: a like needs the member's key. A host's node can hide likes or
+proposals from a member's view, which delays a pass but cannot fake one. A second log built
+from the same founder's charter is shown as a fork, never merged.
+
 ## What the gate enforces
 
 The gate (`src/server/gate.ts`, tests in `test/gate.test.ts`) sits between the web server and

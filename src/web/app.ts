@@ -33,8 +33,23 @@ import {
   secondNode,
   takeInvite,
   Verifier,
+  advance,
+  announce,
+  approvalCache,
+  compareLogs,
+  propose,
+  replay,
+  short,
+  toLog,
+  ALREADY_CHECKED,
+  MAX_CHANGES,
+  type Change,
+  type CharterBody,
+  type CharterLog,
+  type Status,
+  type Tally,
+  type Version,
   type Society,
-  type Charter,
   type AccountInfo,
   type AppFilter,
   type AppKey,
@@ -51,6 +66,7 @@ const SOCIETY_STORAGE = "outpost.society";
 const RPC_STORAGE = "outpost.rpc";
 const CHECKNODE_STORAGE = "outpost.checknode";
 const PICTURES_STORAGE = "outpost.pictures";
+const APPROVALS_STORAGE = "outpost.approvals";
 
 // Set by scripts/build.mjs: the git commit this bundle was built from.
 declare const __OUTPOST_COMMIT__: string;
@@ -165,7 +181,31 @@ let replyTo: { fid: number; hash: HexString } | undefined;
 let myFollowing = new Set<number>();
 const chipState = new Map<string, "include" | "exclude">();
 let appNames = new Map<number, string>();
-let charter: Charter | undefined = store<Charter>(CHARTER_STORAGE);
+// The society: its charter log (the founder's charter plus every amendment members passed), its
+// versions, and the current one, whose lens the feed uses.
+const savedLog = store<unknown>(CHARTER_STORAGE);
+let societyLog: CharterLog | undefined;
+let versions: Version[] = [];
+let charter: CharterBody | undefined;
+// Every approval seen, so a later unlike changes nothing. Only an aid: votes still count from the node.
+const approvals = approvalCache(
+  () => {
+    try {
+      return localStorage.getItem(APPROVALS_STORAGE);
+    } catch {
+      return null;
+    }
+  },
+  (json) => {
+    try {
+      localStorage.setItem(APPROVALS_STORAGE, json);
+    } catch {
+      // storage blocked or full: approvals are then counted from the node each time
+    }
+  },
+);
+let draft: Array<Change & { label: string }> = [];
+const names = new Map<number, string>();
 // Profile pictures and image embeds load from their own hosts, not from the node.
 let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
 
@@ -642,36 +682,66 @@ function wireFeed() {
 
 // ---- society (charter)
 
-async function showCharter(c: unknown, source: string) {
-  const v = await verifyCharter(c, hub, chain);
+function rejectCharter(source: string, why: string) {
   const verdict = $("charter-verdict");
   $("charter-view").hidden = false;
-  if (!v.ok) {
-    verdict.className = "verdict-bad";
-    verdict.textContent = `Rejected (${source}): ${v.problems.join("; ")}`;
-    for (const id of ["ch-name", "ch-desc", "ch-coc", "ch-members", "ch-rules", "ch-nodes"]) $(id).textContent = "";
-    ($("ch-join") as HTMLButtonElement).disabled = true;
-    $("ch-details").hidden = true;
-    // Never keep an earlier society's lens active behind a rejected file.
-    charter = undefined;
-    store(CHARTER_STORAGE, null);
-    $("ch-census").hidden = true;
-    items = [];
-    renderFeed();
-    return;
+  verdict.className = "verdict-bad";
+  verdict.textContent = `Rejected (${source}): ${why}`;
+  for (const id of ["ch-name", "ch-desc", "ch-coc", "ch-members", "ch-rules", "ch-nodes"]) $(id).textContent = "";
+  ($("ch-join") as HTMLButtonElement).disabled = true;
+  $("ch-details").hidden = true;
+  // Never keep an earlier society's lens active behind a rejected file.
+  charter = undefined;
+  societyLog = undefined;
+  versions = [];
+  store(CHARTER_STORAGE, null);
+  $("ch-census").hidden = true;
+  items = [];
+  renderFeed();
+}
+
+// A charter file or charter log. One from outside is recounted with fresh key checks; the one
+// saved in this browser was checked when it was accepted. A newer log of the same society
+// replaces the saved one only if it extends it.
+async function showCharter(c: unknown, source: string, saved = false) {
+  let log: CharterLog;
+  try {
+    log = toLog(c);
+  } catch (e) {
+    return rejectCharter(source, errText(e));
   }
-  const ch = c as Charter;
+  const v = await verifyCharter(log.genesis, hub, chain);
+  if (!v.ok) return rejectCharter(source, v.problems.join("; "));
+  const r = await replay(log, saved ? ALREADY_CHECKED : verifier);
+  if (r.problems.length) return rejectCharter(source, r.problems.join("; "));
+  if (!saved && societyLog) {
+    const rel = compareLogs(societyLog, log);
+    if (rel.relation === "same") return say("That is the charter log you already have.");
+    if (rel.relation === "behind") return say("The log saved in this browser is newer than that one. Kept yours.");
+    if (rel.relation === "fork") {
+      return say(`That log branches from yours after version ${rel.at}: a different amendment passed there. Kept yours. Members who approved both: ${(rel.both ?? []).map(nameOf).join(", ") || "none"}.`, true);
+    }
+  }
+  const weak = r.versions.flatMap((ver, i) => (ver.amendment && !ver.amendment.recountable ? [i] : []));
+  if (!saved && weak.length && !confirm(`Version ${weak.join(", ")} of this log cannot be recounted from scratch: the majority rests on approvals whose keys cannot be checked now (revoked since, or not listed by your second node). Use it only if you trust whoever gave it to you. Use it?`)) return;
+  const ch = log.genesis;
+  societyLog = log;
+  versions = r.versions;
+  charter = versions.at(-1)!.body;
   $("ch-details").hidden = false;
+  const verdict = $("charter-verdict");
+  $("charter-view").hidden = false;
   verdict.className = "verdict-ok";
   verdict.textContent =
-    v.issuerCheck === "custody"
+    (v.issuerCheck === "custody"
       ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked ${chain ? "on Optimism" : "on your node"}.`
-      : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`;
+      : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`) +
+    (log.amendments.length ? ` Members have changed it ${log.amendments.length} time${log.amendments.length === 1 ? "" : "s"}${saved ? "" : "; every change recounted from your node"}.` : "");
   $("ch-name").textContent = ch.name;
   $("ch-desc").textContent = ch.description ?? "";
   const coc = $("ch-coc");
   coc.replaceChildren(ch.codeOfConduct && /^https?:\/\//.test(ch.codeOfConduct) ? h("a", { href: ch.codeOfConduct, target: "_blank", rel: "noopener noreferrer" }, ch.codeOfConduct) : "none");
-  $("ch-members").textContent = `${ch.members.length} members${ch.moderators?.length ? `, ${ch.moderators.length} moderators` : ""}`;
+  showMembers();
   const rules: string[] = [];
   if (ch.feed?.channels?.length) rules.push(`channels: ${ch.feed.channels.join(", ")}`);
   if (ch.feed?.keywords?.length) rules.push(`must mention: ${ch.feed.keywords.join(", ")}`);
@@ -691,11 +761,211 @@ async function showCharter(c: unknown, source: string) {
   );
   if (!ch.nodes?.length) $("ch-nodes").textContent = "none listed";
   ($("ch-join") as HTMLButtonElement).disabled = !key;
-  charter = ch;
-  store(CHARTER_STORAGE, ch);
+  store(CHARTER_STORAGE, log);
+  await renderVotes();
   chipState.clear();
   perAuthor = 5;
   await loadFeed();
+  void checkVotes(null);
+}
+
+function showMembers() {
+  if (!charter) return;
+  $("ch-members").textContent = `${charter.members.length} members${charter.moderators?.length ? `, ${charter.moderators.length} moderators` : ""}`;
+}
+
+// ---- society votes (votes.ts)
+
+const nameOf = (fid: number) => names.get(fid) ?? `FID ${fid}`;
+
+// @usernames for these FIDs, from their signed profiles on your node.
+async function loadNames(fids: number[]) {
+  const todo = [...new Set(fids)].filter((f) => !names.has(f));
+  const profiles = await Promise.all(todo.map((f) => feed.profile(f).catch(() => undefined)));
+  profiles.forEach((p, i) => names.set(todo[i]!, p?.username ? `@${p.username}` : `FID ${todo[i]}`));
+}
+
+const changeText = (c: Change) => `${c.op === "+" ? "Add" : "Remove"} ${c.role} ${nameOf(c.fid)}`;
+
+function versionItem(ver: Version, i: number): HTMLLIElement {
+  const a = ver.amendment;
+  if (!a) return h("li", {}, `The founder's charter: ${ver.body.members.length} members.`);
+  const n = a.approvers.length + a.unchecked.length;
+  return h(
+    "li",
+    {},
+    `${a.proposal.changes.map(changeText).join("; ")}. Proposed by ${nameOf(a.proposal.id.fid)}, approved by ${n} of ${a.members} (needed ${a.needed}).`,
+    a.unchecked.length
+      ? h(
+          "span",
+          { class: a.recountable ? "muted" : "warn-text" },
+          ` ${a.unchecked.length} approval${a.unchecked.length === 1 ? "" : "s"} (${a.unchecked.map(nameOf).join(", ")}) cannot be re-checked now: the key was revoked since, or your second node does not list it.${a.recountable ? "" : " The majority rests on them, so this version cannot be recounted from scratch."}`,
+        )
+      : null,
+    i === versions.length - 1 && key && charter?.members.includes(key.fid)
+      ? h("span", {}, " ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Posting...", () => announceResult(a.proposal.id, n, a.members)) }, "Post the result under the proposal"))
+      : null,
+  );
+}
+
+async function announceResult(id: { fid: number; hash: HexString }, approved: number, members: number) {
+  if (!key) return;
+  const r = await announce(hub, key, id, approved, members);
+  say(r ? "Replied under the proposal with the result, so people see it in any app." : "A result is already posted under the proposal.");
+}
+
+function proposalItem(t: Tally): HTMLLIElement {
+  const p = t.proposal;
+  const member = !!key && !!charter?.members.includes(key.fid);
+  const approved = !!key && t.approvers.includes(key.fid);
+  return h(
+    "li",
+    { class: "proposal" },
+    h("div", {}, `Proposed by ${nameOf(p.id.fid)} `, h("span", { class: "muted mono" }, short(p.id.hash))),
+    h("ul", { class: "changes" }, ...p.changes.map((c) => h("li", {}, changeText(c)))),
+    h(
+      "div",
+      { class: "tally" },
+      h("progress", { max: String(t.needed), value: String(Math.min(t.approvers.length, t.needed)), "aria-label": `${t.approvers.length} of ${t.needed} approvals needed` }),
+      `${t.approvers.length} of ${t.members} members approved · passes at ${t.needed}`,
+    ),
+    t.approvers.length ? h("p", { class: "muted small" }, `Approved by ${t.approvers.map(nameOf).join(", ")}.`) : null,
+    approved
+      ? h("p", { class: "small verdict-ok" }, "You approved this. Unliking now is not a veto: an approval once seen keeps counting.")
+      : member
+        ? h(
+            "button",
+            {
+              type: "button",
+              class: "primary",
+              onclick: (e: Event) =>
+                busy(e.currentTarget as HTMLButtonElement, "Approving...", async () => {
+                  await react(hub, key!, "like", p.id);
+                  await checkVotes(null);
+                }),
+            },
+            "Approve (like it)",
+          )
+        : h("p", { class: "muted small" }, key ? "Only members can approve." : "Connect an account to approve."),
+  );
+}
+
+async function renderVotes(st?: Status) {
+  if (!societyLog || !charter) return;
+  const fids = [...versions.flatMap((v) => (v.amendment ? [v.amendment.proposal.id.fid, ...v.amendment.proposal.changes.map((c) => c.fid), ...v.amendment.approvers, ...v.amendment.unchecked] : []))];
+  for (const t of st?.open ?? []) fids.push(t.proposal.id.fid, ...t.proposal.changes.map((c) => c.fid), ...t.approvers);
+  await loadNames(fids.concat(st?.conflict?.both ?? []));
+  $("v-version").textContent = `Version ${versions.length - 1} of this charter, head ${short(versions.at(-1)!.head)}.`;
+  $("v-history").replaceChildren(...versions.map(versionItem));
+  if (st) {
+    $("v-open").replaceChildren(...st.open.map(proposalItem));
+    const notes: string[] = [];
+    if (st.conflict) notes.push(`${st.conflict.tallies.length} proposals reached a majority at once, so none was adopted. Members who approved more than one: ${st.conflict.both.map(nameOf).join(", ")}.`);
+    if (!st.open.length) notes.push("No open proposals in members' casts of the last 30 days.");
+    if (st.outdated.length) notes.push(`${st.outdated.length} older proposal${st.outdated.length === 1 ? " names" : "s name"} an earlier version and no longer count${st.outdated.length === 1 ? "s" : ""}.`);
+    if (st.unknown.length) notes.push(`${st.unknown.length} proposal${st.unknown.length === 1 ? " names" : "s name"} a version this browser does not have: another society's, or your copy is behind. Ask a member for their log and open it above.`);
+    const alert = $("v-alert");
+    alert.textContent = notes.join(" ");
+    alert.className = `small ${st.conflict ? "bad-text" : st.unknown.length ? "warn-text" : "muted"}`;
+    alert.hidden = !notes.length;
+  }
+  $("v-propose").hidden = !(key && charter.members.includes(key.fid));
+}
+
+// Reads proposals and likes from your node, and adds every amendment that has passed.
+async function checkVotes(btn: HTMLButtonElement | null) {
+  await busy(btn, "Checking...", async () => {
+    if (!societyLog) return;
+    const st = await advance(hub, societyLog, { cache: approvals });
+    if (st.passed.length) {
+      societyLog = st.log;
+      store(CHARTER_STORAGE, st.log);
+      versions = (await replay(st.log, ALREADY_CHECKED)).versions;
+      charter = st.body;
+      showMembers();
+      await loadNames(st.passed.flatMap((t) => t.proposal.changes.map((c) => c.fid)));
+      await loadFeed(); // the lens now covers the new members
+      say(`Passed: ${st.passed.map((t) => t.proposal.changes.map(changeText).join("; ")).join(" Then: ")}. The charter is now at version ${versions.length - 1}.`);
+    }
+    await renderVotes(st);
+  });
+}
+
+function renderDraft() {
+  $("v-changes").replaceChildren(
+    ...draft.map((c, i) =>
+      h(
+        "li",
+        {},
+        `${c.op === "+" ? "Add" : "Remove"} ${c.role} ${c.label}`,
+        h(
+          "button",
+          {
+            type: "button",
+            "aria-label": `Drop: ${c.op === "+" ? "add" : "remove"} ${c.role} ${c.label}`,
+            onclick: () => {
+              draft.splice(i, 1);
+              renderDraft();
+            },
+          },
+          "drop",
+        ),
+      ),
+    ),
+  );
+  $<HTMLButtonElement>("v-post").disabled = !draft.length;
+}
+
+function wireVotes() {
+  $("v-check").addEventListener("click", (e) => checkVotes(e.currentTarget as HTMLButtonElement));
+  $("v-recount").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Recounting...", async () => {
+      if (!societyLog) return;
+      const r = await replay(societyLog, verifier);
+      if (r.problems.length) throw new Error(`Recount failed at ${r.problems.join("; ")}`);
+      versions = r.versions;
+      await renderVotes();
+      const weak = versions.filter((v) => v.amendment && !v.amendment.recountable).length;
+      say(
+        weak
+          ? `Recounted ${versions.length - 1} change(s) from your node; ${weak} cannot be recounted from scratch (see the notes under Votes).`
+          : `Recounted from your node: all ${versions.length - 1} change(s) check out, every signature and key.`,
+        weak > 0,
+      );
+      showVerification();
+    }),
+  );
+  $("v-download").addEventListener("click", () => {
+    if (!societyLog || !charter) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(societyLog, null, 2) + "\n"], { type: "application/json" }));
+    h("a", { href: url, download: `${charter.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "society"}.log.json` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  });
+  $("v-add").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Looking up...", async () => {
+      const input = $<HTMLInputElement>("v-who");
+      const who = input.value.trim();
+      const fid = /^\d+$/.test(who) ? Number(who) : await hub.fidByUsername(who);
+      if (!fid) throw new Error(`No FID found for "${who}". Plain usernames or FIDs only.`);
+      if (draft.length >= MAX_CHANGES) throw new Error(`A proposal holds at most ${MAX_CHANGES} changes.`);
+      const [op, role] = $<HTMLSelectElement>("v-op").value.split(" ") as [Change["op"], Change["role"]];
+      draft.push({ op, role, fid, label: /^\d+$/.test(who) ? `FID ${fid}` : `@${who.replace(/^@/, "")} (FID ${fid})` });
+      input.value = "";
+      renderDraft();
+    }),
+  );
+  $("v-propose-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    void busy($<HTMLButtonElement>("v-post"), "Posting...", async () => {
+      if (!key || !charter || !draft.length) return;
+      const changes = draft.map(({ op, role, fid }) => ({ op, role, fid }));
+      const r = await propose(hub, key, { head: versions.at(-1)!.head, body: charter }, changes);
+      draft = [];
+      renderDraft();
+      say(`Proposal posted${r.confirmed ? "" : " (accepted for relay, not visible yet)"} and approved by you. Members approve by liking it, in any Farcaster app.`);
+      await checkVotes(null);
+    });
+  });
 }
 
 // A charter lists nodes; a token still comes from that node's host.
@@ -709,6 +979,8 @@ function useNode(url: string) {
 
 function leaveCharter() {
   charter = undefined;
+  societyLog = undefined;
+  versions = [];
   store(CHARTER_STORAGE, null);
   $("charter-view").hidden = true;
   $("ch-census").hidden = true;
@@ -798,11 +1070,12 @@ async function main() {
   wireCompose();
   wireFeed();
   wireCharter();
+  wireVotes();
   await renderAccount();
   if (invite) await askToJoin(invite);
   if (await checkNode()) {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
-    if (charter) await showCharter(charter, "saved in this browser").catch((e) => say(errText(e), true));
+    if (savedLog) await showCharter(savedLog, "saved in this browser", true).catch((e) => say(errText(e), true));
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
     else say("Enter an FID or username to read a feed, or connect an account to post.");
   }

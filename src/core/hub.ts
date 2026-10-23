@@ -308,6 +308,25 @@ export class Hub {
     return this.paged("/v1/userDataByFid", { fid }, (m) => m.data.fid === fid);
   }
 
+  repliesTo(target: { fid: number; hash: HexString }, opts: { pageSize?: number; pageToken?: string } = {}) {
+    return this.paged(
+      "/v1/castsByParent",
+      { fid: target.fid, hash: target.hash, pageSize: opts.pageSize, pageToken: opts.pageToken },
+      (m) => m.data.castAddBody?.parentCastId?.fid === target.fid && m.data.castAddBody.parentCastId.hash.toLowerCase() === target.hash.toLowerCase(),
+    );
+  }
+
+  likesByCast(target: { fid: number; hash: HexString }, opts: { pageSize?: number; pageToken?: string } = {}) {
+    return this.paged(
+      "/v1/reactionsByCast",
+      { target_fid: target.fid, target_hash: target.hash, reaction_type: "Like", pageSize: opts.pageSize, pageToken: opts.pageToken },
+      (m) => {
+        const r = m.data.reactionBody;
+        return r?.type === "REACTION_TYPE_LIKE" && r.targetCastId?.fid === target.fid && r.targetCastId.hash.toLowerCase() === target.hash.toLowerCase();
+      },
+    );
+  }
+
   async castById(fid: number, hash: HexString): Promise<HubMessage | undefined> {
     return this.one("/v1/castById", { fid, hash }, (m) => m.data.fid === fid && m.hash.toLowerCase() === hash.toLowerCase());
   }
