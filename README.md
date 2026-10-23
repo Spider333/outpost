@@ -59,7 +59,7 @@ draft cast.
 With an AI coding assistant that can run commands (Claude Code, Codex, Cursor), paste:
 
 ```
-Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat.
+Help me run Outpost (https://github.com/Spider333/outpost). Read its README and AGENTS.md first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat.
 ```
 
 ## Before you paste a recovery phrase
@@ -255,6 +255,7 @@ runs on mainnet and a local devnet are saved in [docs/evidence/](docs/evidence/R
 outpost              the CLI: provision, node, client, status, cli, uninstall, destroy, watchdog,
                      society, members
 VOUCHER.md           checklist and draft cast for people who vouch for a run
+AGENTS.md            rules and step checkpoints for AI assistants that run Outpost for someone
 infra/               cloud-init, node setup, snapshot loader, phone access, society mode
 src/core/            protocol code: node HTTP client, message checks, accounts, app keys,
                      writes, feed, app attribution, charters, census, society votes (Node and
