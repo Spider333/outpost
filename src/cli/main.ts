@@ -235,7 +235,11 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
       ? ""
       : it.app.keyCheck === "confirmed"
         ? "  [signer confirmed by second node]"
-        : "  [signer not verified]";
+        : it.app.keyCheck === "revoked"
+          ? "  [key revoked since]"
+          : it.app.keyCheck === "unlisted"
+            ? "  [key not listed: revoked since, or not the author's]"
+            : "  [signer not verified]";
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
     console.log(printable(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`));

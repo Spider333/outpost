@@ -4,8 +4,9 @@
 // The second node learns which accounts you check (one signersByFid read per account per
 // session, covering all its keys), not which casts you read.
 //
-// Snapchain deletes a removed key and revokes its messages; an expired gasless key stays listed
-// (with its expiresAt). So "not listed" means the key is not the account's.
+// Snapchain deletes a removed gasless key's record but, since engine V14, keeps the messages it
+// signed; an expired gasless key stays listed (with its expiresAt). So "not listed" means the
+// key was revoked since, or was never the account's: the HTTP API cannot tell which.
 
 import { Hub, liveToken, type HexString } from "./hub.js";
 import type { KeyLister } from "./verify.js";

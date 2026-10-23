@@ -131,10 +131,18 @@ test("a key that cannot be checked (no second node): hidden by default and count
   assert.match(shown.summary(), /shown although their signing key could not be checked/);
 });
 
-test("an onchain key the author removed is dropped; no RPC means unverified, and RPC errors are not cached", async () => {
+test("an onchain key the author removed since is marked revoked, and its earlier casts are shown (Snapchain V14 keeps them)", async () => {
   const k = throwaway();
   const key = await keyOf(k);
-  assert.equal(await new Verifier(registry([], [[AUTHOR, key]])).keyCheck(AUTHOR, key, false), "false");
+  const cast = await asNodeJson("signed before the key was removed", k);
+  const verifier = new Verifier(registry([], [[AUTHOR, key]]));
+  const items = await new FeedBuilder(new Hub({ url: "http://node.test", verifier, fetch: fakeNode({ casts: [cast], signers: [] }) })).fromAuthors([AUTHOR], { limit: 10 });
+  assert.deepEqual(items.map((i) => [i.hash, i.app.keyCheck]), [[cast.hash, "revoked"]]);
+  assert.deepEqual({ failed: verifier.failed, unverified: verifier.unverified }, { failed: 0, unverified: 0 });
+});
+
+test("no RPC means unverified, and RPC errors are not cached", async () => {
+  const key = await keyOf(throwaway());
   assert.equal(await new Verifier().keyCheck(AUTHOR, key, true), "unverified");
   let calls = 0;
   const flaky = new Verifier({ keyState: async () => (++calls === 1 ? Promise.reject(new Error("rpc down")) : "added") });
@@ -211,7 +219,7 @@ function secondListing(keys: string[], state = { down: false, calls: 0 }) {
   return { node, state };
 }
 
-test("a malicious node with a second node: a gasless key the second node does not list is dropped, one it lists is confirmed", async () => {
+test("a malicious node with a second node: a gasless key the second node does not list is held back, one it lists is confirmed", async () => {
   const real1 = throwaway();
   const fake = throwaway();
   const listed = await asNodeJson("posted from an app with a gasless key", real1);
@@ -229,7 +237,8 @@ test("a malicious node with a second node: a gasless key the second node does no
   });
   const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
   assert.deepEqual(new Map(items.map((i) => [i.hash, i.app.keyCheck])), new Map([[listed.hash, "confirmed"], [real.quote!.hash, "onchain"]]));
-  assert.deepEqual(verifier.dropped, { altered: 0, signature: 0, mismatch: 0, signer: 1 });
+  // Not shown, and not called a forgery either: a key revoked since looks the same.
+  assert.deepEqual({ unlisted: verifier.unlisted, failed: verifier.failed }, { unlisted: 1, failed: 0 });
   // One signersByFid read covered both gasless keys; the onchain key never reached it.
   assert.equal(second.state.calls, 1);
 });
@@ -326,13 +335,42 @@ test("fail closed: with the second node down, a forged gasless cast is hidden an
   const shown = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
   assert.deepEqual(new Map(shown.map((i) => [i.hash, i.app.keyCheck])), new Map([[forged.hash, "unverified"], [real.quote!.hash, "onchain"]]));
 
-  // Second node back: it does not list the key, so the forgery is dropped as a failure.
+  // Second node back: it does not list the key. That is either a forgery or a key revoked since
+  // (whose casts Snapchain keeps), so the cast stays hidden and is called what it is.
   second.state.down = false;
   verifier.showUnverified = false;
   verifier.reset();
   const back = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
   assert.deepEqual(back.map((i) => i.hash), [real.quote!.hash]);
-  assert.deepEqual({ unverified: verifier.unverified, signer: verifier.dropped.signer }, { unverified: 0, signer: 1 });
+  assert.deepEqual({ unverified: verifier.unverified, unlisted: verifier.unlisted, failed: verifier.failed }, { unverified: 1, unlisted: 1, failed: 0 });
+  assert.match(verifier.summary(), /^1 messages were hidden because the second node does not list their signing key: it was revoked since, or is not the author's\.$/);
+
+  verifier.showUnverified = true;
+  verifier.reset();
+  const marked = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.equal(marked.find((i) => i.hash === forged.hash)?.app.keyCheck, "unlisted");
+  assert.match(verifier.summary(), /shown although the second node does not list their signing key/);
+});
+
+test("hex fields must be 0x and lower case, and the signature canonical base64, though none of it changes what was signed", async () => {
+  assert.equal(await checkMessage(real.reaction!), "ok");
+  const sig = real.reaction!.signature;
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const last = sig.replace(/=+$/, "").length - 1;
+  const changes: Array<[string, (m: HubMessage) => void]> = [
+    ["signer prefix", (m) => (m.signer = `1x${m.signer.slice(2)}` as HexString)],
+    ["target hash prefix", (m) => (m.data.reactionBody!.targetCastId!.hash = `0y${m.data.reactionBody!.targetCastId!.hash.slice(2)}`)],
+    ["signer upper case", (m) => (m.signer = `0x${m.signer.slice(2).toUpperCase()}` as HexString)],
+    ["hash upper case", (m) => (m.hash = `0x${m.hash.slice(2).toUpperCase()}` as HexString)],
+    ["target hash upper case", (m) => (m.data.reactionBody!.targetCastId!.hash = `0x${m.data.reactionBody!.targetCastId!.hash.slice(2).toUpperCase()}`)],
+    // Flips a bit the decoder ignores: the same 64 signature bytes, spelled differently.
+    ["signature spelling", (m) => (m.signature = sig.slice(0, last) + alphabet[alphabet.indexOf(sig[last]!) ^ 1]! + sig.slice(last + 1))],
+  ];
+  for (const [label, change] of changes) {
+    const m = copy(real.reaction!);
+    change(m);
+    assert.equal(await checkMessage(m), "altered", label);
+  }
 });
 
 test("the member's own app key is never held back, even with no way to check keys", async () => {
