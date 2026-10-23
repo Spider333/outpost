@@ -240,6 +240,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
     <li><a href="#what">What Outpost is</a></li>
     <li><a href="#how">How the pieces fit</a></li>
     <li><a href="#different">What is different</a></li>
+    <li><a href="#gaps">Known gaps</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
     <li><a href="#warn-h">Before you paste a phrase</a></li>
     <li><a href="#tutorial">Tutorial</a>
@@ -344,6 +345,19 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 </ul>
 </section>
 
+<section class="part" aria-labelledby="gaps">
+<h2 id="gaps">Known gaps</h2>
+<p>What Outpost does not do well yet, from our own runs and our first outside tester's.</p>
+<ul>
+  <li><strong>Many steps if you are not a developer.</strong> You need a cloud account with its command-line tool, a terminal and Node.js, and the first sync takes 6 to 8 hours. Our first outside tester found it too many steps for someone who is not a developer. An <a href="#quickstart">AI assistant</a> can run the commands for you, but you still sign up for the cloud account yourself. One person can also run a node for a whole community, whose members only need a browser (<a href="#t-share">step 8</a>).</li>
+  <li><strong>The SSH tunnel can drop.</strong> A Wi-Fi change or a laptop going to sleep cuts the client's tunnel to your node, and the page shows a connection error until it is back. Our first tester lost it twice, so the client now checks the tunnel every 15 seconds and reopens it.</li>
+  <li><strong>New DigitalOcean accounts may be refused the 1.2 TB disk.</strong> This happened to our first tester. Use Hetzner, a server you already have, or ask DigitalOcean support to raise the limit.</li>
+  <li><strong>Accounts made in the Farcaster app cannot post.</strong> The app keeps their custody key. Its own "approve a connected app" flow would add a key with full access and no expiry that Outpost could not revoke, so Outpost does not use it. Reading needs no account. To post, use a test account or one whose custody key is in your own wallet.</li>
+  <li><strong>Not built yet:</strong> direct messages, channel pages, notifications, image upload and mentions. Direct messages and channel membership are not part of the protocol: they live on the Farcaster app's servers, which a client that reads only from your node does not use. A <a href="#g-charter">charter</a> can limit a feed to channels.</li>
+  <li><strong>The server costs money while it exists.</strong> About $10 a day on DigitalOcean, whether or not you use the client. <code>--watchdog</code> deletes it for you, and <code>./outpost destroy</code> stops the bill.</li>
+</ul>
+</section>
+
 <section class="part" aria-labelledby="quickstart">
 <h2 id="quickstart">Quickstart</h2>
 <p>You need:</p>
@@ -385,7 +399,7 @@ cd outpost
 </div>
 <h3>With an AI coding assistant</h3>
 <p>Paste this into an assistant that can run commands on your computer, such as Claude Code, Codex or Cursor:</p>
-<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat. Leave doctl auth init (or hcloud context create) and ./outpost cli login to me: they ask for secrets in a hidden prompt that only works in a real terminal. You cannot answer the yes/no prompts of provision and destroy, so once I say OK, run them with --yes.</pre>
+<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README and AGENTS.md first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat. Leave doctl auth init (or hcloud context create) and ./outpost cli login to me: they ask for secrets in a hidden prompt that only works in a real terminal. You cannot answer the yes/no prompts of provision and destroy, so once I say OK, run them with --yes.</pre>
 <p class="muted">The assistant runs the same commands as above, so the same costs apply. Keep tokens and recovery phrases out of the chat: the assistant's provider would see them. If a recovery phrase lands in the chat by mistake, treat that account as exposed and stop using it.</p>
 
 <details class="out-fold">
