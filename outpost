@@ -8,7 +8,8 @@
 # Also: ./outpost status, ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
 # ./outpost watchdog start|stop|status (deletes a trial server for you)
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
-# ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list
+# ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
+# ./outpost sponsor on|off|status (you pay for members' new Farcaster accounts, $0.20 each)
 # Every command is safe to run twice. Add --dry-run to provision/destroy to see the
 # exact provider commands without running them.
 
@@ -662,6 +663,36 @@ cmd_members() {
   esac
 }
 
+# Sponsor: members without a Farcaster account can create one from the client, and you pay its
+# fee (one storage unit, $0.20 in October 2026) from a hot wallet on the server
+# (src/server/sponsor.ts). The account and its key are the member's; the wallet only pays.
+# Caps: OUTPOST_SPONSOR_PER_MEMBER (default 2, ever) and OUTPOST_SPONSOR_PER_DAY (default 20).
+cmd_sponsor() {
+  local mode="${1:-status}" host env="" v val
+  case "$mode" in
+    on)
+      host="$(society_host)"
+      # OUTPOST_SPONSOR_DRY_RUN=1 checks each registration on Optimism without sending it (a test).
+      for v in OUTPOST_SPONSOR_PER_MEMBER OUTPOST_SPONSOR_PER_DAY OUTPOST_SPONSOR_DRY_RUN; do
+        val="${!v:-}"
+        [ -n "$val" ] || continue
+        [[ "$val" =~ ^[0-9]+$ ]] || die "$v must be a whole number"
+        env="$env$v=$val "
+      done
+      ensure_build
+      [ -f "$OUTPOST_DIR/dist/sponsor.js" ] || (cd "$OUTPOST_DIR" && node scripts/build.mjs)
+      society_run "${env}OUTPOST_SOCIETY_HOST='$host' " sponsor-on <"$OUTPOST_DIR/dist/sponsor.js"
+      say "keep only a little ETH in that wallet: it sits on the server. Turn it off with: ./outpost sponsor off"
+      ;;
+    off)
+      host="$(society_host)"
+      society_run "OUTPOST_SOCIETY_HOST='$host' " sponsor-off
+      ;;
+    status) society_run "" sponsor-status ;;
+    *) die "usage: ./outpost sponsor on|off|status" ;;
+  esac
+}
+
 cmd_status() {
   [ -n "$(state_get IP)${OUTPOST_HOST:-}" ] || { say "no server yet. Run ./outpost provision"; return 0; }
   if [ -n "${OUTPOST_HOST:-}" ]; then
@@ -953,7 +984,7 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
@@ -965,6 +996,7 @@ main() {
     client) cmd_client "$@" ;;
     society) cmd_society "$@" ;;
     members) cmd_members "$@" ;;
+    sponsor) cmd_sponsor "$@" ;;
     cli) cmd_cli "$@" ;;
     status) cmd_status "$@" ;;
     uninstall) cmd_uninstall "$@" ;;
