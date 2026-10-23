@@ -350,6 +350,33 @@ test("CLI: proposals adds the passed amendment to the log file; verify recounts 
   }
 });
 
+test("CLI: a log whose majority rests on keys nobody lists is refused unless the member says to trust it", async () => {
+  const { w, log, head0 } = await society();
+  const p = await w.propose(100, head0, add(600));
+  const forged = await Promise.all([200, 300].map(async (f) => w.like(f, p, await appKey(f)))); // keys no node lists
+  const hand: CharterLog = { ...log, amendments: [{ proposal: p, approvals: [await w.like(100, p), ...forged] }] };
+  const node = await w.serve();
+  const second = await w.serve();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "outpost-votes-test-"));
+    const file = join(dir, "forged.log.json");
+    writeFileSync(file, JSON.stringify(hand));
+    const cli = (...args: string[]) =>
+      promisify(execFile)(process.execPath, ["--import", "tsx", "src/cli/main.ts", "charter", ...args, "--node", node.url, "--rpc", "off", "--check-node", second.url], {
+        env: { ...process.env, OUTPOST_HOME: dir },
+      });
+    for (const cmd of ["census", "feed", "proposals"]) {
+      await assert.rejects(cli(cmd, file), (e: { stderr: string }) => /version\(s\) 1 cannot be recounted from scratch/.test(e.stderr), cmd);
+    }
+    await assert.rejects(cli("verify", file), (e: { stdout: string; code: number }) => e.code === 1 && /NOT RECOUNTABLE FROM SCRATCH/.test(e.stdout));
+    const trusted = (await cli("census", file, "--trust-unrecountable")).stdout;
+    assert.match(trusted, /members {12}6/, "with the member's yes, the version applies");
+  } finally {
+    node.close();
+    second.close();
+  }
+});
+
 test("casts over 320 bytes go out as long casts, and mentions keep their offsets", async () => {
   const key = await appKey(1);
   const short = await buildCast(key, { text: "x".repeat(320) });

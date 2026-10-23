@@ -170,8 +170,9 @@ a fake node with a 5-member society and an open proposal, and prints the steps.
 
 Limits: votes are public; members who stay silent count as "no", so a society freezes if half
 of its members go quiet (they can leave, or the founder can start a new charter); a recount
-labels approvals whose keys were revoked since, and says so when a majority rests on them. What
-a recount proves is in [TRUST.md](TRUST.md#what-a-society-vote-proves).
+labels approvals whose keys were revoked since, and says so when a majority rests on them; such
+a log is only used after you say so (`--trust-unrecountable`, or a prompt in the web client).
+What a recount proves is in [TRUST.md](TRUST.md#what-a-society-vote-proves).
 
 ## Share your node (society mode)
 

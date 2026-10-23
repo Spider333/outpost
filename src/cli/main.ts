@@ -108,6 +108,8 @@ options:
   --show-unverified   also show casts whose signing key could not be checked (marked); by
                       default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
+  --trust-unrecountable  use a charter log even if a version's majority rests on approvals
+                      whose keys cannot be checked now (revoked since, or listed by no node)
 
 Every message read from the node is verified here (hash, signature, account) before use.
 `;

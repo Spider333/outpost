@@ -45,14 +45,26 @@ async function load(src: string | undefined): Promise<unknown> {
   return JSON.parse(readFileSync(src, "utf8"));
 }
 
+// A version whose majority rests on approvals that cannot be checked now (a key revoked since, or
+// one no node lists, as a made-up key would be) is only used when the member says so.
+function refuseUnrecountable(versions: Version[], trust = false) {
+  const weak = versions.flatMap((ver, i) => (ver.amendment && !ver.amendment.recountable ? [i] : []));
+  if (!weak.length || trust) return;
+  printVersions(versions);
+  throw new Error(
+    `version(s) ${weak.join(", ")} cannot be recounted from scratch: their majority rests on approvals whose keys cannot be checked now (revoked since, or not listed by your second node). If you trust whoever gave you this log, run again with --trust-unrecountable`,
+  );
+}
+
 // A charter or charter log, checked: the founder's signature, then every amendment, with keys
 // checked afresh on Optimism and the second node.
-async function loadSociety(hub: Hub, src: string | undefined, chain?: Optimism): Promise<{ log: CharterLog; versions: Version[]; body: CharterBody }> {
+async function loadSociety(hub: Hub, src: string | undefined, chain?: Optimism, trust = false): Promise<{ log: CharterLog; versions: Version[]; body: CharterBody }> {
   const log = toLog(await load(src));
   const v = await verifyCharter(log.genesis, hub, chain);
   if (!v.ok) throw new Error(`charter rejected: ${v.problems.join("; ")}`);
   const r = await replay(log, hub.verifier!);
   if (r.problems.length) throw new Error(`charter log rejected: ${r.problems.join("; ")}`);
+  refuseUnrecountable(r.versions, trust);
   return { log, versions: r.versions, body: r.versions.at(-1)!.body };
 }
 
@@ -154,6 +166,7 @@ export interface CharterOptions {
 
 export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, chain?: Optimism, opts: CharterOptions = {}) {
   const [sub, a, b] = args;
+  const trust = !!opts["trust-unrecountable"];
   switch (sub) {
     case "new": {
       if (!a) throw new Error("usage: charter new <file>");
@@ -207,12 +220,14 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       if (r.problems.length) {
         console.log(printable(`REJECTED at ${r.problems.join("; ")}`));
         process.exitCode = 1;
+      } else if (r.versions.some((ver) => ver.amendment && !ver.amendment.recountable)) {
+        process.exitCode = 1; // listed above as NOT RECOUNTABLE FROM SCRATCH
       }
       console.log(verificationNote(hub));
       return;
     }
     case "census": {
-      const s = await loadSociety(hub, a, chain);
+      const s = await loadSociety(hub, a, chain, trust);
       const days = b ? Number(b) : 7;
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("days must be 1 to 90");
       const t0 = Date.now();
@@ -227,7 +242,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       return;
     }
     case "feed": {
-      const s = await loadSociety(hub, a, chain);
+      const s = await loadSociety(hub, a, chain, trust);
       const limit = b ? Number(b) : 20;
       if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("limit must be 1 to 500");
       const items = await charterFeed(new FeedBuilder(hub), s.body, { limit });
@@ -240,7 +255,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       return;
     }
     case "join": {
-      const s = await loadSociety(hub, a, chain);
+      const s = await loadSociety(hub, a, chain, trust);
       const k = key();
       const already = new Set(await followingOf(hub, k.fid));
       const todo = s.body.members.filter((m) => m !== k.fid && !already.has(m));
@@ -258,7 +273,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       const file = logFile(a, "charter proposals <log file> [days]");
       const days = b ? Number(b) : PROPOSAL_DAYS;
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("days must be 1 to 90");
-      const s = await loadSociety(hub, file, chain);
+      const s = await loadSociety(hub, file, chain, trust);
       const st = await advance(hub, s.log, { cache: savedApprovals(), days });
       for (const t of st.passed) console.log(printable(`PASSED: ${changeList(t.proposal.changes)} (${t.approvers.length} of ${t.members} members). Announce it with: ./outpost cli charter announce ${file}`));
       if (st.passed.length) {
@@ -278,7 +293,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
     }
     case "propose": {
       const file = logFile(a, "charter propose <log file> --add <user|fid> [--remove ...] [--add-mod ...] [--remove-mod ...]");
-      const s = await loadSociety(hub, file, chain);
+      const s = await loadSociety(hub, file, chain, trust);
       const st = await advance(hub, s.log, { cache: savedApprovals() }); // propose against the latest version
       if (st.passed.length) save(file, st.log);
       const changes = await changesFrom(hub, opts);
@@ -290,7 +305,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       return;
     }
     case "announce": {
-      const s = await loadSociety(hub, logFile(a, "charter announce <log file>"), chain);
+      const s = await loadSociety(hub, logFile(a, "charter announce <log file>"), chain, trust);
       const last = s.versions.at(-1)!.amendment;
       if (!last) throw new Error("no amendment has passed yet");
       const r = await announce(hub, key(), last.proposal.id, last.approvers.length + last.unchecked.length, last.members);
@@ -311,11 +326,7 @@ export async function cmdCharter(hub: Hub, args: string[], key: () => AppKey, ch
       }
       const r = await replay(theirs, hub.verifier!);
       if (r.problems.length) throw new Error(`their log is rejected: ${r.problems.join("; ")}`);
-      const weak = r.versions.flatMap((ver, i) => (ver.amendment && !ver.amendment.recountable ? [i] : []));
-      if (weak.length && !opts["trust-unrecountable"]) {
-        printVersions(r.versions);
-        throw new Error(`version(s) ${weak.join(", ")} cannot be recounted from scratch: their majority rests on approvals whose keys cannot be checked now (revoked since, or not listed by your second node). If you trust whoever gave you this log, run again with --trust-unrecountable`);
-      }
+      refuseUnrecountable(r.versions, trust);
       save(b, theirs);
       console.log(`imported ${theirs.amendments.length} amendment(s) into ${b}, head ${short(r.versions.at(-1)!.head)}:`);
       printVersions(r.versions);
