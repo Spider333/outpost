@@ -140,6 +140,9 @@ h1, h2, h3 { text-wrap: balance; }
 .row.wrap { flex-wrap: wrap; }
 .row.start { justify-content: flex-start; margin-top: 12px; }
 .inline { display: flex; gap: 8px; }
+/* The hidden attribute wins over display rules such as .choices below. */
+[hidden] { display: none !important; }
+
 .inline > input { flex: 1 1 10em; min-width: 0; width: auto; }
 .inline.wrap { flex-wrap: wrap; }
 .choices { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 4px; }
@@ -357,3 +360,24 @@ footer a { color: var(--muted); }
 .feed-tools:has(.chips:empty) + details.why { display: none; }
 #node-settings > summary { margin: 0; }
 .facts dt:has(+ dd:empty), .facts dd:empty { display: none; }
+
+/* ---- sign-in choices (Post from Outpost) */
+
+.choices.options button { text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+.choices.options button::after {
+  content: ""; width: 6px; height: 6px; flex: none; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); opacity: 0.6; transition: transform 0.12s;
+}
+.choices.options button[aria-expanded="true"]::after { transform: rotate(45deg); }
+.choices.options button[aria-expanded="true"]:not(.primary) { border-color: var(--accent); background: rgba(113, 112, 255, 0.08); }
+.choices.options button.primary[aria-expanded="true"] { box-shadow: 0 0 0 1px var(--accent-hover); }
+.step { border-top: 1px solid var(--line-subtle); margin-top: 12px; padding-top: 12px; }
+.step > p:first-child { margin-top: 0; }
+#create-offer { color: var(--text-2); }
+#new-phrase-box > button { margin-top: 8px; }
+.phrase {
+  font-family: var(--mono); font-size: 15px; line-height: 1.8; color: var(--text); word-break: normal; overflow-wrap: anywhere;
+  padding: 12px 14px; margin: 12px 0 4px; background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: var(--radius);
+  user-select: all;
+}
+.phrase:empty { display: none; }

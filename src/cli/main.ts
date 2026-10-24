@@ -175,7 +175,7 @@ async function cmdStatus(hub: Hub) {
   console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
 }
 
-async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
+async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork, chain?: Optimism) {
   const existing = loadKey();
   if (existing) {
     console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
@@ -193,7 +193,7 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
   const custody = custodyFromSeedPhrase(phrase);
   phrase = ""; // JS strings cannot be wiped; we drop the reference and keep no copy.
 
-  const account = await resolveAccount(hub, custody.address);
+  const account = await resolveAccount(hub, custody.address, chain);
   console.log(`\ncustody address  ${account.custody}`);
   console.log(printable(`FID              ${account.fid}`));
   console.log(printable(`storage units    ${account.storageUnits}`));
@@ -374,7 +374,8 @@ async function main(argv: string[]) {
       const nets: Record<string, FarcasterNetwork> = { mainnet: FarcasterNetwork.MAINNET, devnet: FarcasterNetwork.DEVNET };
       const network = nets[values.network ?? "mainnet"];
       if (network === undefined) throw new Error("--network must be mainnet or devnet");
-      return cmdLogin(hub, days, network);
+      // Devnet accounts are not on Optimism mainnet, so only mainnet looks the FID up there.
+      return cmdLogin(hub, days, network, network === FarcasterNetwork.MAINNET ? chain : undefined);
     },
     whoami: () => cmdWhoami(hub),
     uninstall: () => cmdUninstall(hub),

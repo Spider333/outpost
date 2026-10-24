@@ -3,7 +3,7 @@
 
 import { createPublicClient, http } from "viem";
 import { optimism } from "viem/chains";
-import { ID_REGISTRY_ADDRESS, idRegistryABI, KEY_REGISTRY_ADDRESS, keyRegistryABI } from "@farcaster/core";
+import { ID_GATEWAY_ADDRESS, idGatewayABI, ID_REGISTRY_ADDRESS, idRegistryABI, KEY_REGISTRY_ADDRESS, keyRegistryABI } from "@farcaster/core";
 import type { HexString } from "./hub.js";
 import type { KeyRegistry } from "./verify.js";
 
@@ -31,5 +31,15 @@ export class Optimism implements KeyRegistry {
   async custodyOf(fid: number): Promise<HexString | undefined> {
     const a = await this.client.readContract({ address: ID_REGISTRY_ADDRESS, abi: idRegistryABI, functionName: "custodyOf", args: [BigInt(fid)] });
     return /^0x0{40}$/.test(a) ? undefined : a;
+  }
+
+  // The FID this address owns, or 0. A node can take a minute to say "none"; this is one call.
+  async idOf(address: HexString): Promise<number> {
+    return Number(await this.client.readContract({ address: ID_REGISTRY_ADDRESS, abi: idRegistryABI, functionName: "idOf", args: [address] }));
+  }
+
+  // The nonce a Register signature for this address has to carry.
+  async registerNonce(address: HexString): Promise<bigint> {
+    return this.client.readContract({ address: ID_GATEWAY_ADDRESS, abi: idGatewayABI, functionName: "nonces", args: [address] });
   }
 }

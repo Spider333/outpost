@@ -170,6 +170,23 @@ the node:
 Any member can check these from outside with their own token:
 `scripts/society-check.sh <node URL> <token file>`.
 
+## What the sponsor sees and keeps
+
+The optional sponsor (`src/server/sponsor.ts` and `sponsor-service.ts`, tests in
+`test/sponsor.test.ts`) pays for a member's new Farcaster account:
+
+- The new account's key is made in the member's browser, or stays in their wallet. The sponsor
+  gets only the account's address and a signature over it, and sends `IdGateway.registerFor`
+  from the host's wallet. The account belongs to the member from the first block: the sponsor
+  cannot sign for it, move it or recover it. It sets no recovery address.
+- The host can tell which member asked for which new address while the request passes through,
+  as with any request to the server. The sponsor logs no address, FID, token or IP address; it
+  keeps only how many accounts each member name got.
+- Each registration is simulated on Optimism first, so a bad request costs nothing. Caps: 2 per
+  member, ever, and 20 a day in all, unless the host changes them.
+- The wallet's key lives on the server. Whoever controls the server controls the ETH in it, and
+  nothing else.
+
 ## Running a society node
 
 ```

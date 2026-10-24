@@ -48,15 +48,40 @@
     </section>
 
     <section id="connect" class="card" hidden aria-labelledby="connect-h">
-      <h2 id="connect-h">Connect an account</h2>
-      <p class="lead">To post, this client needs its own <em>app key</em>. It can cast, react and follow, and nothing else.</p>
+      <h2 id="connect-h">Post from Outpost</h2>
+      <p class="lead">Reading needs no account. To post, choose the one that fits you.</p>
       <details class="why">
-        <summary>How does this work?</summary>
-        <p>The app key expires 30 days after you last use it. Your account's owner key (the custody key) signs one authorization for it, and this page keeps only the app key.</p>
+        <summary>How does posting work?</summary>
+        <p>You need a Farcaster account whose owner key you hold, in a browser wallet or as a recovery phrase. Outpost then gets its own <em>app key</em>: it can cast, react and follow for you, nothing else, and expires 30 days after you last use it.</p>
       </details>
-      <div class="choices">
-        <button id="use-wallet" class="primary" type="button">Sign with a wallet (recommended)</button>
-        <button id="use-phrase" type="button">Use a test account's recovery phrase</button>
+      <div id="connect-choices" class="choices options">
+        <button id="new-account" class="primary" type="button">I have no Farcaster account</button>
+        <button id="app-user" type="button">I made my account in the Farcaster app</button>
+        <button id="use-wallet" type="button">My account's owner key is in a browser wallet</button>
+        <button id="use-phrase" type="button">I have a test account's recovery phrase</button>
+      </div>
+
+      <div id="app-box" class="step" hidden>
+        <p>The Farcaster app keeps your account's owner key inside the app, so Outpost cannot get a posting key for it yet. Read every feed here, and post from the app for now.</p>
+        <p class="muted small">Approving Outpost from inside the Farcaster app is next on the list. Want to post here today? Create a second account with "I have no Farcaster account".</p>
+      </div>
+
+      <div id="create-box" class="step" hidden>
+        <p id="create-offer" aria-live="polite">Checking whether this node can pay for your account…</p>
+        <div id="create-ways" class="choices" hidden>
+          <button id="create-phrase" class="primary" type="button">Make a new account here</button>
+          <button id="create-wallet" type="button">Make it with my browser wallet as the owner</button>
+        </div>
+        <div id="new-phrase-box" hidden>
+          <div class="danger" role="note">
+            <strong class="danger-h"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg>Write these 12 words down now.</strong>
+            <p>They are your new account's master key: whoever has them owns the account, and nobody can give them back to you. This page shows them once and does not save them.</p>
+          </div>
+          <p id="new-phrase" class="phrase mono" tabindex="-1"></p>
+          <button id="copy-phrase" type="button">Copy the words</button>
+          <label class="check"><input id="saved-phrase" type="checkbox"> I saved these 12 words somewhere safe.</label>
+          <button id="create-go" class="primary" type="button" disabled>Create my account</button>
+        </div>
       </div>
 
       <div id="phrase-box" hidden>

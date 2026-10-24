@@ -3,7 +3,8 @@
 // By default the page and the node share an origin: `./outpost client` serves this page and
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
-import type { EIP1193Provider } from "viem";
+import { zeroAddress, type EIP1193Provider } from "viem";
+import { optimism } from "viem/chains";
 import { FarcasterNetwork } from "@farcaster/core";
 import {
   addAppKey,
@@ -29,8 +30,13 @@ import {
   DEFAULT_CHECK_NODE,
   DEFAULT_OPTIMISM_RPC,
   HubError,
+  newRecoveryPhrase,
   Optimism,
+  REGISTER_DEADLINE_SECONDS,
   secondNode,
+  signRegistration,
+  sponsorRegister,
+  sponsorStatus,
   takeInvite,
   Verifier,
   advance,
@@ -174,6 +180,8 @@ if (key) verifier.trust(key.fid, key.publicKey);
 let network = FarcasterNetwork.MAINNET;
 let pendingCustody: Custody | undefined;
 let pendingAccount: AccountInfo | undefined;
+// A phrase made here for a new account: kept only until its app key is added.
+let newPhrase: string | undefined;
 let viewFid: number | undefined;
 let items: FeedItem[] = [];
 let perAuthor = 5;
@@ -337,15 +345,25 @@ function askToJoin(inv: Society): Promise<void> {
 
 // ---- connect
 
-function showConnectStep(step: "choose" | "phrase" | "confirm") {
+type ConnectStep = "choose" | "app" | "create" | "phrase" | "confirm";
+
+function showConnectStep(step: ConnectStep) {
+  $("app-box").hidden = step !== "app";
+  $("create-box").hidden = step !== "create";
   $("phrase-box").hidden = step !== "phrase";
   $("confirm-box").hidden = step !== "confirm";
-  $("use-wallet").parentElement!.hidden = step === "confirm";
+  $("connect-choices").hidden = step === "confirm";
+  for (const [id, s] of [["new-account", "create"], ["app-user", "app"], ["use-phrase", "phrase"]] as const) {
+    $(id).setAttribute("aria-expanded", String(step === s));
+  }
 }
 
+const walletProvider = () => (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
+
 async function prepare(custody: Custody) {
-  say("Looking up the account on your node…");
-  const account = await resolveAccount(hub, custody.address);
+  say("Looking up the account…");
+  // Devnet accounts are not on Optimism mainnet, so only mainnet looks the FID up there.
+  const account = await resolveAccount(hub, custody.address, network === FarcasterNetwork.MAINNET ? chain : undefined);
   if (account.storageUnits === 0) throw new Error(`FID ${account.fid} has no storage, so the network would reject its casts.`);
   pendingCustody = custody;
   pendingAccount = account;
@@ -356,11 +374,156 @@ async function prepare(custody: Custody) {
   say(`Found FID ${account.fid}. Check the details, then authorize.`);
 }
 
+// Adds an app key for an account whose owner key we hold now, then shows its feed.
+async function authorize(custody: Custody, account: AccountInfo) {
+  const { key: k, confirmed } = await addAppKey(hub, { fid: account.fid, custody: custody.signer, network }, { timeoutMs: 60_000 }, (added) => {
+    store(KEY_STORAGE, added); // saved as soon as the node accepts it, so a slow merge cannot lose it
+  });
+  pendingCustody = undefined; // drop the custody signer; only the app key is kept
+  pendingAccount = undefined;
+  key = k;
+  verifier.trust(k.fid, k.publicKey);
+  say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
+  renderAccount();
+  await loadFeed(k.fid);
+}
+
+// ---- create an account (paid by the society's sponsor)
+
+async function openCreate() {
+  showConnectStep("create");
+  $("new-phrase-box").hidden = true;
+  const offer = $("create-offer");
+  const ways = $("create-ways");
+  ways.hidden = true;
+  if (!society) {
+    offer.textContent =
+      "Creating an account here needs a society node that pays for it; this page reads from your own node. Open a society's invite link, or make an account in the Farcaster app (it asks for an invite code or an X account, and such accounts can only read here for now).";
+    return;
+  }
+  if (!chain) {
+    offer.textContent = 'Creating an account needs the Optimism RPC, which is turned off. Turn it on under "Node and checks".';
+    return;
+  }
+  offer.textContent = "Checking whether this society can pay for your account…";
+  let s;
+  try {
+    s = await sponsorStatus(society.node, society.token);
+  } catch {
+    offer.textContent = "This society node does not create accounts. Ask its host for a test account; you can read every feed here without one.";
+    return;
+  }
+  if (!s.available) {
+    offer.textContent = `${s.reason ?? "This society cannot pay for an account right now."} You can still read every feed here.`;
+    return;
+  }
+  offer.textContent =
+    "This society pays the network fee for your new account ($0.20), so you need no ETH, invite code or X account. The account is yours alone: its key is made in this page, or stays in your wallet, and is never sent anywhere.";
+  $("create-wallet").hidden = !walletProvider();
+  ways.hidden = false;
+}
+
+// The node learns about a new account from Optimism, usually within a minute.
+async function waitForAccount(fid: number, owner: HexString): Promise<AccountInfo> {
+  const end = Date.now() + 5 * 60_000;
+  for (;;) {
+    try {
+      const c = await hub.custodyOf(fid);
+      if (c?.toLowerCase() === owner.toLowerCase()) {
+        const { units } = await hub.storageLimits(fid);
+        if (units > 0) return { fid, custody: owner, storageUnits: units };
+      }
+    } catch (e) {
+      // A node that is catching up or briefly away is asked again; a refused token is final.
+      if (e instanceof HubError && e.status === 401) throw e;
+    }
+    if (Date.now() > end) {
+      throw new Error(`FID ${fid} is yours on Optimism, but the node has not seen it after 5 minutes. Reload later and connect it with "I have a test account's recovery phrase" (or your wallet).`);
+    }
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+}
+
+// `owner` signs Register (for a wallet, on Optimism); `forKey` gives the signer for the app key
+// (for a wallet, on mainnet, as KeyAdd's typed data wants).
+async function createAccount(owner: Custody, forKey: () => Promise<Custody>) {
+  if (!society || !chain) return;
+  const existing = await chain.idOf(owner.address);
+  if (existing) {
+    say(`${owner.address} already owns FID ${existing}. Connecting it instead.`);
+    await prepare(await forKey());
+    return;
+  }
+  const nonce = await chain.registerNonce(owner.address);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + REGISTER_DEADLINE_SECONDS);
+  say("Signing the registration. It is free: nothing is paid or sent from your side.");
+  const signature = await signRegistration(owner, nonce, deadline);
+  say("Creating your account on Optimism. The society pays; this takes a few seconds…");
+  const r = await sponsorRegister(society.node, society.token, { to: owner.address, recovery: zeroAddress, deadline: deadline.toString(), signature });
+  if (r.dryRun) throw new Error("The society's sponsor runs in test mode (dry run): your registration was checked but not sent.");
+  say(`Account created: FID ${r.fid}. Waiting for the node to see it, usually under a minute…`);
+  const account = await waitForAccount(r.fid, owner.address);
+  say(`FID ${r.fid} is on the node. Adding Outpost's app key…`);
+  const signer = await forKey();
+  if (signer.address.toLowerCase() !== owner.address.toLowerCase()) {
+    throw new Error(`Your wallet now uses ${signer.address}, but FID ${r.fid} belongs to ${owner.address}. Switch the wallet back to that account, then choose "My account's owner key is in a browser wallet".`);
+  }
+  try {
+    await authorize(signer, account);
+  } finally {
+    // Once the app key is stored the phrase is not needed here, even if the feed fails to load.
+    if (key?.fid === r.fid) forgetNewPhrase();
+  }
+}
+
+function forgetNewPhrase() {
+  newPhrase = undefined;
+  $("new-phrase").textContent = "";
+  $("new-phrase-box").hidden = true;
+}
+
+function wireCreate() {
+  $("new-account").addEventListener("click", () => void openCreate());
+  $("app-user").addEventListener("click", () => showConnectStep("app"));
+  $("create-phrase").addEventListener("click", () => {
+    newPhrase = newRecoveryPhrase();
+    $("new-phrase").textContent = newPhrase;
+    $<HTMLInputElement>("saved-phrase").checked = false;
+    $<HTMLButtonElement>("create-go").disabled = true;
+    $("create-ways").hidden = true;
+    $("new-phrase-box").hidden = false;
+    $("new-phrase").focus();
+  });
+  $("saved-phrase").addEventListener("change", (e) => ($<HTMLButtonElement>("create-go").disabled = !(e.target as HTMLInputElement).checked));
+  $("copy-phrase").addEventListener("click", () =>
+    busy(null, "", async () => {
+      if (!newPhrase) return;
+      await navigator.clipboard.writeText(newPhrase);
+      say("Copied. Paste the words somewhere safe, then copy something else so they leave your clipboard.");
+    }),
+  );
+  $("create-go").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Creating…", async () => {
+      if (!newPhrase) return;
+      const custody = custodyFromSeedPhrase(newPhrase);
+      await createAccount(custody, async () => custody);
+    }),
+  );
+  $("create-wallet").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
+      const eth = walletProvider();
+      if (!eth) throw new Error("No browser wallet found. Make a new account here instead.");
+      await createAccount(await custodyFromWallet(eth, optimism), () => custodyFromWallet(eth));
+    }),
+  );
+}
+
 function wireConnect() {
+  wireCreate();
   $("use-wallet").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
-      const eth = (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
-      if (!eth) throw new Error("No browser wallet found. Install one, or use a test account's phrase.");
+      const eth = walletProvider();
+      if (!eth) throw new Error('No browser wallet found in this browser. No account yet? Choose "I have no Farcaster account".');
       await prepare(await custodyFromWallet(eth));
     }),
   );
@@ -387,15 +550,7 @@ function wireConnect() {
   $("authorize").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node…", async () => {
       if (!pendingCustody || !pendingAccount) return;
-      const { key: k, confirmed } = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer, network }, { timeoutMs: 60_000 }, (added) => {
-        store(KEY_STORAGE, added); // saved as soon as the node accepts it, so a slow merge cannot lose it
-      });
-      pendingCustody = undefined; // drop the custody signer; only the app key is kept
-      key = k;
-      verifier.trust(k.fid, k.publicKey);
-      say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
-      renderAccount();
-      await loadFeed(k.fid);
+      await authorize(pendingCustody, pendingAccount);
     }),
   );
 }
@@ -1114,7 +1269,7 @@ async function main() {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
     if (savedLog) await showCharter(savedLog, "saved in this browser", true).catch((e) => say(errText(e), true));
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
-    else say("Enter an FID or username to read a feed, or connect an account to post.");
+    else say('Enter an FID or username to read a feed. To post, see "Post from Outpost" below.');
   }
   if (inviteError) say(inviteError, true);
   setInterval(checkNode, 60_000);
