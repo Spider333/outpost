@@ -179,6 +179,10 @@ test("forwards reads and submits to the node without the member's headers", asyn
   for (const s of seen) {
     for (const h of ["authorization", "cookie", "origin", "x-forwarded-for"]) assert.equal(s.headers[h], undefined, `${h} passed to the node`);
   }
+  // Society votes read the likes on a proposal: a plain GET, so no gate change is needed.
+  const likes = "/v1/reactionsByCast?target_fid=3&target_hash=0x50184b62b4c52fd76628713562e1eda3dccaf63d&reaction_type=Like&pageSize=1000";
+  assert.equal((await call(g.port, "GET", likes, bearer(ALICE))).status, 200);
+  assert.equal(seen[2]!.url, likes);
   await g.stop();
 });
 

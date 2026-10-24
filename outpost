@@ -9,7 +9,8 @@
 # quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
 # ./outpost watchdog start|stop|status (deletes a trial server for you)
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
-# ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list
+# ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
+# ./outpost sponsor on|off|status (you pay for members' new Farcaster accounts, $0.20 each)
 # Every command is safe to run twice. Add --dry-run to provision/shrink/destroy to see the
 # exact provider commands without running them.
 
@@ -47,6 +48,7 @@ run() {
 confirm() {
   [ "$ASSUME_YES" -eq 1 ] && return 0
   [ "$DRY_RUN" -eq 1 ] && return 0
+  [ -t 0 ] || { warn "no terminal to answer \"$1\" (for example when an AI assistant runs this). Run it again with --yes to confirm."; return 1; }
   local reply
   read -r -p "$1 [y/N] " reply
   [[ "$reply" =~ ^[Yy](es)?$ ]]
@@ -103,8 +105,9 @@ node_host() {
 }
 
 # Host keys are kept per project, so a new server that reuses an old IP (common after
-# destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts.
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=30)
+# destroy + provision) does not trip over a stale entry in ~/.ssh/known_hosts. Agent forwarding
+# stays off even if ~/.ssh/config turns it on, so a compromised server cannot use your keys.
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$STATE_DIR/known_hosts" -o ForwardAgent=no -o ConnectTimeout=15 -o ServerAliveInterval=30)
 
 node_ssh() { node_ssh_for 0 "$@"; }
 
@@ -225,7 +228,22 @@ provision_do() {
     vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   if [ "$DRY_RUN" -eq 1 ] || [ -z "$vol_id" ]; then
-    run doctl compute volume create "$name-data" --region "$region" --size "${disk}GiB" --fs-type ext4 --desc "outpost snapchain data"
+    # New accounts are often limited to small volumes and get "422 ... invalid size specified"
+    # (a tester's new account, 22 Oct 2026). A failed call can still have made the volume (a
+    # timeout), so look before saying nothing is billed.
+    if ! run doctl compute volume create "$name-data" --region "$region" --size "${disk}GiB" --fs-type ext4 --desc "outpost snapchain data"; then
+      local vols
+      vols="$(plist doctl compute volume list --format Name --no-header)" \
+        || die "the volume request failed and the volume list could not be read, so it is unclear whether a volume was made. Check Volumes in your DigitalOcean dashboard before running this again or switching providers."
+      if printf '%s\n' "$vols" | grep -qx "$name-data"; then
+        die "DigitalOcean reported an error, but the volume $name-data exists and is billed by the hour. Run ./outpost provision again to continue, or ./outpost destroy to delete it."
+      fi
+      die "DigitalOcean did not create the ${disk} GB volume (it is not in your volume list), so nothing billable was created.
+If it said \"invalid size specified\", your account is limited to smaller volumes (common on new accounts). Either:
+  ask DigitalOcean support to raise your volume limit to ${disk} GiB in $region, then run this again;
+  use Hetzner: ./outpost provision --provider hetzner;
+  or use a server you already have (Ubuntu 24.04, root SSH, at least 1 TB of disk): OUTPOST_HOST=<ip> ./outpost node"
+    fi
     [ "$DRY_RUN" -eq 0 ] && vol_id="$(plist doctl compute volume list --format ID,Name --no-header | awk -v n="$name-data" '$2==n {print $1; exit}')"
   fi
   # DigitalOcean rejects a firewall that names a tag which does not exist yet (HTTP 422).
@@ -542,7 +560,9 @@ tunnel_up() {
     curl -fsm 10 -o /dev/null "http://127.0.0.1:$TUNNEL_PORT/v1/info" && return 0
     ssh -S "$sock" -O exit "root@$host" >/dev/null 2>&1 || true
   fi
-  ssh -i "$key" "${SSH_OPTS[@]}" -f -N -M -S "$sock" -o ExitOnForwardFailure=yes \
+  # ControlMaster=auto, not -M: after a crash or kill -9 the socket file stays behind, and -M then
+  # runs a tunnel nothing can stop. auto removes the stale socket and becomes the master.
+  ssh -i "$key" "${SSH_OPTS[@]}" -f -N -o ControlMaster=auto -S "$sock" -o ExitOnForwardFailure=yes \
     -L "127.0.0.1:$TUNNEL_PORT:127.0.0.1:3381" "root@$host"
 }
 
@@ -641,7 +661,17 @@ cmd_client() {
   fi
   ensure_build
   tunnel_up
-  trap tunnel_down EXIT
+  # The tunnel dies with Wi-Fi changes and sleep, while the client keeps serving 502s (a tester's
+  # first cast failed this way on 22 Oct 2026). Check it every 15 s and reopen it.
+  (
+    while sleep 15; do
+      curl -fsm 10 -o /dev/null "http://127.0.0.1:$TUNNEL_PORT/v1/info" && continue
+      say "lost the connection to your node; reconnecting"
+      if tunnel_up >/dev/null 2>&1; then say "reconnected to your node"; fi
+    done
+  ) &
+  CLIENT_KEEPER=$!
+  trap 'kill "$CLIENT_KEEPER" 2>/dev/null; wait "$CLIENT_KEEPER" 2>/dev/null || true; tunnel_down' EXIT
   say "your node is reachable through an SSH tunnel on 127.0.0.1:$TUNNEL_PORT (no port opened on the server)"
   say "open http://127.0.0.1:$CLIENT_PORT in your browser. Ctrl-C stops the client."
   OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" OUTPOST_PORT="$CLIENT_PORT" node "$OUTPOST_DIR/dist/serve.js"
@@ -746,6 +776,38 @@ cmd_members() {
   esac
 }
 
+# Sponsor: members without a Farcaster account can create one from the client, and you pay its
+# fee (one storage unit, $0.20 in October 2026) from a hot wallet on the server
+# (src/server/sponsor.ts). The account and its key are the member's; the wallet only pays.
+# Caps: OUTPOST_SPONSOR_PER_MEMBER (default 2, ever) and OUTPOST_SPONSOR_PER_DAY (default 20).
+cmd_sponsor() {
+  local mode="${1:-status}" host env="" v val
+  case "$mode" in
+    on)
+      host="$(society_host)"
+      # OUTPOST_SPONSOR_DRY_RUN=1 checks each registration on Optimism without sending it (a test).
+      for v in OUTPOST_SPONSOR_PER_MEMBER OUTPOST_SPONSOR_PER_DAY OUTPOST_SPONSOR_DRY_RUN; do
+        val="${!v:-}"
+        [ -n "$val" ] || continue
+        [[ "$val" =~ ^[0-9]+$ ]] || die "$v must be a whole number"
+        # The sponsor treats only "1" as a dry run; any other value would quietly send real ones.
+        [ "$v" != OUTPOST_SPONSOR_DRY_RUN ] || [[ "$val" =~ ^[01]$ ]] || die "OUTPOST_SPONSOR_DRY_RUN must be 0 or 1"
+        env="$env$v=$val "
+      done
+      ensure_build
+      [ -f "$OUTPOST_DIR/dist/sponsor.js" ] || (cd "$OUTPOST_DIR" && node scripts/build.mjs)
+      society_run "${env}OUTPOST_SOCIETY_HOST='$host' " sponsor-on <"$OUTPOST_DIR/dist/sponsor.js"
+      say "keep only a little ETH in that wallet: it sits on the server. Turn it off with: ./outpost sponsor off"
+      ;;
+    off)
+      host="$(society_host)"
+      society_run "OUTPOST_SOCIETY_HOST='$host' " sponsor-off
+      ;;
+    status) society_run "" sponsor-status ;;
+    *) die "usage: ./outpost sponsor on|off|status" ;;
+  esac
+}
+
 cmd_status() {
   [ -n "$(state_get IP)${OUTPOST_HOST:-}" ] || { say "no server yet. Run ./outpost provision"; return 0; }
   if [ -n "${OUTPOST_HOST:-}" ]; then
@@ -761,6 +823,13 @@ cmd_status() {
 }
 
 cmd_uninstall() {
+  # Same path as keyPath() in src/cli/store.ts. Without a CLI key there is nothing to do here,
+  # and no server is needed to say so.
+  if [ ! -f "${OUTPOST_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/outpost}/appkey.json" ]; then
+    say "no app key from ./outpost cli login on this computer, so nothing to revoke here."
+    say "A key added in the web client lives in that browser: open the client, then 'Your app key' > 'Revoke this key (uninstall)'."
+    return 0
+  fi
   say "revoking the CLI's app key with the key itself (no recovery phrase needed)"
   cmd_cli uninstall
   say "keys added in the web client are revoked from its 'Your app key' panel."
@@ -815,6 +884,7 @@ cmd_destroy() {
   say "Your account, follows and casts are not affected; they live on the network, not on this server."
   if [ "$DRY_RUN" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ]; then
     local typed
+    [ -t 0 ] || die "no terminal to type the server name ($name) and confirm. Run it again with --yes to confirm."
     read -r -p "Type the server name ($name) to confirm: " typed
     [ "$typed" = "$name" ] || die "cancelled"
   fi
@@ -1112,6 +1182,7 @@ main() {
     client) cmd_client "$@" ;;
     society) cmd_society "$@" ;;
     members) cmd_members "$@" ;;
+    sponsor) cmd_sponsor "$@" ;;
     cli) cmd_cli "$@" ;;
     status) cmd_status "$@" ;;
     shrink) cmd_shrink "$@" ;;

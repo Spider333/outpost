@@ -6,6 +6,16 @@
 <meta name="color-scheme" content="dark">
 <title>Outpost: your own node and client for Farcaster</title>
 <meta name="description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Outpost: your own node and client for Farcaster">
+<meta property="og:description" content="Three commands from zero to your own Snapchain read node and a client that reads from it. No API keys.">
+<meta property="og:url" content="https://spider333.github.io/outpost/">
+<meta property="og:image" content="https://spider333.github.io/outpost/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Outpost: your own Farcaster node and client. Three commands, no API keys. Beside it, the web client's feed on a phone.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%237cc4ff' fill-opacity='.2'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%237cc4ff'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #0e1013; --surface: #161a1f; --surface-2: #1c2128; --line: #2a2f37; --text: #e7e9ec; --muted: #9aa3ad;
@@ -122,6 +132,15 @@ ul.checks li::before { content: ""; position: absolute; left: 4px; top: 0.55em; 
   .flow .link::before { content: "\2195"; margin: 0; }
 }
 
+/* screenshots */
+.shots { margin: 1.5rem 0 0; display: grid; grid-template-columns: minmax(0, 26fr) minmax(0, 74fr); gap: 12px; align-items: start; }
+.shots img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.shots figcaption { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
+@media (max-width: 640px) {
+  .shots { grid-template-columns: minmax(0, 1fr); }
+  .shots .shot-phone { max-width: 320px; }
+}
+
 /* what is different */
 .diffs { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .diffs li { max-width: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; font-size: 15px; line-height: 1.55; color: var(--muted); }
@@ -135,6 +154,7 @@ pre { font-family: var(--mono); font-size: 14px; line-height: 1.45; background: 
 .code pre { margin: 0; }
 pre.cmd { border-left: 3px solid var(--accent); background: #12161b; }
 .code pre.cmd { padding-right: 76px; }
+pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
 pre.out { color: #c9d1d9; }
 pre.out::before { content: "output"; display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
 .copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 system-ui, sans-serif; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
@@ -143,6 +163,7 @@ pre.out::before { content: "output"; display: block; font-size: 11px; color: var
 details.out-fold { margin: 10px 0; }
 details.out-fold summary { cursor: pointer; color: var(--accent); font-size: 15px; padding: 4px 0; }
 details.out-fold summary code { color: var(--text); }
+details.out-fold li { margin: 0 0 10px; }
 
 /* callouts */
 .danger { border: 1px solid var(--bad); background: var(--bad-bg); border-radius: var(--radius); padding: 18px 20px; margin: 4rem 0 0; }
@@ -219,6 +240,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
     <li><a href="#what">What Outpost is</a></li>
     <li><a href="#how">How the pieces fit</a></li>
     <li><a href="#different">What is different</a></li>
+    <li><a href="#gaps">Known gaps</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
     <li><a href="#warn-h">Before you paste a phrase</a></li>
     <li><a href="#tutorial">Tutorial</a>
@@ -253,8 +275,8 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   </div>
   <div class="stat">
     <p class="stat-k">How long it takes</p>
-    <p class="stat-v">About 6 hours</p>
-    <p>For the first sync on our test server: 1 hour 43 minutes to load a <a href="#g-snapshot">snapshot</a> of the network, then 4 hours 11 minutes to catch up on the blocks since. The client works once loading is done. The newest casts appear as the node catches up.</p>
+    <p class="stat-v">6 to 8 hours</p>
+    <p>For the first sync. On our test server: 1 hour 43 minutes to load a <a href="#g-snapshot">snapshot</a> of the network, then 4 hours 11 minutes to catch up on the blocks since. Our first outside tester's run took 7 hours 33 minutes. The client works once loading is done. The newest casts appear as the node catches up.</p>
   </div>
   <div class="stat">
     <p class="stat-k">Your copy of the network</p>
@@ -273,6 +295,11 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li>A web client at <code>http://127.0.0.1:8381</code> that shows your following feed and can cast, reply, like, recast and follow.</li>
   <li>An <a href="#g-app-key">app key</a> that can cast, react and follow, and nothing else.</li>
 </ul>
+<figure class="shots">
+  <a class="shot-phone" href="client-phone.webp"><img src="client-phone.webp" width="780" height="1688" loading="lazy" alt="The web client on a phone: the feed of FID 99 with app filter buttons (warpcast 64, own key 15, neynar 12 and more), a Show pictures box, and casts with their authors' profile pictures."></a>
+  <a class="shot-wide" href="client-desktop.webp"><img src="client-desktop.webp" width="2000" height="1520" loading="lazy" alt="The web client on a laptop: two casts from the feed of FID 37, each with its author's profile picture and an attached image shown in the feed."></a>
+  <figcaption>The web client, reading mainnet from a Snapchain read node on 22 October 2026: the following feeds of FID 99 (phone) and FID 37 (laptop). Open either image for full size.</figcaption>
+</figure>
 <h3>Who it is for</h3>
 <p>Farcaster users who are at ease in a terminal, and developers who want to see the protocol from the node up. You will rent a server and run a few commands. A community can share one node: its members use it from a browser and pay nothing (<a href="#t-share">step 8</a>).</p>
 </section>
@@ -315,6 +342,22 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li><strong>Every message is checked.</strong> Before showing a message, the client checks its hash and signature, and that the key that signed it belongs to the author. What it shows is rebuilt from the signed bytes, so a node cannot alter a message or slip anything into it unnoticed.</li>
   <li><strong>One node for a whole society.</strong> Members of a society can share one node. Each gets their own access token and rate limit, and their app keys stay in their own browsers.</li>
   <li><strong>Societies as signed files.</strong> A <a href="#g-charter">charter</a> lists a society's members, which apps and channels count, and its code of conduct. Load one to read the society's feed. Leaving is one tap, and a census of its activity is computed on your node.</li>
+  <li><strong>Societies that change by vote.</strong> Members add or remove members by liking a proposal, in any Farcaster app. It passes when more than half of them have liked it, and anyone can recount it from their own node (<a href="#t-society">step 7</a>).</li>
+</ul>
+</section>
+
+<section class="part" aria-labelledby="gaps">
+<h2 id="gaps">Known gaps</h2>
+<p>What Outpost does not do well yet, from our own runs and our first outside tester's.</p>
+<ul>
+  <li><strong>Many steps if you are not a developer.</strong> You need a cloud account with its command-line tool, a terminal and Node.js, and the first sync takes 6 to 8 hours. Our first outside tester found it too many steps for someone who is not a developer. An <a href="#quickstart">AI assistant</a> can run the commands for you, but you still sign up for the cloud account yourself. One person can also run a node for a whole community, whose members only need a browser (<a href="#t-share">step 8</a>).</li>
+  <li><strong>The SSH tunnel can drop.</strong> A Wi-Fi change or a laptop going to sleep cuts the client's tunnel to your node, and the page shows a connection error until it is back. Our first tester lost it twice, so the client now checks the tunnel every 15 seconds and reopens it.</li>
+  <li><strong>New DigitalOcean accounts may be refused the 1.2 TB disk.</strong> This happened to our first tester. Use Hetzner (not yet tested on a real server, see <a href="#t-provision">step 1</a>), a server you already have, or ask DigitalOcean support to raise the limit.</li>
+  <li><strong>Accounts made in the Farcaster app cannot post yet.</strong> The app keeps their custody key. Its own "approve a connected app" flow would add a key with full access and no expiry that Outpost could not revoke; supporting it, clearly labelled, is next. Reading needs no account. To post today, use an account whose custody key is in your own wallet, or create one on a society node (below).</li>
+  <li><strong>No account? A society can pay for one.</strong> With <code>./outpost sponsor on</code>, a society node's members create a Farcaster account in the client in about a minute: their browser makes the key and the society pays the $0.20 fee, so they need no ETH, invite code or X account. Without a sponsor, Outpost creates no accounts.</li>
+  <li><strong>Not built yet:</strong> direct messages, channel pages, notifications, image upload and mentions. Direct messages and channel membership are not part of the protocol: they live on the Farcaster app's servers, which a client that reads only from your node does not use. A <a href="#g-charter">charter</a> can limit a feed to channels.</li>
+  <li><strong>Society votes have not run on mainnet yet.</strong> They are tested against a local test node and in a real browser, not yet with real accounts. Votes are public, and members who stay silent count as "no".</li>
+  <li><strong>The server costs money while it exists.</strong> About $10 a day on DigitalOcean, whether or not you use the client. For a server Outpost rented, <code>./outpost destroy</code> stops the bill, and <code>--watchdog</code> deletes it for you while the watchdog runs on your computer. A server you brought yourself you stop or delete at its provider.</li>
 </ul>
 </section>
 
@@ -324,13 +367,27 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <ul class="checks">
   <li>A DigitalOcean or Hetzner account with its command-line tool logged in (<code>doctl</code> or <code>hcloud</code>), or any Ubuntu 24.04 server with root SSH and at least 1 TB of disk.</li>
   <li>Node.js 20 or newer.</li>
-  <li>A <strong>test</strong> Farcaster account that already has <a href="#g-storage">storage</a>. Read the <a href="#warn-h">warning below</a> first.</li>
+  <li>macOS or Linux. On Windows, use WSL; we have not tested it there.</li>
+  <li>To post: a Farcaster account whose custody key is in your wallet, or a <strong>test</strong> account that already has <a href="#g-storage">storage</a> (read the <a href="#warn-h">warning below</a> first). No account? On a society node with a sponsor, the client creates one for you. Without any account you can still read: the client shows the feed of any FID or username.</li>
 </ul>
+<details class="out-fold">
+<summary>First time with DigitalOcean or Hetzner? Set up the command-line tool</summary>
+<p><strong>DigitalOcean.</strong> Make an account at digitalocean.com and add a payment method. Install <code>doctl</code> (<a href="https://docs.digitalocean.com/reference/doctl/how-to/install/">install guide</a>; on a Mac, <code>brew install doctl</code>). In the control panel, open API, choose Generate New Token, give it Full Access and a 30-day expiry (the watchdog and <code>./outpost destroy</code> still need it later; if it has expired, make a new one and run <code>doctl auth init</code> again). Then log in with it:</p>
+<pre class="cmd">doctl auth init
+# check: prints your account e-mail and droplet limit
+doctl account get</pre>
+<p class="muted">New DigitalOcean accounts may be refused the 1.2 TB volume ("invalid size specified"). Then ask their support to raise your volume limit, or use Hetzner or a server you already have.</p>
+<p><strong>Hetzner.</strong> Make an account at hetzner.com/cloud and create a project. Install <code>hcloud</code> (<a href="https://github.com/hetznercloud/cli">install guide</a>; on a Mac, <code>brew install hcloud</code>). In the project, open Security, then API tokens, and generate a token with Read &amp; Write access. Then log in with it:</p>
+<pre class="cmd">hcloud context create outpost
+# check: lists your servers (an empty list is fine)
+hcloud server list</pre>
+<p class="muted">Both commands ask you to paste the token. Keep it out of chats, casts and AI assistants, and delete it in the control panel when you are done.</p>
+</details>
 <pre class="cmd">git clone https://github.com/Spider333/outpost
 cd outpost
 # rent a server with a 1.2 TB disk (1 TB on Hetzner), billed by the hour
 ./outpost provision
-# start a read node; the first sync took about 6 hours on our test server
+# start a read node; the first sync takes 6 to 8 hours
 ./outpost node
 # then open http://127.0.0.1:8381
 ./outpost client</pre>
@@ -338,7 +395,7 @@ cd outpost
 <pre class="cmd"># move to a server with 8 GB RAM; a few minutes offline
 ./outpost shrink</pre>
 <p>When you are done:</p>
-<pre class="cmd"># revoke the app key; no recovery phrase needed
+<pre class="cmd"># revoke the CLI's app key; a key added in the web client: "Revoke this key" there
 ./outpost uninstall
 # delete the server and stop paying
 ./outpost destroy</pre>
@@ -346,6 +403,22 @@ cd outpost
   <p class="muted">Every command is safe to run twice. <code>--dry-run</code> on <code>provision</code>, <code>shrink</code> and <code>destroy</code> prints the exact provider commands without running them.</p>
   <p class="muted">Just trying it? <code>./outpost provision --watchdog 24</code> deletes the server for you after 24 hours, or after 2 hours with no progress, so a forgotten server cannot keep billing you. It runs on your computer; <code>./outpost watchdog stop</code> keeps the server.</p>
 </div>
+<h3>With an AI coding assistant</h3>
+<p>Paste this into an assistant that can run commands on your computer, such as Claude Code, Codex or Cursor:</p>
+<pre class="cmd prompt">Help me run Outpost (https://github.com/Spider333/outpost). Read its README and AGENTS.md first. Then take me through provision, node and client one step at a time: before each command, say what it does and what it costs, and wait for my OK. I will type any cloud token or recovery phrase myself in my own terminal, never in this chat. Leave doctl auth init (or hcloud context create) and ./outpost cli login to me: they ask for secrets in a hidden prompt that only works in a real terminal. You cannot answer the yes/no prompts of provision and destroy, so once I say OK, run them with --yes.</pre>
+<p class="muted">The assistant runs the same commands as above, so the same costs apply. Keep tokens and recovery phrases out of the chat: the assistant's provider would see them. If a recovery phrase lands in the chat by mistake, treat that account as exposed and stop using it.</p>
+
+<details class="out-fold">
+<summary>Something went wrong? What our first outside tester hit, and what to do</summary>
+<ul>
+  <li><code>422 failed to create volume: invalid size specified</code> from <code>./outpost provision</code>: your DigitalOcean account is limited to smaller volumes, which is common on new accounts. Nothing billable was created. Ask their support to raise the volume limit, use <code>--provider hetzner</code>, or use a server you already have: <code>OUTPOST_HOST=&lt;ip&gt; ./outpost node</code>.</li>
+  <li><code>cancelled</code>, or "no terminal to answer": the command ran without a terminal, which is common under an AI assistant. Run it again with <code>--yes</code>.</li>
+  <li><code>./outpost status</code> says "cannot reach the server over SSH" during the sync: usually a short network drop. The node keeps going on the server; check again in a minute.</li>
+  <li>The client page shows a connection error, or a cast does not send: the client lost its connection to your node (a Wi-Fi change or sleep). It reconnects by itself within about 15 seconds; then try again. If it does not, stop it with Ctrl-C and run <code>./outpost client</code> again.</li>
+  <li><code>./outpost uninstall</code> says there is nothing to revoke: you connected in the web client, so the key lives in that browser. Open the client and use "Revoke this key (uninstall)" under "Your app key".</li>
+  <li>A cast you want gone: the web client cannot delete casts. Run <code>./outpost cli login</code>, then <code>./outpost cli delete &lt;hash&gt;</code>, then <code>./outpost cli uninstall</code>.</li>
+</ul>
+</details>
 
 <section class="danger" aria-labelledby="warn-h">
   <h2 id="warn-h">Before you paste a recovery phrase</h2>
@@ -436,7 +509,7 @@ next: ./outpost client</pre>
 </details>
 <p class="muted">This is a second run on our already synced node, so it found the node running and returned at once. On a new server the last lines show download and loading progress until the node is synced.</p>
 <p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
-<p>Our test server was a DigitalOcean one with 8 vCPU, 32 GB RAM and a 1.2 TB volume, on 18 to 19 October 2026: loading took 1 hour 43 minutes and catching up 4 hours 11 minutes. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. <code>./outpost status</code> shows where it is:</p>
+<p>Our test server was a DigitalOcean one with 8 vCPU, 32 GB RAM and a 1.2 TB volume, on 18 to 19 October 2026: loading took 1 hour 43 minutes and catching up 4 hours 11 minutes. Our first outside tester, on 22 October 2026, went from start to synced in 7 hours 33 minutes. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. <code>./outpost status</code> shows where it is:</p>
 <pre class="out">node: loading snapshot: shard 1: 200 of 2672 chunks loaded, 20 GB on disk</pre>
 <p>Once it has caught up:</p>
 <pre class="cmd">./outpost status</pre>
@@ -456,7 +529,7 @@ node:   http://127.0.0.1:13394 (requests to /v1/* are forwarded there)</pre>
 <p class="muted">We ran it as <code>OUTPOST_TUNNEL_PORT=13394 ./outpost client</code>, because the default local port, 13381, was already in use on our machine. Yours will say 13381 unless you change it.</p>
 <p>On a phone, run <code>./outpost client --phone</code> instead. It serves the client from your server over HTTPS, using a free <code>&lt;ip&gt;.sslip.io</code> name so you need no domain, and puts a password in front of everything, including the node's API.</p>
 <p class="muted">Not tested on a real server yet: <code>--phone</code> has only run in our tests, against a simulated cloud provider, so there is no real output to show here.</p>
-<p>Open the address it prints. To post, choose <em>Sign with a wallet</em> if your account's custody address lives in a wallet, or <em>Use a test account's recovery phrase</em>. The command-line version is <code>./outpost cli login</code>.</p>
+<p>Open the address it prints. To post, open <em>Post from Outpost</em> and pick what fits you: <em>My account's owner key is in a browser wallet</em>, or <em>I have a test account's recovery phrase</em>. On a society node with a sponsor, <em>I have no Farcaster account</em> creates one. The command-line version is <code>./outpost cli login</code>.</p>
 
 <div class="concept">
 <p><strong>FID.</strong> Your account is a number, the Farcaster ID, registered on the Optimism chain. Usernames point to it; posts are signed for it.</p>
@@ -625,6 +698,11 @@ active 23
 casts 1071
 casts_per_day 153.0</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
+<p>Members change the charter by vote. A member posts a proposal, such as adding someone, and the others approve it by liking it, in any Farcaster app. It passes when more than half of the members have liked it; leaving needs only your own like. There are no deadlines, because Farcaster timestamps are set by the author and could be backdated. Each passed change is kept in the charter file with the signed likes, so anyone can recount it from their own node:</p>
+<pre class="cmd">./outpost cli charter propose society.log.json --add dwr
+./outpost cli charter proposals society.log.json
+./outpost cli charter verify society.log.json</pre>
+<p>In the client, the Society panel shows open proposals, how many members approved each, and buttons to approve, propose, and recount. This has not run on mainnet yet (see <a href="#gaps">Known gaps</a>).</p>
 </section>
 
 <section class="step" aria-labelledby="t-share">
@@ -684,6 +762,7 @@ warning: Your node sent 1 of 4160 messages that failed verification (1 altered);
 revoked app key 0xe0bb564ae0787b31ade0ac66856fcfb745b0eb98846e6370235332ca837cebde for FID 3355358. No recovery phrase was needed.
 deleted ~/.config/outpost/appkey.json
 keys added in the web client are revoked from its 'Your app key' panel.</pre>
+<p>Connected in the web client instead? That key lives only in your browser, so <code>./outpost uninstall</code> cannot see it: open the client and use "Revoke this key (uninstall)" under "Your app key".</p>
 <p>Casts the key signed stay on the network after it is revoked. (Checked on mainnet with Snapchain 0.14.3: our test cast is still there after its key is revoked.) Delete them first with <code>./outpost cli delete &lt;hash&gt;</code> if you want them gone.</p>
 <p>The key signs its own removal (<code>KEY_REMOVE</code>), so no recovery phrase is needed. If you never revoke it, it expires 30 days after its last use.</p>
 <pre class="cmd">./outpost destroy</pre>
@@ -741,7 +820,7 @@ keys added in the web client are revoked from its 'Your app key' panel.</pre>
 <section class="part" aria-labelledby="about">
 <h2 id="about">About this project</h2>
 <p>Code: <a href="https://github.com/Spider333/outpost">github.com/Spider333/outpost</a>, MIT licence. Snapchain is GPL-3.0; Outpost only runs its official Docker image and contains none of its code.</p>
-<p>How it was made: an AI coding assistant helped write the code and this page. People ran it and tested it: <span class="pending" data-pending="testers">PENDING: names of the human testers</span>. Every output on this page comes from a real run; where it was run somewhere other than a fresh node, the page says so.</p>
+<p>How it was made: an AI coding assistant helped write the code and this page. People ran it and tested it. Every output on this page comes from a real run; where it was run somewhere other than a fresh node, the page says so.</p>
 <p>Ran it yourself? The <a href="https://github.com/Spider333/outpost/blob/main/VOUCHER.md">voucher checklist</a> has a list to fill in as you go and a draft cast.</p>
 </section>
 

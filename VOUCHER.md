@@ -6,8 +6,10 @@ happened. Failures count as much as successes: say what broke.
 ## Before you start
 
 - Use **your own** DigitalOcean or Hetzner account. It costs money while the server exists:
-  about $0.41 an hour on DigitalOcean at October 2026 list prices, so about $3 for a run of
-  6 hours to sync plus an hour of trying it. We have not timed Hetzner yet; your numbers help.
+  about $0.41 an hour on DigitalOcean at October 2026 list prices, so about $3 to $4 for 6 to
+  8 hours of sync plus an hour of trying it. We have not timed Hetzner yet; your numbers help.
+  New DigitalOcean accounts may be refused the 1.2 TB volume ("invalid size specified"): ask
+  their support to raise the volume limit, or use Hetzner.
 - Start the server with `--watchdog 24`. It deletes the server after 24 hours, or after
   2 hours with no progress, so a forgotten server cannot keep billing you. It runs on your
   computer, so leave the computer on (if it sleeps, the watchdog acts when it wakes).

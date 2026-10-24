@@ -4,53 +4,89 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#08090a">
   <title>Outpost</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%237170ff' fill-opacity='.2'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%237170ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <a class="skip" href="#feed-h">Skip to feed</a>
   <header class="bar">
-    <h1>Outpost</h1>
-    <span id="node-status" class="pill" title="Your node">node: checking</span>
-    <span id="who" class="who"></span>
+    <div class="bar-in">
+      <h1 translate="no"><svg class="logo" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="currentColor" fill-opacity=".2"/><circle cx="16" cy="16" r="9" fill="currentColor"/></svg>Outpost</h1>
+      <span id="node-status" class="pill" title="Your node">node: checking</span>
+      <span id="who" class="who"></span>
+    </div>
   </header>
 
-  <p id="status" class="status" role="status" aria-live="polite"></p>
-  <p id="verify-status" class="muted small" aria-live="polite"></p>
-
   <main>
-    <details id="node-settings" class="card">
-      <summary>Node and checks</summary>
-      <p class="muted small">By default this page reads from the node behind <code>./outpost client</code>. To use a society node someone else runs, open their invite link, or enter its address and your access token here. This page checks every message itself: the node's host cannot post as you or change a message. They can see what you read, withhold or delay messages, and remove your access, and a message signed with a key this page cannot check is marked "signer not verified".</p>
-      <p id="soc-current" class="small"></p>
-      <label for="soc-node">Society node URL</label>
-      <input id="soc-node" placeholder="https://203.0.113.7.sslip.io" inputmode="url" autocomplete="off">
-      <label for="soc-token">Access token</label>
-      <input id="soc-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="row wrap">
-        <button id="soc-save" class="primary" type="button">Use this node</button>
-        <button id="soc-forget" type="button">Back to my own node</button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <p id="verify-status" class="muted small verify" aria-live="polite"></p>
+
+    <section id="invite" class="card" hidden aria-labelledby="invite-h">
+      <h2 id="invite-h">Join a society node</h2>
+      <p>This invite connects you to the society node at <strong id="invite-node"></strong>.</p>
+      <details class="why">
+        <summary>What can its host see?</summary>
+        <p>The host sees what you read and can withhold or delay messages. This page checks every message itself, so the host cannot post as you.</p>
+      </details>
+      <div class="row wrap start">
+        <button id="invite-join" class="primary" type="button">Join</button>
+        <button id="invite-skip" type="button">Not now</button>
       </div>
-      <label for="rpc-url">Optimism RPC for key and custody checks (empty to turn them off)</label>
-      <input id="rpc-url" placeholder="https://mainnet.optimism.io" inputmode="url" autocomplete="off">
-      <button id="rpc-save" type="button">Save RPC</button>
-      <p class="muted small">Onchain app keys are checked against Farcaster's KeyRegistry on Optimism through this RPC, not through the node.</p>
-      <label for="check-node">Second node for gasless app keys (empty to turn the check off)</label>
-      <input id="check-node" placeholder="https://snap.farcaster.xyz:3381" inputmode="url" autocomplete="off">
-      <button id="check-save" type="button">Save second node</button>
-      <p id="check-note" class="muted small"></p>
-    </details>
+    </section>
+
+    <section id="first-run" class="card intro" hidden aria-labelledby="first-run-h">
+      <h2 id="first-run-h">Connect to a node to start</h2>
+      <p>Outpost is a Farcaster client that reads and posts only through a node you choose, and checks every message itself.</p>
+      <ol class="ways">
+        <li><strong>Got an invite link?</strong> Open it again and press Join.</li>
+        <li><strong>Have a server?</strong> Run <code>./outpost client</code> there and open the address it prints.</li>
+      </ol>
+      <p id="first-run-why" class="muted small"></p>
+      <button id="first-run-open" type="button">Enter a node address</button>
+    </section>
 
     <section id="connect" class="card" hidden aria-labelledby="connect-h">
-      <h2 id="connect-h">Connect an account</h2>
-      <p>To post, this client needs its own <em>app key</em>: a key that can cast, react and follow for your account, and nothing else. It expires 30 days after you last use it. Your account's owner key (the custody key) signs one authorization for it.</p>
-      <div class="choices">
-        <button id="use-wallet" class="primary" type="button">Sign with a wallet (recommended)</button>
-        <button id="use-phrase" type="button">Use a test account's recovery phrase</button>
+      <h2 id="connect-h">Post from Outpost</h2>
+      <p class="lead">Reading needs no account. To post, choose the one that fits you.</p>
+      <details class="why">
+        <summary>How does posting work?</summary>
+        <p>You need a Farcaster account whose owner key you hold, in a browser wallet or as a recovery phrase. Outpost then gets its own <em>app key</em>: it can cast, react and follow for you, nothing else, and expires 30 days after you last use it.</p>
+      </details>
+      <div id="connect-choices" class="choices options">
+        <button id="new-account" class="primary" type="button">I have no Farcaster account</button>
+        <button id="app-user" type="button">I made my account in the Farcaster app</button>
+        <button id="use-wallet" type="button">My account's owner key is in a browser wallet</button>
+        <button id="use-phrase" type="button">I have a test account's recovery phrase</button>
+      </div>
+
+      <div id="app-box" class="step" hidden>
+        <p>The Farcaster app keeps your account's owner key inside the app, so Outpost cannot get a posting key for it yet. Read every feed here, and post from the app for now.</p>
+        <p class="muted small">Approving Outpost from inside the Farcaster app is next on the list. Want to post here today? Create a second account with "I have no Farcaster account".</p>
+      </div>
+
+      <div id="create-box" class="step" hidden>
+        <p id="create-offer" aria-live="polite">Checking whether this node can pay for your account…</p>
+        <div id="create-ways" class="choices" hidden>
+          <button id="create-phrase" class="primary" type="button">Make a new account here</button>
+          <button id="create-wallet" type="button">Make it with my browser wallet as the owner</button>
+        </div>
+        <div id="new-phrase-box" hidden>
+          <div class="danger" role="note">
+            <strong class="danger-h"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg>Write these 12 words down now.</strong>
+            <p>They are your new account's master key: whoever has them owns the account, and nobody can give them back to you. This page shows them once and does not save them.</p>
+          </div>
+          <p id="new-phrase" class="phrase mono" tabindex="-1"></p>
+          <button id="copy-phrase" type="button">Copy the words</button>
+          <label class="check"><input id="saved-phrase" type="checkbox"> I saved these 12 words somewhere safe.</label>
+          <button id="create-go" class="primary" type="button" disabled>Create my account</button>
+        </div>
       </div>
 
       <div id="phrase-box" hidden>
         <div class="danger" role="note">
-          <strong>Stop. A recovery phrase is the master key of an account.</strong>
+          <strong class="danger-h"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg>Stop. A recovery phrase is the master key of an account.</strong>
           <p>Whoever has it can transfer the account, add or remove every app key, and change the username. Pasting it into the wrong page is like running <code>rm -rf /</code> as root: there is no undo.</p>
           <ul>
             <li>Use a <strong>test account</strong> only. Never your main account.</li>
@@ -73,47 +109,59 @@
           <dt>App key can</dt><dd>cast, delete casts, like, recast, follow, unfollow</dd>
           <dt>Expires</dt><dd>30 days after last use</dd>
         </dl>
-        <button id="authorize" class="primary" type="button">Authorize this app key</button>
-        <button id="cancel" type="button">Cancel</button>
+        <div class="row wrap start">
+          <button id="authorize" class="primary" type="button">Authorize this app key</button>
+          <button id="cancel" type="button">Cancel</button>
+        </div>
       </div>
     </section>
 
-    <section id="compose" class="card" hidden aria-labelledby="compose-h">
+    <section id="compose" class="card compose" hidden aria-labelledby="compose-h">
       <h2 id="compose-h" class="sr-only">New cast</h2>
       <p id="reply-to" class="reply-to" hidden></p>
       <label for="text" class="sr-only">Cast text</label>
-      <textarea id="text" rows="3" maxlength="1024" placeholder="What's happening?"></textarea>
+      <textarea id="text" rows="3" maxlength="1024" placeholder="Write a cast"></textarea>
       <div class="row">
-        <span id="count" class="muted">0 / 1024</span>
+        <span id="count" class="muted small tabular">0 / 1024</span>
         <button id="post" class="primary" type="button">Cast</button>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="feed-h">
-      <div class="row wrap">
-        <h2 id="feed-h">Feed</h2>
+    <section class="feed-section" aria-labelledby="feed-h">
+      <div class="feed-head">
+        <h2 id="feed-h" tabindex="-1">Feed</h2>
         <form id="view-form" class="inline">
           <label for="view" class="sr-only">Show the feed of an FID or username</label>
-          <input id="view" placeholder="FID or username" inputmode="text" autocomplete="off">
+          <input id="view" placeholder="FID or username" inputmode="text" autocomplete="off" spellcheck="false">
           <button type="submit">Show</button>
         </form>
       </div>
-      <p id="feed-title" class="muted"></p>
-      <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
-      <p class="muted small">Tap an app once to show only it, again to hide it, again to reset. Apps are read from each post's key, so tools that use the poster's own key appear as "own key".</p>
+      <p id="feed-title" class="muted small"></p>
+      <div class="feed-tools">
+        <div id="apps" class="chips" role="group" aria-label="Filter by the app that posted"></div>
+        <label class="check small"><input id="pictures" type="checkbox"> Show pictures</label>
+      </div>
+      <details class="why">
+        <summary>How do the app filters work?</summary>
+        <p>Tap an app once to show only it, again to hide it, again to reset. Apps are read from each cast's key, so tools that use the poster's own key show as "own key".</p>
+      </details>
       <ol id="feed" class="feed"></ol>
       <button id="more" type="button" hidden>Load more</button>
     </section>
 
-    <section id="charter" class="card" aria-labelledby="charter-h">
+    <section id="charter" class="quiet" aria-labelledby="charter-h">
       <h2 id="charter-h">Society</h2>
-      <p class="muted small">A society is a signed charter file: its members, its rules for the feed, and a link to its code of conduct. Load one to see the feed through its lens. Leaving drops the lens; your keys, follows and posts stay yours.</p>
+      <p class="muted small">Load a society's signed charter to read the feed through its lens.</p>
+      <details class="why">
+        <summary>What is a society?</summary>
+        <p>A society is a signed charter file: its members, its rules for the feed, and a link to its code of conduct. Leaving drops the lens; your keys, follows and casts stay yours.</p>
+      </details>
       <form id="charter-form" class="inline">
         <label for="charter-url" class="sr-only">Charter URL</label>
-        <input id="charter-url" placeholder="https://.../charter.json" inputmode="url" autocomplete="off">
+        <input id="charter-url" placeholder="https://…/charter.json" inputmode="url" autocomplete="off" spellcheck="false">
         <button type="submit">Load</button>
       </form>
-      <label for="charter-file">or open a charter file</label>
+      <label for="charter-file">Or open a charter file</label>
       <input id="charter-file" type="file" accept="application/json,.json">
       <div id="charter-view" hidden>
         <p id="charter-verdict"></p>
@@ -126,7 +174,7 @@
           <dt>Rules</dt><dd id="ch-rules"></dd>
           <dt>Society nodes</dt><dd id="ch-nodes"></dd>
         </dl>
-        <div class="row wrap">
+        <div class="row wrap start">
           <button id="ch-join" class="primary" type="button">Join (follow members)</button>
           <button id="ch-leave" type="button">Leave</button>
           <button id="ch-census-btn" type="button">Run census</button>
@@ -141,24 +189,90 @@
           </dl>
           <p class="muted small">Anyone with a node and this file gets the same numbers. Active means posted at least once in the window.</p>
         </div>
+        <div id="ch-votes">
+          <h3>Votes</h3>
+          <p class="muted small">A change passes when more than half of the members like the proposal, in any Farcaster app.</p>
+          <details class="why">
+            <summary>How are votes counted?</summary>
+            <p>Leaving needs only your own like. There are no deadlines. Each passed change is kept with the signed likes, so anyone can recount it from their own node.</p>
+          </details>
+          <p id="v-version" class="small muted"></p>
+          <p id="v-alert" class="small" role="status" hidden></p>
+          <ul id="v-open" class="proposals"></ul>
+          <div class="row wrap start">
+            <button id="v-check" type="button">Check votes</button>
+            <button id="v-recount" type="button">Recount from my node</button>
+            <button id="v-download" type="button">Download log</button>
+          </div>
+          <ol id="v-history" class="history small" start="0"></ol>
+          <details id="v-propose" class="sub" hidden>
+            <summary>Propose a change</summary>
+            <form id="v-propose-form">
+              <label for="v-who">Who</label>
+              <div class="inline wrap">
+                <label for="v-op" class="sr-only">Change</label>
+                <select id="v-op">
+                  <option value="+ member">Add member</option>
+                  <option value="- member">Remove member</option>
+                  <option value="+ moderator">Add moderator</option>
+                  <option value="- moderator">Remove moderator</option>
+                </select>
+                <input id="v-who" placeholder="username or FID" autocomplete="off" spellcheck="false">
+                <button id="v-add" type="button">Add</button>
+              </div>
+              <ul id="v-changes" class="changes"></ul>
+              <p class="muted small">Up to 10 changes. Posting casts the proposal from your account and likes it, which counts as your approval.</p>
+              <button id="v-post" class="primary" type="submit" disabled>Post proposal</button>
+            </form>
+          </details>
+        </div>
         </div>
       </div>
     </section>
 
-    <section id="key" class="card" hidden aria-labelledby="key-h">
+    <details id="node-settings" class="quiet">
+      <summary class="sec-h">Node and checks</summary>
+      <p id="soc-current" class="small"></p>
+      <details class="why">
+        <summary>What can a society node's host do?</summary>
+        <p>By default this page reads from the node behind <code>./outpost client</code>. To use a society node someone else runs, open their invite link, or enter its address and your access token here. This page checks every message itself: the host cannot post as you or change a message. The host can see what you read, withhold or delay messages, and remove your access. A message signed with a key this page cannot check is marked "signer not verified".</p>
+      </details>
+      <label for="soc-node">Society node URL</label>
+      <input id="soc-node" placeholder="https://203.0.113.7.sslip.io" inputmode="url" autocomplete="off" spellcheck="false">
+      <label for="soc-token">Access token</label>
+      <input id="soc-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="row wrap start">
+        <button id="soc-save" class="primary" type="button">Use this node</button>
+        <button id="soc-forget" type="button">Back to my own node</button>
+      </div>
+      <label for="rpc-url">Optimism RPC for key checks (empty turns them off)</label>
+      <div class="inline">
+        <input id="rpc-url" placeholder="https://mainnet.optimism.io" inputmode="url" autocomplete="off" spellcheck="false">
+        <button id="rpc-save" type="button">Save</button>
+      </div>
+      <p class="muted small">App keys are checked against Farcaster's KeyRegistry on Optimism through this RPC, not through the node.</p>
+      <label for="check-node">Second node for gasless app keys (empty turns the check off)</label>
+      <div class="inline">
+        <input id="check-node" placeholder="https://snap.farcaster.xyz:3381" inputmode="url" autocomplete="off" spellcheck="false">
+        <button id="check-save" type="button">Save</button>
+      </div>
+      <p id="check-note" class="muted small"></p>
+    </details>
+
+    <section id="key" class="quiet" hidden aria-labelledby="key-h">
       <h2 id="key-h">Your app key</h2>
       <dl class="facts">
         <dt>FID</dt><dd id="k-fid"></dd>
         <dt>Public key</dt><dd id="k-pub" class="mono"></dd>
         <dt>Status</dt><dd id="k-status"></dd>
       </dl>
-      <p class="muted small">The private part of this key is stored in this browser only. Revoking needs no recovery phrase: the key signs its own removal.</p>
+      <p class="muted small">The private part stays in this browser. Revoking needs no recovery phrase: the key signs its own removal.</p>
       <button id="revoke" class="danger-btn" type="button">Revoke this key (uninstall)</button>
     </section>
   </main>
 
   <footer class="muted small">
-    <span id="node-note">Reads and writes go only to your own node.</span> Every message is checked in this page before it is shown. Open source, MIT. <span id="build"></span>
+    <span id="node-note">Reads and writes go only to your own node.</span> <span id="pictures-note"></span> Every message is checked in this page before it is shown. Open source, MIT. <span id="build"></span>
   </footer>
   <script type="module" src="app.js"></script>
 </body>

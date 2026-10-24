@@ -31,7 +31,10 @@ case "$1 $2 $3" in
   "compute volume list") list volume
     # Like DigitalOcean just after a delete: still listed, but gone.
     if [ -n "${FAKE_STALE_VOLUME:-}" ]; then case "$fmt" in ID,Name) echo "vol-ghost $FAKE_STALE_VOLUME";; *) echo "$FAKE_STALE_VOLUME";; esac; fi ;;
-  "compute volume create") echo "vol-123 $4" > "$S/volume.$4" ;;
+  "compute volume create") if [ -n "${FAKE_VOLUME_LIMIT:-}" ]; then echo "Error: POST https://api.digitalocean.com/v2/volumes: 422 failed to create volume: invalid size specified" >&2; exit 1; fi
+    echo "vol-123 $4" > "$S/volume.$4"
+    # Like a request that times out after DigitalOcean made the volume.
+    if [ -n "${FAKE_VOLUME_TIMEOUT:-}" ]; then echo "Error: context deadline exceeded" >&2; exit 1; fi ;;
   "compute volume get") [ "$4" != vol-ghost ] || exit 1
     if [ -e "$S/attached" ]; then echo "[d-1]"; else echo "[]"; fi ;;
   "compute volume-action attach") : > "$S/attached" ;;

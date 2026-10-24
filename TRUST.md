@@ -21,6 +21,13 @@ never sends it to GitHub. The client stores the node address and token, then rem
 the address bar (`takeInvite` in `src/core/society.ts`). A member who would rather not trust the
 GitHub build runs the same client from their own clone with `./outpost client`.
 
+The browser keeps the member's app key in storage for the address `spider333.github.io`. Every
+GitHub Pages site of the same author shares that address, this tutorial included, and a script on
+any of them could read the key. The build attestation covers only the client's own three files
+(`app/index.html`, `app/app.js`, `app/style.css`). So trusting the hosted client means trusting
+every page published there. A separate address for the client would close this; it does not have
+one yet. With `./outpost client` the key is stored for `127.0.0.1` on your own computer instead.
+
 ## What the host cannot do
 
 **Post as a member.** The member's app key is created in their own browser and stays there
@@ -41,11 +48,13 @@ The commit is also shown at the bottom of the client.
 
 **Alter a message or make one up with someone's real key.** The client checks every message it
 reads, in the member's own browser: the hash must match the message content and the Ed25519
-signature must be valid for that hash (`verifyMessage` in `src/core/verify.ts`). Everything the
+signature must be valid for that hash (`verifyMessage` in `src/core/verify.ts`). Every message the
 client shows is rebuilt from those signed bytes; the node's reply is only input to the check and
-is never displayed. A message that fails, or that comes with any field the signed bytes do not
-contain, is not shown, and the client says how many it dropped. The node's own validation is
-never asked. Test: the malicious-node cases in `test/verify.test.ts`.
+is never displayed. Pictures are the exception: the signature covers a picture's URL, not the
+image its host sends back (see "What picture hosts learn"). A message that fails, or that comes
+with any field the signed bytes do not contain, is not shown, and the client says how many it
+dropped. The node's own validation is never asked. Test: the malicious-node cases in
+`test/verify.test.ts`.
 
 **Answer a question with the wrong data.** Messages must match what was asked for: casts by
 account F really are by F, a channel feed really is that channel, a cast looked up by hash
@@ -88,6 +97,11 @@ the member switch.
   a cast signed with a made-up gasless key passes. Choose a second node run by someone else.
 - **Fake a follow or a like.** Follows and reactions get the hash and signature checks but not
   the key check.
+- **Show a username the account does not own.** The client checks that a username was set with
+  one of the account's own keys (`profile` in `src/core/feed.ts`), but not that the account owns
+  the name. An honest node rejects such a name; a host's node can serve it, so an account the host
+  controls can appear as any @name. A name on someone else's account still needs one of that
+  account's keys, checked the same way as the key of a cast.
 
 ## What the second node learns
 
@@ -101,6 +115,41 @@ with `--check-node <url|off>` on the command line.
 Fixing this properly needs Snapchain to return the signature that added each gasless key. The
 client could then check it against the account's custody address on Optimism, with no second
 node.
+
+## What picture hosts learn
+
+With "Show pictures" on (the default), the web client loads profile pictures and image embeds
+straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
+which of its pictures were shown, so roughly which accounts were on screen. The signature covers
+the URL, not the image, so a host can swap the image without changing the signed profile or cast.
+A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
+is sent. Untick "Show pictures" above the feed to stop these requests.
+
+## What a society vote proves
+
+A passed amendment is kept in the charter log with the signed proposal and the signed likes that
+passed it (`src/core/votes.ts`, tests in `test/votes.test.ts`). A recount (`charter verify`, or
+Recount in the web client) checks, from the reader's own node and key sources:
+
+- every signature and hash, so a changed byte anywhere in the log fails;
+- that the proposal names the version it changes, and that each version follows the last;
+- that the proposer and every approver were members of that version, each counted once;
+- that every like is a mainnet like of that exact proposal, signed by a key of the account that
+  may sign likes: an onchain key, or a gasless key whose scope includes likes (Snapchain refuses
+  other likes, but a hand-made log could contain them);
+- that more than half of the members approved.
+
+It does not prove when anyone voted: Farcaster timestamps can be backdated, which is why votes
+have no deadline. It cannot re-check a key that was revoked after the vote. Since Snapchain
+engine V14 a removed key's old messages stay on the network, so such an approval may be
+genuine, but nothing shows it was signed before the key went. A recount labels these approvals,
+and says "not recountable from scratch" when the majority rests on them. The client that
+accepted the amendment at the time checked those keys then, and keeps its own log. A log from
+someone else with such an amendment is only taken after the reader confirms it.
+
+A host cannot vote for a member: a like needs the member's key. A host's node can hide likes or
+proposals from a member's view, which delays a pass but cannot fake one. A second log built
+from the same founder's charter is shown as a fork, never merged.
 
 ## What the gate enforces
 
@@ -121,6 +170,23 @@ the node:
 Any member can check these from outside with their own token:
 `scripts/society-check.sh <node URL> <token file>`.
 
+## What the sponsor sees and keeps
+
+The optional sponsor (`src/server/sponsor.ts` and `sponsor-service.ts`, tests in
+`test/sponsor.test.ts`) pays for a member's new Farcaster account:
+
+- The new account's key is made in the member's browser, or stays in their wallet. The sponsor
+  gets only the account's address and a signature over it, and sends `IdGateway.registerFor`
+  from the host's wallet. The account belongs to the member from the first block: the sponsor
+  cannot sign for it, move it or recover it. It sets no recovery address.
+- The host can tell which member asked for which new address while the request passes through,
+  as with any request to the server. The sponsor logs no address, FID, token or IP address; it
+  keeps only how many accounts each member name got.
+- Each registration is simulated on Optimism first, so a bad request costs nothing. Caps: 2 per
+  member, ever, and 20 a day in all, unless the host changes them.
+- The wallet's key lives on the server. Whoever controls the server controls the ETH in it, and
+  nothing else.
+
 ## Running a society node
 
 ```
@@ -133,3 +199,8 @@ Any member can check these from outside with their own token:
 
 If the server was not made by `./outpost provision`, open 443/tcp in its firewall yourself.
 `--phone` and society mode both use 443, so only one can be on at a time.
+
+`--phone` serves the client from your own server at `https://<ip>.sslip.io`, so the phone keeps
+its app key in that site's storage. `./outpost destroy` gives the IP back to the provider, and
+whoever gets it next can serve a page at the same address that reads the key. Before you destroy
+the server, tap "Revoke this key (uninstall)" on the phone.

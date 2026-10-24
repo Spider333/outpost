@@ -50,6 +50,16 @@ await build({
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   logLevel: "warning",
 });
+// The society sponsor, one file the server runs as it is (see infra/society.sh).
+await build({
+  entryPoints: ["src/server/sponsor.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: ["node20"],
+  outfile: "dist/sponsor.js",
+  logLevel: "warning",
+});
 await copyFile("src/web/index.html", "dist/web/index.html");
 await copyFile("src/web/style.css", "dist/web/style.css");
-console.log("built dist/web, dist/serve.js and dist/cli.js");
+console.log("built dist/web, dist/serve.js, dist/cli.js and dist/sponsor.js");

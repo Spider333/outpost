@@ -42,7 +42,7 @@ import {
   type HexString,
   type Reaction,
 } from "../core/index.js";
-import { askHidden, confirm } from "./prompt.js";
+import { askHidden, confirm, printable } from "./prompt.js";
 import { cmdCharter, verificationNote } from "./charter.js";
 import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
 
@@ -81,10 +81,18 @@ const USAGE = `usage: ./outpost cli <command> [options]
                                  comma list of app FIDs, "self" or "unknown"
   charter new <file>             start a charter file
   charter sign <in> <out>        sign it with the society's key ($CHARTER_PRIVATE_KEY or phrase)
-  charter verify <file|url>      check the signature and the issuer's custody on your node
+  charter verify <file|url>      check the signature and the issuer's custody on your node;
+                                 for a charter log, recount every amendment from your node
   charter census <file|url> [days]   members, active members, casts per day, app mix
   charter feed <file|url>        the society's feed through its lens
   charter join <file|url>        follow its members with your app key
+  charter proposals <log> [days] society votes: add every amendment that has passed to the
+                                 log file, list open proposals and their approvals
+  charter propose <log> --add <user|fid> [--remove ..] [--add-mod ..] [--remove-mod ..]
+                                 post a proposal and approve it. Members approve by liking it,
+                                 in any app; it passes when more than half of them have
+  charter announce <log>         reply under the last passed proposal with the result
+  charter import <theirs> <log>  take a member's newer log, if it extends yours and recounts
   uninstall                      revoke the app key (no phrase needed) and delete it
   selftest                       sign every message type with throwaway keys and
                                  ask the node to validate them (sends nothing)
@@ -100,6 +108,8 @@ options:
   --show-unverified   also show casts whose signing key could not be checked (marked); by
                       default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
+  --trust-unrecountable  use a charter log even if a version's majority rests on approvals
+                      whose keys cannot be checked now (revoked since, or listed by no node)
 
 Every message read from the node is verified here (hash, signature, account) before use.
 `;
@@ -157,15 +167,15 @@ function report(what: string, r: { hash: HexString; confirmed: boolean }) {
 async function cmdStatus(hub: Hub) {
   const info = await hub.info();
   const { synced, maxDelay } = syncState(info);
-  console.log(`node ${hub.url}  version ${info.version}`);
+  console.log(printable(`node ${hub.url}  version ${info.version}`));
   for (const s of info.shardInfos) {
     const note = s.shardId === 0 ? " (block shard: app keys and storage)" : "";
-    console.log(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages${note}`);
+    console.log(printable(`  shard ${s.shardId}: height ${s.maxHeight}, ${s.blockDelay} blocks behind, ${s.numMessages} messages${note}`));
   }
   console.log(synced ? "synced: yes" : `synced: no (furthest shard is ${maxDelay} blocks behind)`);
 }
 
-async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
+async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork, chain?: Optimism) {
   const existing = loadKey();
   if (existing) {
     console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
@@ -183,10 +193,10 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork) {
   const custody = custodyFromSeedPhrase(phrase);
   phrase = ""; // JS strings cannot be wiped; we drop the reference and keep no copy.
 
-  const account = await resolveAccount(hub, custody.address);
+  const account = await resolveAccount(hub, custody.address, chain);
   console.log(`\ncustody address  ${account.custody}`);
-  console.log(`FID              ${account.fid}`);
-  console.log(`storage units    ${account.storageUnits}`);
+  console.log(printable(`FID              ${account.fid}`));
+  console.log(printable(`storage units    ${account.storageUnits}`));
   if (account.storageUnits === 0) throw new Error("this account has no storage, so the network will reject its messages.");
   console.log(`app key          can cast, react and follow; expires ${ttlDays} days after last use`);
   if (!(await confirm("Sign the app key authorization for this FID?"))) return;
@@ -211,7 +221,7 @@ async function cmdWhoami(hub: Hub) {
     console.log("status: NOT active on your node (revoked, expired, or not merged yet)");
     return;
   }
-  console.log(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`);
+  console.log(printable(`scopes: ${(s.scopes ?? []).map((x) => x.replace("MESSAGE_TYPE_", "").toLowerCase()).join(", ")}`));
   if (s.expiresAt) console.log(`expires: ${new Date(s.expiresAt * 1000).toISOString()} unless used before then`);
 }
 
@@ -235,29 +245,45 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
       ? ""
       : it.app.keyCheck === "confirmed"
         ? "  [signer confirmed by second node]"
-        : "  [signer not verified]";
+        : it.app.keyCheck === "revoked"
+          ? "  [key revoked since]"
+          : it.app.keyCheck === "unlisted"
+            ? "  [key not listed: revoked since, or not the author's]"
+            : "  [signer not verified]";
   for (const it of items) {
     const who = it.author?.username ? `@${it.author.username}` : `fid:${it.fid}`;
-    console.log(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`);
-    console.log(`  ${it.text.replace(/\s+/g, " ").slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
+    console.log(printable(`${new Date(it.time).toISOString().slice(0, 16).replace("T", " ")}  ${who}  ${label(it)}${keyNote(it)}`));
+    console.log(`  ${printable(it.text.replace(/\s+/g, " ")).slice(0, 200)}${it.embeds.length ? `  [${it.embeds.length} embed]` : ""}`);
     console.log(`  ${it.fid}:${it.hash}`);
   }
   const mix = new Map<string, number>();
   for (const it of items) mix.set(label(it), (mix.get(label(it)) ?? 0) + 1);
   console.log(`\n${items.length} cast${items.length === 1 ? "" : "s"} in ${(ms / 1000).toFixed(2)} s from ${hub.url}`);
-  for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${k}`);
+  for (const [k, n] of [...mix].sort((a, b) => b[1] - a[1])) console.log(printable(`  ${String(n).padStart(3)}  ${k}`));
   console.log(verificationNote(hub));
 }
 
 async function cmdUninstall(hub: Hub) {
-  const key = requireKey();
-  const active = await hub.signer(key.fid, key.publicKey);
-  if (active) {
-    await revokeAppKey(hub, key, { timeoutMs: 60_000 });
-    console.log(`revoked app key ${key.publicKey} for FID ${key.fid}. No recovery phrase was needed.`);
-  } else {
-    console.log("the key is not active on your node any more; nothing to revoke.");
+  const key = loadKey();
+  if (!key) {
+    console.log(`no app key from ./outpost cli login at ${keyPath()}, so nothing to revoke here.`);
+    console.log("A key added in the web client lives in that browser: open the client, then 'Your app key' > 'Revoke this key (uninstall)'.");
+    return;
   }
+  // The key file is the only way to revoke the key without the recovery phrase, so it is deleted
+  // only once the node confirms the revocation. A node that is behind, or has not merged the key
+  // yet, answers "not found" for a key that is live on the network.
+  if (!syncState(await hub.info()).synced) {
+    throw new Error("your node is still syncing, so it cannot tell whether this key is active. Nothing was revoked or deleted. Run `./outpost cli uninstall` again when `./outpost cli status` says synced: yes.");
+  }
+  if (!(await hub.signer(key.fid, key.publicKey))) {
+    console.log("your node does not list this key (revoked, expired, or not merged yet), so nothing was revoked.");
+    console.log(`The key file is kept so the key can still revoke itself: ${keyPath()}`);
+    console.log("Try again in a few minutes. Delete that file yourself only once you are sure the key is gone.");
+    return;
+  }
+  await revokeAppKey(hub, key, { timeoutMs: 60_000 });
+  console.log(`revoked app key ${key.publicKey} for FID ${key.fid}. No recovery phrase was needed.`);
   deleteKey();
   console.log(`deleted ${keyPath()}`);
 }
@@ -295,7 +321,7 @@ async function cmdSelftest(hub: Hub) {
     const res = await hub.validate(msg);
     const ok = res.valid === expected;
     if (!ok) failures++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${name}: node says valid=${res.valid}, expected ${expected}`);
+    console.log(printable(`${ok ? "PASS" : "FAIL"}  ${name}: node says valid=${res.valid}, expected ${expected}`));
   }
   console.log(failures ? `\n${failures} check(s) failed` : `\nall ${cases.length} checks passed against ${hub.url}`);
   if (failures) process.exitCode = 1;
@@ -321,6 +347,11 @@ async function main(argv: string[]) {
       include: { type: "string" },
       exclude: { type: "string" },
       limit: { type: "string" },
+      add: { type: "string", multiple: true },
+      remove: { type: "string", multiple: true },
+      "add-mod": { type: "string", multiple: true },
+      "remove-mod": { type: "string", multiple: true },
+      "trust-unrecountable": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -343,13 +374,14 @@ async function main(argv: string[]) {
       const nets: Record<string, FarcasterNetwork> = { mainnet: FarcasterNetwork.MAINNET, devnet: FarcasterNetwork.DEVNET };
       const network = nets[values.network ?? "mainnet"];
       if (network === undefined) throw new Error("--network must be mainnet or devnet");
-      return cmdLogin(hub, days, network);
+      // Devnet accounts are not on Optimism mainnet, so only mainnet looks the FID up there.
+      return cmdLogin(hub, days, network, network === FarcasterNetwork.MAINNET ? chain : undefined);
     },
     whoami: () => cmdWhoami(hub),
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
-    charter: () => cmdCharter(hub, args, requireKey, chain),
+    charter: () => cmdCharter(hub, args, requireKey, chain, values),
     cast: async () => {
       const text = args.join(" ");
       report(
@@ -380,6 +412,6 @@ async function main(argv: string[]) {
 }
 
 main(process.argv.slice(2)).catch((e: unknown) => {
-  console.error(`error: ${e instanceof HubError || e instanceof Error ? e.message : String(e)}`);
+  console.error(printable(`error: ${e instanceof HubError || e instanceof Error ? e.message : String(e)}`));
   process.exitCode = 1;
 });
