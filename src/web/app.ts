@@ -227,6 +227,10 @@ async function checkNode() {
     const { synced, maxDelay } = syncState(info);
     pill.textContent = synced ? `${which} synced (v${info.version})` : `${which} syncing, ${maxDelay} blocks behind`;
     pill.className = `pill ${synced ? "ok" : "warn"}`;
+    if (!$("first-run").hidden) {
+      $("first-run").hidden = true;
+      $("connect").hidden = !!key;
+    }
     return synced;
   } catch (e) {
     pill.textContent = e instanceof HubError && e.status === 401 ? `${which}: access refused` : `${which} unreachable`;
@@ -235,9 +239,13 @@ async function checkNode() {
       say(`The society node at ${hub.url} no longer accepts your access token: the host removed it, or it was mistyped. Ask the host for a new invite link, or go back to your own node under "Node and checks".`, true);
     } else if (!society) {
       // Typical on a static host such as GitHub Pages: no node behind this page, and its 404 page is no help.
+      // Not an error the person made, so a calm first-run card, not a red line.
       const reason = e instanceof HubError && e.message.includes("returned non-JSON") ? `HTTP ${e.status}, not a node` : errText(e);
-      say(`No node answers at ${hub.url} (${reason}). If someone sent you an invite link, open it again and press Join. Or enter a society node's address and your access token under "Node and checks".`, true);
-      ($("node-settings") as HTMLDetailsElement).open = true;
+      pill.textContent = "no node";
+      pill.className = "pill";
+      $("first-run-why").textContent = `No node answers at ${hub.url} (${reason}).`;
+      $("first-run").hidden = false;
+      $("connect").hidden = true;
     } else {
       say(`Cannot reach the society node at ${hub.url}. ${errText(e)}`, true);
     }
@@ -252,7 +260,7 @@ function showVerification() {
   el.replaceChildren(verifier.summary());
   if (verifier.failed) el.append(" (A failed check can rarely come from an honest node, when the app that posted the message encoded it unusually.)");
   if (verifier.unverified && !verifier.showUnverified) {
-    el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading...", showUnverified) }, "Show them anyway"));
+    el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading…", showUnverified) }, "Show them anyway"));
   }
   el.classList.toggle("bad", verifier.failed > 0);
   el.classList.toggle("warn", !verifier.failed && verifier.unverified > 0);
@@ -270,6 +278,11 @@ async function showUnverified() {
 // ---- node settings
 
 function wireNodeSettings() {
+  $("first-run-open").addEventListener("click", () => {
+    const details = $("node-settings") as HTMLDetailsElement;
+    details.open = true;
+    $("soc-node").focus();
+  });
   $("soc-current").textContent = society
     ? `Using the society node ${society.node}.`
     : `Using your own node (this page's origin, ${location.origin}).`;
@@ -348,7 +361,7 @@ function showConnectStep(step: ConnectStep) {
 const walletProvider = () => (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
 
 async function prepare(custody: Custody) {
-  say("Looking up the account...");
+  say("Looking up the account…");
   // Devnet accounts are not on Optimism mainnet, so only mainnet looks the FID up there.
   const account = await resolveAccount(hub, custody.address, network === FarcasterNetwork.MAINNET ? chain : undefined);
   if (account.storageUnits === 0) throw new Error(`FID ${account.fid} has no storage, so the network would reject its casts.`);
@@ -392,7 +405,7 @@ async function openCreate() {
     offer.textContent = 'Creating an account needs the Optimism RPC, which is turned off. Turn it on under "Node and checks".';
     return;
   }
-  offer.textContent = "Checking whether this society can pay for your account...";
+  offer.textContent = "Checking whether this society can pay for your account…";
   let s;
   try {
     s = await sponsorStatus(society.node, society.token);
@@ -445,12 +458,12 @@ async function createAccount(owner: Custody, forKey: () => Promise<Custody>) {
   const deadline = BigInt(Math.floor(Date.now() / 1000) + REGISTER_DEADLINE_SECONDS);
   say("Signing the registration. It is free: nothing is paid or sent from your side.");
   const signature = await signRegistration(owner, nonce, deadline);
-  say("Creating your account on Optimism. The society pays; this takes a few seconds...");
+  say("Creating your account on Optimism. The society pays; this takes a few seconds…");
   const r = await sponsorRegister(society.node, society.token, { to: owner.address, recovery: zeroAddress, deadline: deadline.toString(), signature });
   if (r.dryRun) throw new Error("The society's sponsor runs in test mode (dry run): your registration was checked but not sent.");
-  say(`Account created: FID ${r.fid}. Waiting for the node to see it, usually under a minute...`);
+  say(`Account created: FID ${r.fid}. Waiting for the node to see it, usually under a minute…`);
   const account = await waitForAccount(r.fid, owner.address);
-  say(`FID ${r.fid} is on the node. Adding Outpost's app key...`);
+  say(`FID ${r.fid} is on the node. Adding Outpost's app key…`);
   const signer = await forKey();
   if (signer.address.toLowerCase() !== owner.address.toLowerCase()) {
     throw new Error(`Your wallet now uses ${signer.address}, but FID ${r.fid} belongs to ${owner.address}. Switch the wallet back to that account, then choose "My account's owner key is in a browser wallet".`);
@@ -490,14 +503,14 @@ function wireCreate() {
     }),
   );
   $("create-go").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Creating...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Creating…", async () => {
       if (!newPhrase) return;
       const custody = custodyFromSeedPhrase(newPhrase);
       await createAccount(custody, async () => custody);
     }),
   );
   $("create-wallet").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
       const eth = walletProvider();
       if (!eth) throw new Error("No browser wallet found. Make a new account here instead.");
       await createAccount(await custodyFromWallet(eth, optimism), () => custodyFromWallet(eth));
@@ -508,7 +521,7 @@ function wireCreate() {
 function wireConnect() {
   wireCreate();
   $("use-wallet").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
       const eth = walletProvider();
       if (!eth) throw new Error('No browser wallet found in this browser. No account yet? Choose "I have no Farcaster account".');
       await prepare(await custodyFromWallet(eth));
@@ -521,7 +534,7 @@ function wireConnect() {
   const isTest = $<HTMLInputElement>("is-test");
   isTest.addEventListener("change", () => ($<HTMLButtonElement>("phrase-go").disabled = !isTest.checked));
   $("phrase-go").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Checking...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Checking…", async () => {
       const input = $<HTMLInputElement>("phrase");
       const phrase = input.value;
       input.value = ""; // clear the field right away; the phrase is kept nowhere else
@@ -535,7 +548,7 @@ function wireConnect() {
     say("");
   });
   $("authorize").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node…", async () => {
       if (!pendingCustody || !pendingAccount) return;
       await authorize(pendingCustody, pendingAccount);
     }),
@@ -556,7 +569,7 @@ async function renderAccount() {
   }
   $("k-fid").textContent = String(key.fid);
   $("k-pub").textContent = key.publicKey;
-  $("k-status").textContent = "checking...";
+  $("k-status").textContent = "checking…";
   try {
     const s = await hub.signer(key.fid, key.publicKey);
     $("k-status").textContent = s
@@ -570,7 +583,7 @@ async function renderAccount() {
 
 function wireKey() {
   $("revoke").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Revoking...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Revoking…", async () => {
       if (!key) return;
       if (!confirm("Revoke this app key? This client will no longer be able to post for you.")) return;
       // Same rule as `./outpost cli uninstall`: the stored key is the only way to revoke it without
@@ -608,7 +621,7 @@ function wireCompose() {
   const text = $<HTMLTextAreaElement>("text");
   text.addEventListener("input", () => ($("count").textContent = `${new TextEncoder().encode(text.value).length} / 1024`));
   $("post").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Posting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Posting…", async () => {
       if (!key) return;
       const r = await cast(hub, key, { text: text.value, replyTo });
       text.value = "";
@@ -677,7 +690,7 @@ function renderChips() {
 function actionButton(label: string, pressed: boolean, onToggle: (now: boolean) => Promise<void>) {
   const btn = h("button", { type: "button", "aria-pressed": String(pressed) }, label);
   btn.addEventListener("click", () =>
-    busy(btn, "...", async () => {
+    busy(btn, "…", async () => {
       const now = btn.getAttribute("aria-pressed") !== "true";
       await onToggle(now);
       btn.setAttribute("aria-pressed", String(now));
@@ -787,26 +800,43 @@ function renderFeed() {
   const filter = currentFilter();
   const shown = items.filter((it) => passesFilter(it.app, filter));
   $("feed").replaceChildren(...shown.map(castCard));
+  if (!shown.length && (charter || viewFid)) {
+    $("feed").append(
+      h(
+        "li",
+        { class: "feed-empty" },
+        items.length ? "No casts from the apps you chose. Tap a chip above to change the filter." : charter ? "No casts yet in this society's feed." : `No casts yet for FID ${viewFid}.`,
+      ),
+    );
+  }
   $("more").hidden = items.length === 0;
-  if (charter) $("feed-title").textContent = `Society feed of "${charter.name}" through its lens: ${shown.length} of ${items.length} casts shown`;
-  else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid}: ${shown.length} of ${items.length} casts shown`;
+  if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
+  else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid} · ${shown.length} of ${items.length} casts`;
   else $("feed-title").textContent = "";
 }
 
 async function loadFeed(fid?: number) {
   if (fid) viewFid = fid;
   const t0 = performance.now();
-  if (charter) {
-    say(`Loading the "${charter.name}" society feed from your node...`);
-    items = await charterFeed(feed, charter, { limit: 100, perAuthor });
-  } else if (viewFid) {
-    say(`Loading the feed for FID ${viewFid} from your node...`);
-    items = await feed.following(viewFid, { limit: 100, perAuthor });
-  } else return;
-  appNames = await feed.appNames(items);
+  if (!charter && !viewFid) return;
+  // The old casts stay, dimmed, until the new ones are in: the page does not jump while loading.
+  const list = $("feed");
+  list.setAttribute("aria-busy", "true");
+  try {
+    if (charter) {
+      say(`Loading the "${charter.name}" society feed from your node…`);
+      items = await charterFeed(feed, charter, { limit: 100, perAuthor });
+    } else {
+      say(`Loading the feed for FID ${viewFid} from your node…`);
+      items = await feed.following(viewFid!, { limit: 100, perAuthor });
+    }
+    appNames = await feed.appNames(items);
+  } finally {
+    list.removeAttribute("aria-busy");
+  }
   renderFeed();
   showVerification();
-  say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+  say(`Loaded ${items.length} cast${items.length === 1 ? "" : "s"} in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
 }
 
 function showPicturesNote() {
@@ -835,7 +865,7 @@ function wireFeed() {
     });
   });
   $("more").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Loading...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Loading…", async () => {
       perAuthor *= 2;
       await loadFeed();
     }),
@@ -965,7 +995,7 @@ function versionItem(ver: Version, i: number): HTMLLIElement {
         )
       : null,
     i === versions.length - 1 && key && charter?.members.includes(key.fid)
-      ? h("span", {}, " ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Posting...", () => announceResult(a.proposal.id, n, a.members)) }, "Post the result under the proposal"))
+      ? h("span", {}, " ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Posting…", () => announceResult(a.proposal.id, n, a.members)) }, "Post the result under the proposal"))
       : null,
   );
 }
@@ -1001,7 +1031,7 @@ function proposalItem(t: Tally): HTMLLIElement {
               type: "button",
               class: "primary",
               onclick: (e: Event) =>
-                busy(e.currentTarget as HTMLButtonElement, "Approving...", async () => {
+                busy(e.currentTarget as HTMLButtonElement, "Approving…", async () => {
                   await react(hub, key!, "like", p.id);
                   await checkVotes(null);
                 }),
@@ -1036,7 +1066,7 @@ async function renderVotes(st?: Status) {
 
 // Reads proposals and likes from your node, and adds every amendment that has passed.
 async function checkVotes(btn: HTMLButtonElement | null) {
-  await busy(btn, "Checking...", async () => {
+  await busy(btn, "Checking…", async () => {
     if (!societyLog) return;
     const st = await advance(hub, societyLog, { cache: approvals });
     if (st.passed.length) {
@@ -1081,7 +1111,7 @@ function renderDraft() {
 function wireVotes() {
   $("v-check").addEventListener("click", (e) => checkVotes(e.currentTarget as HTMLButtonElement));
   $("v-recount").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Recounting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Recounting…", async () => {
       if (!societyLog) return;
       const r = await replay(societyLog, verifier);
       if (r.problems.length) throw new Error(`Recount failed at ${r.problems.join("; ")}`);
@@ -1104,7 +1134,7 @@ function wireVotes() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   });
   $("v-add").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Looking up...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Looking up…", async () => {
       const input = $<HTMLInputElement>("v-who");
       const who = input.value.trim();
       const fid = /^\d+$/.test(who) ? Number(who) : await hub.fidByUsername(who);
@@ -1118,7 +1148,7 @@ function wireVotes() {
   );
   $("v-propose-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    void busy($<HTMLButtonElement>("v-post"), "Posting...", async () => {
+    void busy($<HTMLButtonElement>("v-post"), "Posting…", async () => {
       if (!key || !charter || !draft.length) return;
       const changes = draft.map(({ op, role, fid }) => ({ op, role, fid }));
       const r = await propose(hub, key, { head: versions.at(-1)!.head, body: charter }, changes);
@@ -1175,14 +1205,14 @@ function wireCharter() {
     }),
   );
   $("ch-join").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Following...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Following…", async () => {
       if (!key || !charter) return;
       const k = key;
       const todo = charter.members.filter((m) => m !== k.fid && !myFollowing.has(m));
       let n = 0;
       let unconfirmed = 0;
       for (const m of todo) {
-        say(`Following member ${++n} of ${todo.length} (FID ${m})...`);
+        say(`Following member ${++n} of ${todo.length} (FID ${m})…`);
         const r = await follow(hub, k, m, { timeoutMs: 15_000 });
         if (r.confirmed) myFollowing.add(m);
         else unconfirmed++;
@@ -1195,7 +1225,7 @@ function wireCharter() {
     }),
   );
   $("ch-census-btn").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Counting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Counting…", async () => {
       if (!charter) return;
       const c = await census(hub, charter, { days: 7 });
       const names = await feed.appNames(items);
