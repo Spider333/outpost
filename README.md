@@ -217,6 +217,14 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
   using the Farcaster app for your main one.
 - App labels come from the key that signed each cast. Keys that people signed for themselves all
   show as "own key", and a cast whose key is no longer listed shows as "unknown key".
+- A key removed since keeps its earlier casts on the network (Snapchain engine V14 and later).
+  For an onchain key, Optimism shows it was the author's, so those casts are shown, marked
+  "key revoked since". A gasless key leaves no record once revoked, so its casts look like
+  someone else's key: they are held back as "key not listed", and you can show them, marked.
+  Optimism records no removal time, and the cast's own date is signed by the key, so the client
+  cannot tell a cast signed before the removal from one backdated later. An honest node refuses
+  the late ones; someone holding a leaked, removed key and running a dishonest node could serve
+  one, and it would show marked the same way.
 - Casts you write are text up to 1,024 bytes (the limit for a normal account) with up to 4
   embedded URLs. There is no image upload, and an @name you type stays plain text; it does not
   become a mention. There is no notifications view.

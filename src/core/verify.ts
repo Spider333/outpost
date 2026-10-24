@@ -39,9 +39,13 @@ export type DropReason = "altered" | "signature" | "mismatch" | "signer";
 
 // "onchain": the KeyRegistry lists the key for this FID. "confirmed": a second node lists it as
 // one of the FID's active keys. "own": the member's own app key, held by this client.
-// "unverified": not checkable (no RPC or second node, or they failed); held back unless the
-// member asks to see them. "false": the key is not (or no longer) the FID's: never shown.
-export type KeyCheck = "onchain" | "confirmed" | "own" | "unverified" | "false";
+// "revoked": the KeyRegistry lists it as the FID's key, removed since. Since Snapchain engine V14
+// a removed key's earlier messages stay on the network (engine.rs, should_revoke_signer) and
+// later ones are refused, so they are shown, marked. "unverified": not checkable (no RPC or
+// second node, or they failed). "unlisted": a gasless key the second node does not list:
+// revoked since, or never the FID's, and the HTTP API cannot tell which. Both are held back
+// unless the member asks to see them. "false": provably not the FID's key: never shown.
+export type KeyCheck = "onchain" | "confirmed" | "own" | "revoked" | "unverified" | "unlisted" | "false";
 
 export interface KeyRegistry {
   keyState(fid: number, key: HexString): Promise<"added" | "removed" | "none">;
@@ -70,8 +74,16 @@ export function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+// viem's hexToBytes skips the first two characters without looking at them, so "1x…" would
+// decode like "0x…", and it reads upper and lower case alike. Nothing signed changes, but a
+// changed character should still fail. Snapchain writes "0x" and lower case.
+function strictHexToBytes(hex: string): Uint8Array {
+  if (!/^0x(?:[0-9a-f]{2})*$/.test(hex)) throw new Error("not 0x-prefixed lower-case hex");
+  return hexToBytes(hex as HexString);
+}
+
 function hexToBase64(hex: string): string {
-  return btoa(String.fromCharCode(...hexToBytes(hex as HexString)));
+  return btoa(String.fromCharCode(...strictHexToBytes(hex)));
 }
 
 // Snapchain JSON -> protobuf MessageData. Cast ids carry hex hashes in Snapchain's JSON and
@@ -191,6 +203,9 @@ export function signedMessage(d: MessageData, hash: Uint8Array, signature: Uint8
 }
 
 // True when the node's JSON has a field (not null) that the signed message lacks, at any depth.
+// Null fields are skipped on purpose, whatever their name: honest nodes send nulls the rebuilt
+// message does not have (an absent parent, for example), and a null carries nothing signed or
+// shown, since callers only ever see the rebuilt message. Flagging them would reject honest data.
 function extraField(node: unknown, signed: unknown): boolean {
   if (node === null || typeof node !== "object") return false;
   if (signed === null || typeof signed !== "object") return true;
@@ -205,7 +220,7 @@ export async function verifyMessage(m: HubMessage): Promise<HubMessage | "altere
   try {
     if (m.hashScheme !== "HASH_SCHEME_BLAKE3" || m.signatureScheme !== "SIGNATURE_SCHEME_ED25519") return "altered";
     const d = messageData(m.data);
-    const want = m.hash.toLowerCase();
+    const want = m.hash; // compared with lower-case hex, so any other spelling fails
     const hashOf = (b: Uint8Array) => blake3(b, { dkLen: 20 });
     let hash = hashOf(MessageData.encode(d).finish());
     if (bytesToHex(hash) !== want) {
@@ -213,7 +228,9 @@ export async function verifyMessage(m: HubMessage): Promise<HubMessage | "altere
       if (!alt || bytesToHex((hash = hashOf(alt))) !== want) return "altered";
     }
     const signature = base64ToBytes(m.signature);
-    const signer = hexToBytes(m.signer);
+    // atob ignores the unused bits of the last character; only the canonical spelling passes.
+    if (bytesToBase64(signature) !== m.signature) return "altered";
+    const signer = strictHexToBytes(m.signer);
     if (!(await verifyEd25519(signature, hash, signer))) return "signature";
     const signed = signedMessage(d, hash, signature, signer);
     return extraField(m, signed) ? "altered" : signed; // the node added something
@@ -229,8 +246,10 @@ export async function checkMessage(m: HubMessage): Promise<"ok" | "altered" | "s
 
 export class Verifier {
   checked = 0;
-  // Messages whose key could not be checked: hidden unless `showUnverified`. Not failures.
+  // Messages whose key could not be checked, or is not listed: hidden unless `showUnverified`.
+  // Not failures. `unlisted` counts the second kind.
   unverified = 0;
+  unlisted = 0;
   showUnverified = false;
   readonly dropped: Record<DropReason, number> = { altered: 0, signature: 0, mismatch: 0, signer: 0 };
   private keys = new Map<string, Promise<KeyCheck>>();
@@ -256,8 +275,9 @@ export class Verifier {
       this.drop("signer");
       return false;
     }
-    if (k === "unverified") {
+    if (k === "unverified" || k === "unlisted") {
       this.unverified++;
+      if (k === "unlisted") this.unlisted++;
       return this.showUnverified;
     }
     return true;
@@ -267,6 +287,7 @@ export class Verifier {
   reset() {
     this.checked = 0;
     this.unverified = 0;
+    this.unlisted = 0;
     for (const k of Object.keys(this.dropped) as DropReason[]) this.dropped[k] = 0;
   }
 
@@ -311,10 +332,10 @@ export class Verifier {
       if (!this.second) throw e; // the second node lists onchain keys too, so it can stand in
     }
     if (state === "added") return "onchain";
-    // A removed onchain key's messages are revoked by the protocol, so none should be served.
-    if (state === "removed" || (state === "none" && claimedOnchain)) return "false";
+    if (state === "removed") return "revoked";
+    if (state === "none" && claimedOnchain) return "false";
     if (!this.second) return "unverified";
-    return (await this.second.listsKey(fid, key)) ? "confirmed" : "false";
+    return (await this.second.listsKey(fid, key)) ? "confirmed" : "unlisted";
   }
 
   // For votes (votes.ts): may `key` sign a message of `type` (e.g. "MESSAGE_TYPE_REACTION_ADD")
@@ -358,11 +379,19 @@ export class Verifier {
     ].filter(Boolean);
     const out: string[] = [];
     if (this.failed) out.push(`Your node sent ${this.failed} of ${this.checked} messages that failed verification${parts.length ? ` (${parts.join(", ")})` : ""}; they are not shown.`);
-    if (this.unverified) {
+    const unchecked = this.unverified - this.unlisted;
+    if (unchecked) {
       out.push(
         this.showUnverified
-          ? `${this.unverified} messages are shown although their signing key could not be checked (the second node is off or did not answer); they are marked "signer not verified".`
-          : `${this.unverified} messages were hidden because their signing key could not be checked (the second node is off or did not answer).`,
+          ? `${unchecked} messages are shown although their signing key could not be checked (the second node is off or did not answer); they are marked "signer not verified".`
+          : `${unchecked} messages were hidden because their signing key could not be checked (the second node is off or did not answer).`,
+      );
+    }
+    if (this.unlisted) {
+      out.push(
+        this.showUnverified
+          ? `${this.unlisted} messages are shown although the second node does not list their signing key (revoked since, or not the author's); they are marked "key not listed".`
+          : `${this.unlisted} messages were hidden because the second node does not list their signing key: it was revoked since, or is not the author's.`,
       );
     }
     return out.join(" ") || `All ${this.checked} messages from the node passed verification.`;

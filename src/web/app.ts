@@ -556,6 +556,30 @@ function embed(u: string): HTMLElement {
   return a;
 }
 
+// Your own key needs no proof; any other key must be on Optimism or listed by the second node.
+function keyTag(it: FeedItem): HTMLSpanElement | null {
+  const k = it.app.keyCheck;
+  if (k === "onchain" || k === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()) return null;
+  if (k === "confirmed") {
+    return h("span", { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` }, "signer confirmed by second node");
+  }
+  if (k === "revoked") {
+    return h("span", { class: "app-tag", title: "This account's key on Optimism, removed since. What it signed before stays valid on the network; it cannot sign anything new." }, "key revoked since");
+  }
+  if (k === "unlisted") {
+    return h("span", { class: "key-tag", title: `The second node (${checkUrl}) does not list this key for this account. It was revoked since, or it is not the account's key: the node's API cannot tell which.` }, "key not listed");
+  }
+  return h(
+    "span",
+    {
+      class: "key-tag",
+      title:
+        "The signature is valid, but this page could not prove the key belongs to this account: it is not on Optimism and no second node could be asked (off, unreachable, or the same node). The node could have signed this with its own key.",
+    },
+    "signer not verified",
+  );
+}
+
 function castCard(it: FeedItem): HTMLLIElement {
   const name = it.author?.username ? `@${it.author.username}` : `fid ${it.fid}`;
   const target = { fid: it.fid, hash: it.hash };
@@ -594,24 +618,7 @@ function castCard(it: FeedItem): HTMLLIElement {
         h("span", { class: "name" }, it.author?.displayName ?? name),
         h("span", { class: "meta" }, `${name} · ${ago(it.time)}`),
         h("span", { class: "app-tag", title: "The app that requested the key that signed this cast" }, appLabel(it)),
-        // Your own key needs no proof; any other key must be on Optimism or listed by the second node.
-        it.app.keyCheck === "onchain" || it.app.keyCheck === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()
-          ? null
-          : it.app.keyCheck === "confirmed"
-            ? h(
-                "span",
-                { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` },
-                "signer confirmed by second node",
-              )
-            : h(
-                "span",
-                {
-                  class: "key-tag",
-                  title:
-                    "The signature is valid, but this page could not prove the key belongs to this account: it is not on Optimism and no second node could be asked (off, unreachable, or the same node). The node could have signed this with its own key.",
-                },
-                "signer not verified",
-              ),
+        keyTag(it),
       ),
       it.text ? h("p", { class: "cast-text" }, it.text) : null,
       embeds.length ? h("div", { class: "cast-embeds" }, ...embeds.flatMap((u) => [embed(u), " "])) : null,
