@@ -381,3 +381,8 @@ footer a { color: var(--muted); }
   user-select: all;
 }
 .phrase:empty { display: none; }
+
+/* One line on a phone: the node pill shortens instead of wrapping the bar. */
+.bar-in { flex-wrap: nowrap; }
+.bar-in h1, .who { flex: none; }
+#node-status { flex: 0 1 auto; min-width: 0; }
