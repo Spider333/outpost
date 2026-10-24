@@ -70,6 +70,9 @@ h2 { font-size: 17px; margin: 0 0 8px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .row.wrap { flex-wrap: wrap; }
 .inline { display: flex; gap: 8px; }
+/* The hidden attribute wins over display rules such as .choices below. */
+[hidden] { display: none !important; }
+
 .choices { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 
 button {
@@ -119,6 +122,7 @@ label.check input { width: auto; min-height: 0; margin-top: 4px; }
 
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
 .mono { word-break: break-all; }
+.phrase { font-size: 1.05em; line-height: 1.7; word-break: normal; padding: 10px 12px; border: 1px dashed var(--muted); border-radius: 8px; user-select: all; }
 
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0; font-size: 14px; }
 .facts dt { color: var(--muted); }
