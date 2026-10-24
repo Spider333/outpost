@@ -219,6 +219,10 @@ async function checkNode() {
     const { synced, maxDelay } = syncState(info);
     pill.textContent = synced ? `${which} synced (v${info.version})` : `${which} syncing, ${maxDelay} blocks behind`;
     pill.className = `pill ${synced ? "ok" : "warn"}`;
+    if (!$("first-run").hidden) {
+      $("first-run").hidden = true;
+      $("connect").hidden = !!key;
+    }
     return synced;
   } catch (e) {
     pill.textContent = e instanceof HubError && e.status === 401 ? `${which}: access refused` : `${which} unreachable`;
@@ -227,9 +231,13 @@ async function checkNode() {
       say(`The society node at ${hub.url} no longer accepts your access token: the host removed it, or it was mistyped. Ask the host for a new invite link, or go back to your own node under "Node and checks".`, true);
     } else if (!society) {
       // Typical on a static host such as GitHub Pages: no node behind this page, and its 404 page is no help.
+      // Not an error the person made, so a calm first-run card, not a red line.
       const reason = e instanceof HubError && e.message.includes("returned non-JSON") ? `HTTP ${e.status}, not a node` : errText(e);
-      say(`No node answers at ${hub.url} (${reason}). If someone sent you an invite link, open it again and press Join. Or enter a society node's address and your access token under "Node and checks".`, true);
-      ($("node-settings") as HTMLDetailsElement).open = true;
+      pill.textContent = "no node";
+      pill.className = "pill";
+      $("first-run-why").textContent = `No node answers at ${hub.url} (${reason}).`;
+      $("first-run").hidden = false;
+      $("connect").hidden = true;
     } else {
       say(`Cannot reach the society node at ${hub.url}. ${errText(e)}`, true);
     }
@@ -262,6 +270,11 @@ async function showUnverified() {
 // ---- node settings
 
 function wireNodeSettings() {
+  $("first-run-open").addEventListener("click", () => {
+    const details = $("node-settings") as HTMLDetailsElement;
+    details.open = true;
+    $("soc-node").focus();
+  });
   $("soc-current").textContent = society
     ? `Using the society node ${society.node}.`
     : `Using your own node (this page's origin, ${location.origin}).`;
@@ -632,23 +645,40 @@ function renderFeed() {
   const filter = currentFilter();
   const shown = items.filter((it) => passesFilter(it.app, filter));
   $("feed").replaceChildren(...shown.map(castCard));
+  if (!shown.length && (charter || viewFid)) {
+    $("feed").append(
+      h(
+        "li",
+        { class: "feed-empty" },
+        items.length ? "No casts from the apps you chose. Tap a chip above to change the filter." : charter ? "No casts yet in this society's feed." : `No casts yet for FID ${viewFid}.`,
+      ),
+    );
+  }
   $("more").hidden = items.length === 0;
-  if (charter) $("feed-title").textContent = `Society feed of "${charter.name}" through its lens: ${shown.length} of ${items.length} casts shown`;
-  else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid}: ${shown.length} of ${items.length} casts shown`;
+  if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
+  else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid} · ${shown.length} of ${items.length} casts`;
   else $("feed-title").textContent = "";
 }
 
 async function loadFeed(fid?: number) {
   if (fid) viewFid = fid;
   const t0 = performance.now();
-  if (charter) {
-    say(`Loading the "${charter.name}" society feed from your node...`);
-    items = await charterFeed(feed, charter, { limit: 100, perAuthor });
-  } else if (viewFid) {
-    say(`Loading the feed for FID ${viewFid} from your node...`);
-    items = await feed.following(viewFid, { limit: 100, perAuthor });
-  } else return;
-  appNames = await feed.appNames(items);
+  if (!charter && !viewFid) return;
+  // The old casts stay, dimmed, until the new ones are in: the page does not jump while loading.
+  const list = $("feed");
+  list.setAttribute("aria-busy", "true");
+  try {
+    if (charter) {
+      say(`Loading the "${charter.name}" society feed from your node...`);
+      items = await charterFeed(feed, charter, { limit: 100, perAuthor });
+    } else {
+      say(`Loading the feed for FID ${viewFid} from your node...`);
+      items = await feed.following(viewFid!, { limit: 100, perAuthor });
+    }
+    appNames = await feed.appNames(items);
+  } finally {
+    list.removeAttribute("aria-busy");
+  }
   renderFeed();
   showVerification();
   say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
