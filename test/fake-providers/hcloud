@@ -3,11 +3,32 @@ S="${FAKE_STATE:?}"; echo "hcloud $*" >> "$S/calls.log"
 # Like the API with no network: every call fails.
 [ -e "$S/api-down" ] && { echo "hcloud: dial tcp: network is unreachable" >&2; exit 1; }
 names() { for f in "$S"/hz."$1".*; do [ -e "$f" ] && echo "${f##*/hz."$1".}"; done; exit 0; }
+# Servers are files holding "type status disk".
+disk_of() { case "$1" in ccx33) echo 240;; *) echo 80;; esac; }
+server_set() { # $1 = name, $2 = type, $3 = status, $4 = disk
+  [ -e "$S/hz.server.$1" ] || { echo "hcloud: server not found: $1" >&2; exit 1; }
+  echo "$2 $3 $4" > "$S/hz.server.$1"; }
 case "$1 $2" in
   "server ip") [ -e "$S/hz.server.$3" ] && echo 198.51.100.9 || exit 1 ;;
-  "server list") names server ;;
+  "server list") case " $* " in *" columns=name,type,status "*)
+      for f in "$S"/hz.server.*; do [ -e "$f" ] || continue; read -r t st _ < "$f"; echo "${f##*/hz.server.} $t $st"; done; exit 0 ;; esac
+    names server ;;
   "server describe") [ -e "$S/hz.server.$3" ] || exit 1 ;;
-  "server create") n=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; p="$a"; done; touch "$S/hz.server.$n" ;;
+  "server create") n=""; t=""; p=""; for a in "$@"; do [ "$p" = "--name" ] && n="$a"; [ "$p" = "--type" ] && t="$a"; p="$a"; done
+    echo "$t running $(disk_of "$t")" > "$S/hz.server.$n" ;;
+  # FAKE_NO_SHUTDOWN: like a server that ignores the ACPI signal.
+  "server shutdown") read -r t _ dk < "$S/hz.server.$3" || exit 1; [ -n "${FAKE_NO_SHUTDOWN:-}" ] || server_set "$3" "$t" off "$dk" ;;
+  "server poweroff") read -r t _ dk < "$S/hz.server.$3" || exit 1; server_set "$3" "$t" off "$dk" ;;
+  "server poweron") read -r t _ dk < "$S/hz.server.$3" || exit 1; server_set "$3" "$t" running "$dk" ;;
+  # Like Hetzner: only while off; without --keep-disk the disk grows to the new type's, and a
+  # type with a smaller disk than the server's is refused.
+  "server change-type") keep=0; pos=(); for a in "${@:3}"; do case "$a" in --keep-disk|--keep-disk=true) keep=1;; *) pos+=("$a");; esac; done
+    n="${pos[0]}"; nt="${pos[1]}"
+    read -r t st dk < "$S/hz.server.$n" || exit 1
+    [ "$st" = off ] || { echo "hcloud: server must be stopped to change its type" >&2; exit 1; }
+    [ "$(disk_of "$nt")" -ge "$dk" ] || { echo "hcloud: the disk of $nt is smaller than the server's ($dk GB)" >&2; exit 1; }
+    [ "$keep" -eq 1 ] || dk="$(disk_of "$nt")"
+    server_set "$n" "$nt" off "$dk" ;;
   "server delete") [ -e "$S/hz.server.$3" ] && rm "$S/hz.server.$3" || exit 1 ;;
   "volume list") names volume ;;
   "volume describe") [ -e "$S/hz.volume.$3" ] || exit 1 ;;

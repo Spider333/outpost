@@ -11,6 +11,8 @@
 #   - HTTP (3381) and gRPC (3383) bound to 127.0.0.1: by default anyone can send writes
 #     through an open node, and the client reaches the node over an SSH tunnel anyway
 #   - statsd bound to 127.0.0.1; Grafana is not started
+#   - the node's log capped at 3 x 50 MB: it grew by about 0.9 GB a day on fcprize-node, which
+#     would fill a small server's disk within months
 # Gossip (3382/udp) stays public: the node needs it to sync and to relay your writes.
 #
 # On a new server the snapshot is loaded by snapshot-restore.sh (8 parallel downloads streamed
@@ -94,11 +96,13 @@ cd "$DIR"
 BASE="https://raw.githubusercontent.com/farcasterxyz/snapchain/v${SNAPCHAIN_VERSION}"
 # Rewrite the compose file unless it is already ours: right version and API ports on
 # 127.0.0.1. An install made some other way may publish 3381/3383 to the world.
+LOG_CAP='    logging: { driver: json-file, options: { max-size: "50m", max-file: "3" } }'
 compose_ok() {
   [ -f docker-compose.yml ] &&
     grep -qF "farcasterxyz/snapchain:${SNAPCHAIN_VERSION}" docker-compose.yml &&
     grep -qF '"127.0.0.1:3381:3381/tcp"' docker-compose.yml &&
-    grep -qF '"127.0.0.1:3383:3383/tcp"' docker-compose.yml
+    grep -qF '"127.0.0.1:3383:3383/tcp"' docker-compose.yml &&
+    grep -qxF "$LOG_CAP" docker-compose.yml
 }
 if ! compose_ok; then
   log "fetching compose file for snapchain v${SNAPCHAIN_VERSION}"
@@ -112,9 +116,12 @@ if ! compose_ok; then
     -e "s#'\${STATSD_PUBLISH:-8125}:8125/udp'#'127.0.0.1:8125:8125/udp'#" \
     -e "s#'\${STATSD_ADMIN_PUBLISH:-8126}:8126'#'127.0.0.1:8126:8126'#" \
     docker-compose.yml.new
-  for want in "farcasterxyz/snapchain:${SNAPCHAIN_VERSION}" '"127.0.0.1:3381:3381/tcp"' '"127.0.0.1:3383:3383/tcp"' "'127.0.0.1:8125:8125/udp'"; do
+  # Only the snapchain service has "restart: always".
+  sed -i "s#^    restart: always\$#&\n$LOG_CAP#" docker-compose.yml.new
+  for want in "farcasterxyz/snapchain:${SNAPCHAIN_VERSION}" '"127.0.0.1:3381:3381/tcp"' '"127.0.0.1:3383:3383/tcp"' "'127.0.0.1:8125:8125/udp'" "$LOG_CAP"; do
     grep -qF "$want" docker-compose.yml.new || die "compose file layout changed upstream; could not apply: $want"
   done
+  [ "$(grep -cxF "$LOG_CAP" docker-compose.yml.new)" -eq 1 ] || die "compose file layout changed upstream; the log cap went to more than one service"
   mv docker-compose.yml.new docker-compose.yml
 fi
 # A restore by snapshot-restore.sh runs as the outpost-restore unit and starts the node itself

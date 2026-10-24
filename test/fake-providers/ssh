@@ -11,4 +11,11 @@ echo "ssh $cmd" >> "$S/calls.log"
 [ -n "$cmd" ] || exit 0
 mkdir -p "$S/server/lib"
 cmd="${cmd//\/usr\/local\/lib\/outpost/$S/server/lib}"
+# First boot is done once $S/server/outpost-ready exists.
+cmd="${cmd//\/var\/lib\/outpost-ready/$S/server/outpost-ready}"
+# The node's progress check answers with $S/node-line, and node-setup.sh does nothing, when set.
+case "$cmd" in
+  *"/v1/info"*) [ ! -e "$S/node-line" ] || { cat "$S/node-line"; exit 0; } ;;
+  "bash "*"/node-setup.sh") [ ! -e "$S/node-line" ] || { echo "[node-setup] (fake)"; exit 0; } ;;
+esac
 OUTPOST_SOCIETY_DIR="$S/server/srv/outpost-society" PATH="$(cd "$(dirname "$0")" && pwd)/server:$PATH" exec bash -c "$cmd"

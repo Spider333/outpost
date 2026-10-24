@@ -270,8 +270,8 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 <div class="stats">
   <div class="stat">
     <p class="stat-k">What it costs</p>
-    <p class="stat-v">About $10 a day</p>
-    <p>About $0.41 an hour on DigitalOcean at October 2026 list prices: $0.25 for the server (8 vCPU, 32 GB RAM) and about $0.16 for its 1.2 TB disk. Billed by the hour until you run <code>./outpost destroy</code>. Hetzner is also supported; check its prices before you start.</p>
+    <p class="stat-v">$0.41/h, then $0.23/h</p>
+    <p>On DigitalOcean at October 2026 list prices: about $0.41 an hour during the first sync, $0.25 for the server (8 vCPU, 32 GB RAM) and about $0.16 for its 1.2 TB disk. Once synced, <code>./outpost shrink</code> moves the node to a server with 8 GB RAM at $0.06 an hour, so it costs about $0.23 an hour, or $5.50 a day. Billed by the hour until you run <code>./outpost destroy</code>. Hetzner is also supported; check its prices before you start.</p>
   </div>
   <div class="stat">
     <p class="stat-k">How long it takes</p>
@@ -391,13 +391,16 @@ cd outpost
 ./outpost node
 # then open http://127.0.0.1:8381
 ./outpost client</pre>
+<p>Once <code>./outpost status</code> says synced, cut the bill: the node no longer needs the big server.</p>
+<pre class="cmd"># move to a server with 8 GB RAM; a few minutes offline
+./outpost shrink</pre>
 <p>When you are done:</p>
 <pre class="cmd"># revoke the CLI's app key; a key added in the web client: "Revoke this key" there
 ./outpost uninstall
 # delete the server and stop paying
 ./outpost destroy</pre>
 <div class="tips">
-  <p class="muted">Every command is safe to run twice. <code>./outpost provision --dry-run</code> prints the exact provider commands without running them.</p>
+  <p class="muted">Every command is safe to run twice. <code>--dry-run</code> on <code>provision</code>, <code>shrink</code> and <code>destroy</code> prints the exact provider commands without running them.</p>
   <p class="muted">Just trying it? <code>./outpost provision --watchdog 24</code> deletes the server for you after 24 hours, or after 2 hours with no progress, so a forgotten server cannot keep billing you. It runs on your computer; <code>./outpost watchdog stop</code> keeps the server.</p>
 </div>
 <h3>With an AI coding assistant</h3>
@@ -447,20 +450,22 @@ cd outpost
 
 <section class="step" aria-labelledby="t-provision">
 <h3 class="step-h" id="t-provision"><span class="n">1</span>Rent a server</h3>
-<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a <a href="#g-snapshot">snapshot</a> of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it). It also asks for 32 GB of RAM: there are reports of nodes with 16 GB crashing.</p>
+<p>A node keeps a full copy of the network's data. On 18 October 2026 that was 557 GB once loaded, from a <a href="#g-snapshot">snapshot</a> of about 400 GB compressed. Outpost streams the snapshot straight into the database, so it never needs room for both at once, and asks for a 1.2 TB volume to leave room to grow (<code>--disk</code> to change it).</p>
 <p>On Hetzner it asks for 1 TB, because new Hetzner accounts can hold at most 1024 GB of volumes. Hetzner is not tested on a real server yet: our real runs used DigitalOcean, and the Hetzner commands have only run against a simulated Hetzner in our tests. We expect a full node to fit in 1 TB but have not measured it there.</p>
+<p>The server starts small: 2 vCPU and 8 GB RAM. Loading the snapshot needs 32 GB (there are reports of nodes with 16 GB crashing), so step 2 sizes the server up first, and once the node is synced <code>./outpost shrink</code> takes it back down. A synced node used about 3 GB of RAM on our server. Sizing up has run on a real DigitalOcean server; <code>./outpost shrink</code> has only run against a simulated DigitalOcean and Hetzner in our tests so far.</p>
 <pre class="cmd">./outpost provision --provider do
 # or: ./outpost provision --provider hetzner</pre>
 <p>Here is what it runs, shown with <code>--dry-run</code> (long lines and your home path shortened):</p>
-<p class="look">The first three lines give the price. Each line starting with <code>+</code> is one command sent to DigitalOcean.</p>
-<pre class="out">DigitalOcean: droplet outpost-node (s-8vcpu-32gb-amd) in fra1 with a 1200 GB volume.
+<p class="look">The first four lines give the sizes and the price. Each line starting with <code>+</code> is one command sent to DigitalOcean.</p>
+<pre class="out">DigitalOcean: droplet outpost-node in fra1 with a 1200 GB volume. It starts small (s-2vcpu-8gb-amd);
+./outpost node sizes it up to s-8vcpu-32gb-amd for the first sync, and ./outpost shrink takes it back down.
 Billed by the hour while it exists: the volume about $0.16/h, plus the droplet
-(s-8vcpu-32gb-amd is $0.25/h). October 2026 list prices; check yours.
+(s-2vcpu-8gb-amd is $0.06/h, s-8vcpu-32gb-amd $0.25/h). October 2026 list prices; check yours.
 + doctl compute ssh-key import outpost-node-key --public-key-file /home/you/.ssh/id_ed25519.pub
 + doctl compute volume create outpost-node-data --region fra1 --size 1200GiB --fs-type ext4 --desc outpost\ snapchain\ data
 + doctl compute tag create outpost-node
 + doctl compute firewall create --name outpost-node-fw --tag-names outpost-node --inbound-rules protocol:tcp\,ports:22\,... protocol:udp\,ports:3382\,...
-+ doctl compute droplet create outpost-node --region fra1 --size s-8vcpu-32gb-amd --image ubuntu-24-04-x64 --ssh-keys f8:bd:...:0a --user-data-file /tmp/tmp.6oiXwl8gsl --volumes \&lt;volume-id\&gt; --tag-name outpost-node --wait</pre>
++ doctl compute droplet create outpost-node --region fra1 --size s-2vcpu-8gb-amd --image ubuntu-24-04-x64 --ssh-keys 76:f4:...:1d --user-data-file /tmp/tmp.gdpv5XZPkm --volumes \&lt;volume-id\&gt; --tag-name outpost-node --wait</pre>
 <p>The firewall opens two ports: 22 for SSH and 3382/udp for <a href="#g-gossip">gossip</a>, which is how your node talks to the rest of the network. The node's API ports stay closed. Your client reaches them through an <a href="#g-tunnel">SSH tunnel</a>. This matters: by default, a node with an open API port lets anyone on the internet send messages through it.</p>
 <p>Already have a server? Skip this step and run <code>OUTPOST_HOST=&lt;ip&gt; ./outpost node</code>. It needs Ubuntu 24.04, root SSH and the disk above.</p>
 </section>
@@ -472,6 +477,17 @@ Billed by the hour while it exists: the volume about $0.16/h, plus the droplet
 <p>Read nodes also take writes. When your client sends a message, your node checks it, then passes it to validators over gossip. "Accepted" means accepted for relay, not yet in a block, so Outpost reads every message back from your node before it says "confirmed".</p>
 </div>
 <pre class="cmd">./outpost node</pre>
+<p>On a server from step 1, it first sizes the server up for loading the snapshot. From a real run on 21 October 2026 (tables shortened):</p>
+<pre class="out">shutting down outpost-shrink-test to move it from s-2vcpu-8gb-amd to s-8vcpu-32gb-amd; it starts again by itself in a few minutes
+3486212175    completed    shutdown    2026-10-21 10:02:44 +0000 UTC    2026-10-21 10:02:48 +0000 UTC
+3486212624    completed    resize      2026-10-21 10:02:58 +0000 UTC    2026-10-21 10:03:12 +0000 UTC
+3486213212    completed    power_on    2026-10-21 10:03:16 +0000 UTC    2026-10-21 10:03:26 +0000 UTC
+waiting for the server to accept SSH and finish first boot...
+server ready: 201.79.0.30
+setting up the read node on 201.79.0.30
+[node-setup] data directory: /mnt/outpost_shrink_test_data (1131 GB free)
+[node-setup] fetching compose file for snapchain v0.14.3
+[node-setup] loading the snapshot in the background: 8 downloads at a time, streamed into the database.</pre>
 <details class="out-fold">
 <summary>The line that matters: <code>synced: every shard is within 0 blocks of the tip</code>. Show the full output</summary>
 <pre class="out">setting up the read node on 142.93.168.228
