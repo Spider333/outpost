@@ -342,6 +342,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li><strong>Every message is checked.</strong> Before showing a message, the client checks its hash and signature, and that the key that signed it belongs to the author. What it shows is rebuilt from the signed bytes, so a node cannot alter a message or slip anything into it unnoticed.</li>
   <li><strong>One node for a whole society.</strong> Members of a society can share one node. Each gets their own access token and rate limit, and their app keys stay in their own browsers.</li>
   <li><strong>Societies as signed files.</strong> A <a href="#g-charter">charter</a> lists a society's members, which apps and channels count, and its code of conduct. Load one to read the society's feed. Leaving is one tap, and a census of its activity is computed on your node.</li>
+  <li><strong>Societies that change by vote.</strong> Members add or remove members by liking a proposal, in any Farcaster app. It passes when more than half of them have liked it, and anyone can recount it from their own node (<a href="#t-society">step 7</a>).</li>
 </ul>
 </section>
 
@@ -355,6 +356,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
   <li><strong>Accounts made in the Farcaster app cannot post yet.</strong> The app keeps their custody key. Its own "approve a connected app" flow would add a key with full access and no expiry that Outpost could not revoke; supporting it, clearly labelled, is next. Reading needs no account. To post today, use an account whose custody key is in your own wallet, or create one on a society node (below).</li>
   <li><strong>No account? A society can pay for one.</strong> With <code>./outpost sponsor on</code>, a society node's members create a Farcaster account in the client in about a minute: their browser makes the key and the society pays the $0.20 fee, so they need no ETH, invite code or X account. Without a sponsor, Outpost creates no accounts.</li>
   <li><strong>Not built yet:</strong> direct messages, channel pages, notifications, image upload and mentions. Direct messages and channel membership are not part of the protocol: they live on the Farcaster app's servers, which a client that reads only from your node does not use. A <a href="#g-charter">charter</a> can limit a feed to channels.</li>
+  <li><strong>Society votes have not run on mainnet yet.</strong> They are tested against a local test node and in a real browser, not yet with real accounts. Votes are public, and members who stay silent count as "no".</li>
   <li><strong>The server costs money while it exists.</strong> About $10 a day on DigitalOcean, whether or not you use the client. For a server Outpost rented, <code>./outpost destroy</code> stops the bill, and <code>--watchdog</code> deletes it for you while the watchdog runs on your computer. A server you brought yourself you stop or delete at its provider.</li>
 </ul>
 </section>
@@ -680,6 +682,11 @@ active 23
 casts 1071
 casts_per_day 153.0</pre>
 <p>A charter is a lens, not a wall. It changes what you see and whom you follow. It cannot stop anyone posting, and it hides nothing from anyone else.</p>
+<p>Members change the charter by vote. A member posts a proposal, such as adding someone, and the others approve it by liking it, in any Farcaster app. It passes when more than half of the members have liked it; leaving needs only your own like. There are no deadlines, because Farcaster timestamps are set by the author and could be backdated. Each passed change is kept in the charter file with the signed likes, so anyone can recount it from their own node:</p>
+<pre class="cmd">./outpost cli charter propose society.log.json --add dwr
+./outpost cli charter proposals society.log.json
+./outpost cli charter verify society.log.json</pre>
+<p>In the client, the Society panel shows open proposals, how many members approved each, and buttons to approve, propose, and recount. This has not run on mainnet yet (see <a href="#gaps">Known gaps</a>).</p>
 </section>
 
 <section class="step" aria-labelledby="t-share">

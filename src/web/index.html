@@ -177,6 +177,39 @@
           </dl>
           <p class="muted small">Anyone with a node and this file gets the same numbers. Active means posted at least once in the window.</p>
         </div>
+        <div id="ch-votes">
+          <h3>Votes</h3>
+          <p class="muted small">Members change this charter by liking a proposal, in any Farcaster app. It passes when more than half of the members have liked it; leaving needs only your own like. There are no deadlines. Each passed change is kept with the signed likes, so anyone can recount it from their own node.</p>
+          <p id="v-version" class="small"></p>
+          <p id="v-alert" class="small" role="status" hidden></p>
+          <ul id="v-open" class="proposals"></ul>
+          <div class="row wrap">
+            <button id="v-check" type="button">Check votes</button>
+            <button id="v-recount" type="button">Recount from my node</button>
+            <button id="v-download" type="button">Download log</button>
+          </div>
+          <ol id="v-history" class="history small" start="0"></ol>
+          <details id="v-propose" hidden>
+            <summary>Propose a change</summary>
+            <form id="v-propose-form">
+              <label for="v-who">Who</label>
+              <div class="inline wrap">
+                <label for="v-op" class="sr-only">Change</label>
+                <select id="v-op">
+                  <option value="+ member">Add member</option>
+                  <option value="- member">Remove member</option>
+                  <option value="+ moderator">Add moderator</option>
+                  <option value="- moderator">Remove moderator</option>
+                </select>
+                <input id="v-who" placeholder="username or FID" autocomplete="off">
+                <button id="v-add" type="button">Add to proposal</button>
+              </div>
+              <ul id="v-changes" class="changes"></ul>
+              <p class="muted small">Up to 10 changes. Posting casts the proposal from your account and likes it, which counts as your approval.</p>
+              <button id="v-post" class="primary" type="submit" disabled>Post proposal</button>
+            </form>
+          </details>
+        </div>
         </div>
       </div>
     </section>

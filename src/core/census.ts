@@ -31,31 +31,38 @@ export function appKey(a: AppRef): string {
   return a.kind === "app" ? `app:${a.requestFid}` : a.kind;
 }
 
+// A member's casts dated from `from` to `to` (Unix ms), newest first, and the time of their
+// newest cast of any age.
+export async function recentCasts(hub: Hub, fid: number, from: number, to: number): Promise<{ recent: HubMessage[]; lastCast?: number }> {
+  const cutoff = Math.floor((from - FARCASTER_EPOCH_MS) / 1000); // Farcaster seconds
+  const recent: HubMessage[] = [];
+  let lastCast: number | undefined;
+  let pageToken: string | undefined;
+  for (;;) {
+    const page = await hub.castsByFid(fid, { reverse: true, pageSize: 100, pageToken });
+    for (const m of page.items) {
+      const t = FARCASTER_EPOCH_MS + m.data.timestamp * 1000;
+      // Mainnet has a few old casts dated decades ahead; they are not "recent".
+      if (!m.data.castAddBody || t > to) continue;
+      lastCast ??= t;
+      if (m.data.timestamp >= cutoff) recent.push(m);
+    }
+    const oldest = page.items.at(-1)?.data.timestamp;
+    if (!page.nextPageToken || oldest === undefined || oldest < cutoff) break;
+    pageToken = page.nextPageToken;
+  }
+  return { recent, lastCast };
+}
+
 export async function census(hub: Hub, c: CharterBody, opts: { days?: number; now?: number; concurrency?: number } = {}): Promise<Census> {
   const days = opts.days ?? 7;
   const to = opts.now ?? Date.now();
   const from = to - days * 86_400_000;
-  const cutoff = Math.floor((from - FARCASTER_EPOCH_MS) / 1000); // Farcaster seconds
   const apps = new AppResolver(hub);
   const members = [...new Set(c.members)];
 
   const per = await mapLimit(members, opts.concurrency ?? 16, async (fid) => {
-    const recent: HubMessage[] = [];
-    let lastCast: number | undefined;
-    let pageToken: string | undefined;
-    for (;;) {
-      const page = await hub.castsByFid(fid, { reverse: true, pageSize: 100, pageToken });
-      for (const m of page.items) {
-        const t = FARCASTER_EPOCH_MS + m.data.timestamp * 1000;
-        // Mainnet has a few old casts dated decades ahead; they are not "recent".
-        if (!m.data.castAddBody || t > to) continue;
-        lastCast ??= t;
-        if (m.data.timestamp >= cutoff) recent.push(m);
-      }
-      const oldest = page.items.at(-1)?.data.timestamp;
-      if (!page.nextPageToken || oldest === undefined || oldest < cutoff) break;
-      pageToken = page.nextPageToken;
-    }
+    const { recent, lastCast } = await recentCasts(hub, fid, from, to);
     // Casts signed with a forged key, or (unless asked) a key that could not be checked, are not counted.
     const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer))).filter((r) => hub.verifier?.admits(r.keyCheck) ?? true);
     return { stats: { fid, casts: refs.length, lastCast }, refs };

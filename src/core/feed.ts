@@ -29,7 +29,7 @@ export interface FeedItem {
 
 // Nodes keep a few old casts dated far in the future (e.g. 2061 on mainnet). Left in, they
 // would sit at the top of every feed. Allow ten minutes of clock skew, as hubs do.
-const MAX_SKEW_MS = 10 * 60_000;
+export const MAX_SKEW_MS = 10 * 60_000;
 export function notFuture(m: HubMessage, now = Date.now()): boolean {
   return FARCASTER_EPOCH_MS + m.data.timestamp * 1000 <= now + MAX_SKEW_MS;
 }

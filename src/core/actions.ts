@@ -27,6 +27,9 @@ export interface CastInput {
   embeds?: string[]; // URLs, up to 4
   replyTo?: CastTarget;
   channelUrl?: string; // parent URL of a channel, e.g. "https://farcaster.xyz/~/channel/dev"
+  // FIDs shown as @name at these byte offsets of `text` (up to 10). Apps insert the name there.
+  mentions?: number[];
+  mentionsPositions?: number[];
 }
 
 function opts(key: AppKey, now?: number) {
@@ -35,22 +38,29 @@ function opts(key: AppKey, now?: number) {
 
 // Byte length limit for a normal account. Pro accounts can post 10,000 bytes.
 export const MAX_CAST_BYTES = 1024;
+// Above this the cast must be typed LONG_CAST, or the node rejects it (snapchain validations/cast.rs).
+export const SHORT_CAST_BYTES = 320;
 
 export async function buildCast(key: AppKey, input: CastInput, now?: number): Promise<Message> {
-  const text = input.text.trim();
+  // Mention offsets point into the text as given, so it is only trimmed when there are none.
+  const text = input.mentions?.length ? input.text : input.text.trim();
+  const bytes = new TextEncoder().encode(text).length;
   if (!text && !input.embeds?.length) throw new Error("a cast needs text or an embed");
-  if (new TextEncoder().encode(text).length > MAX_CAST_BYTES) throw new Error(`cast is longer than ${MAX_CAST_BYTES} bytes`);
+  if (bytes > MAX_CAST_BYTES) throw new Error(`cast is longer than ${MAX_CAST_BYTES} bytes`);
   if ((input.embeds?.length ?? 0) > 4) throw new Error("at most 4 embeds");
   if (input.replyTo && input.channelUrl) throw new Error("a cast is either a reply or a channel post, not both");
+  const mentions = input.mentions ?? [];
+  const mentionsPositions = input.mentionsPositions ?? [];
+  if (mentions.length > 10 || mentions.length !== mentionsPositions.length) throw new Error("at most 10 mentions, each with one position");
   return unwrap(
     await makeCastAdd(
       {
         text,
-        type: CastType.CAST,
+        type: bytes > SHORT_CAST_BYTES ? CastType.LONG_CAST : CastType.CAST,
         embeds: (input.embeds ?? []).map((url) => ({ url })),
         embedsDeprecated: [],
-        mentions: [],
-        mentionsPositions: [],
+        mentions,
+        mentionsPositions,
         parentCastId: input.replyTo ? { fid: input.replyTo.fid, hash: hexToBytes(input.replyTo.hash) } : undefined,
         parentUrl: input.channelUrl,
       },

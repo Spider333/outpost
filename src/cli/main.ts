@@ -81,10 +81,18 @@ const USAGE = `usage: ./outpost cli <command> [options]
                                  comma list of app FIDs, "self" or "unknown"
   charter new <file>             start a charter file
   charter sign <in> <out>        sign it with the society's key ($CHARTER_PRIVATE_KEY or phrase)
-  charter verify <file|url>      check the signature and the issuer's custody on your node
+  charter verify <file|url>      check the signature and the issuer's custody on your node;
+                                 for a charter log, recount every amendment from your node
   charter census <file|url> [days]   members, active members, casts per day, app mix
   charter feed <file|url>        the society's feed through its lens
   charter join <file|url>        follow its members with your app key
+  charter proposals <log> [days] society votes: add every amendment that has passed to the
+                                 log file, list open proposals and their approvals
+  charter propose <log> --add <user|fid> [--remove ..] [--add-mod ..] [--remove-mod ..]
+                                 post a proposal and approve it. Members approve by liking it,
+                                 in any app; it passes when more than half of them have
+  charter announce <log>         reply under the last passed proposal with the result
+  charter import <theirs> <log>  take a member's newer log, if it extends yours and recounts
   uninstall                      revoke the app key (no phrase needed) and delete it
   selftest                       sign every message type with throwaway keys and
                                  ask the node to validate them (sends nothing)
@@ -100,6 +108,8 @@ options:
   --show-unverified   also show casts whose signing key could not be checked (marked); by
                       default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
+  --trust-unrecountable  use a charter log even if a version's majority rests on approvals
+                      whose keys cannot be checked now (revoked since, or listed by no node)
 
 Every message read from the node is verified here (hash, signature, account) before use.
 `;
@@ -333,6 +343,11 @@ async function main(argv: string[]) {
       include: { type: "string" },
       exclude: { type: "string" },
       limit: { type: "string" },
+      add: { type: "string", multiple: true },
+      remove: { type: "string", multiple: true },
+      "add-mod": { type: "string", multiple: true },
+      "remove-mod": { type: "string", multiple: true },
+      "trust-unrecountable": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -362,7 +377,7 @@ async function main(argv: string[]) {
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
-    charter: () => cmdCharter(hub, args, requireKey, chain),
+    charter: () => cmdCharter(hub, args, requireKey, chain, values),
     cast: async () => {
       const text = args.join(" ");
       report(

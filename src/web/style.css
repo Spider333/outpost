@@ -176,3 +176,24 @@ h3 { font-size: 15px; margin: 16px 0 4px; }
 .verdict-ok { color: var(--ok); }
 .verdict-bad { color: var(--bad); }
 input[type="file"] { min-height: 0; padding: 8px; }
+
+.inline.wrap { flex-wrap: wrap; }
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 44px;
+}
+.proposals { list-style: none; margin: 8px 0; padding: 0; }
+.proposal { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+.changes { margin: 6px 0; padding-left: 20px; }
+.changes button { min-height: 32px; padding: 2px 8px; font-size: 13px; margin-left: 6px; }
+.tally { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.tally progress { width: 8em; accent-color: var(--ok); }
+.history { padding-left: 24px; }
+.history li { margin: 6px 0; }
+.warn-text { color: var(--warn); }
+.bad-text { color: var(--bad); }
