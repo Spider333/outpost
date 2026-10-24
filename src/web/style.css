@@ -356,3 +356,4 @@ footer a { color: var(--muted); }
 .cast-actions:empty { display: none; }
 .feed-tools:has(.chips:empty) + details.why { display: none; }
 #node-settings > summary { margin: 0; }
+.facts dt:has(+ dd:empty), .facts dd:empty { display: none; }

@@ -681,7 +681,7 @@ async function loadFeed(fid?: number) {
   }
   renderFeed();
   showVerification();
-  say(`Loaded ${items.length} casts in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+  say(`Loaded ${items.length} cast${items.length === 1 ? "" : "s"} in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
 }
 
 function showPicturesNote() {
