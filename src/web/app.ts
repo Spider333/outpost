@@ -252,7 +252,7 @@ function showVerification() {
   el.replaceChildren(verifier.summary());
   if (verifier.failed) el.append(" (A failed check can rarely come from an honest node, when the app that posted the message encoded it unusually.)");
   if (verifier.unverified && !verifier.showUnverified) {
-    el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading...", showUnverified) }, "Show them anyway"));
+    el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading…", showUnverified) }, "Show them anyway"));
   }
   el.classList.toggle("bad", verifier.failed > 0);
   el.classList.toggle("warn", !verifier.failed && verifier.unverified > 0);
@@ -344,7 +344,7 @@ function showConnectStep(step: "choose" | "phrase" | "confirm") {
 }
 
 async function prepare(custody: Custody) {
-  say("Looking up the account on your node...");
+  say("Looking up the account on your node…");
   const account = await resolveAccount(hub, custody.address);
   if (account.storageUnits === 0) throw new Error(`FID ${account.fid} has no storage, so the network would reject its casts.`);
   pendingCustody = custody;
@@ -358,7 +358,7 @@ async function prepare(custody: Custody) {
 
 function wireConnect() {
   $("use-wallet").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
       const eth = (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
       if (!eth) throw new Error("No browser wallet found. Install one, or use a test account's phrase.");
       await prepare(await custodyFromWallet(eth));
@@ -371,7 +371,7 @@ function wireConnect() {
   const isTest = $<HTMLInputElement>("is-test");
   isTest.addEventListener("change", () => ($<HTMLButtonElement>("phrase-go").disabled = !isTest.checked));
   $("phrase-go").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Checking...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Checking…", async () => {
       const input = $<HTMLInputElement>("phrase");
       const phrase = input.value;
       input.value = ""; // clear the field right away; the phrase is kept nowhere else
@@ -385,7 +385,7 @@ function wireConnect() {
     say("");
   });
   $("authorize").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Signing and waiting for the node…", async () => {
       if (!pendingCustody || !pendingAccount) return;
       const { key: k, confirmed } = await addAppKey(hub, { fid: pendingAccount.fid, custody: pendingCustody.signer, network }, { timeoutMs: 60_000 }, (added) => {
         store(KEY_STORAGE, added); // saved as soon as the node accepts it, so a slow merge cannot lose it
@@ -414,7 +414,7 @@ async function renderAccount() {
   }
   $("k-fid").textContent = String(key.fid);
   $("k-pub").textContent = key.publicKey;
-  $("k-status").textContent = "checking...";
+  $("k-status").textContent = "checking…";
   try {
     const s = await hub.signer(key.fid, key.publicKey);
     $("k-status").textContent = s
@@ -428,7 +428,7 @@ async function renderAccount() {
 
 function wireKey() {
   $("revoke").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Revoking...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Revoking…", async () => {
       if (!key) return;
       if (!confirm("Revoke this app key? This client will no longer be able to post for you.")) return;
       // Same rule as `./outpost cli uninstall`: the stored key is the only way to revoke it without
@@ -466,7 +466,7 @@ function wireCompose() {
   const text = $<HTMLTextAreaElement>("text");
   text.addEventListener("input", () => ($("count").textContent = `${new TextEncoder().encode(text.value).length} / 1024`));
   $("post").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Posting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Posting…", async () => {
       if (!key) return;
       const r = await cast(hub, key, { text: text.value, replyTo });
       text.value = "";
@@ -535,7 +535,7 @@ function renderChips() {
 function actionButton(label: string, pressed: boolean, onToggle: (now: boolean) => Promise<void>) {
   const btn = h("button", { type: "button", "aria-pressed": String(pressed) }, label);
   btn.addEventListener("click", () =>
-    busy(btn, "...", async () => {
+    busy(btn, "…", async () => {
       const now = btn.getAttribute("aria-pressed") !== "true";
       await onToggle(now);
       btn.setAttribute("aria-pressed", String(now));
@@ -669,10 +669,10 @@ async function loadFeed(fid?: number) {
   list.setAttribute("aria-busy", "true");
   try {
     if (charter) {
-      say(`Loading the "${charter.name}" society feed from your node...`);
+      say(`Loading the "${charter.name}" society feed from your node…`);
       items = await charterFeed(feed, charter, { limit: 100, perAuthor });
     } else {
-      say(`Loading the feed for FID ${viewFid} from your node...`);
+      say(`Loading the feed for FID ${viewFid} from your node…`);
       items = await feed.following(viewFid!, { limit: 100, perAuthor });
     }
     appNames = await feed.appNames(items);
@@ -710,7 +710,7 @@ function wireFeed() {
     });
   });
   $("more").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Loading...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Loading…", async () => {
       perAuthor *= 2;
       await loadFeed();
     }),
@@ -840,7 +840,7 @@ function versionItem(ver: Version, i: number): HTMLLIElement {
         )
       : null,
     i === versions.length - 1 && key && charter?.members.includes(key.fid)
-      ? h("span", {}, " ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Posting...", () => announceResult(a.proposal.id, n, a.members)) }, "Post the result under the proposal"))
+      ? h("span", {}, " ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Posting…", () => announceResult(a.proposal.id, n, a.members)) }, "Post the result under the proposal"))
       : null,
   );
 }
@@ -876,7 +876,7 @@ function proposalItem(t: Tally): HTMLLIElement {
               type: "button",
               class: "primary",
               onclick: (e: Event) =>
-                busy(e.currentTarget as HTMLButtonElement, "Approving...", async () => {
+                busy(e.currentTarget as HTMLButtonElement, "Approving…", async () => {
                   await react(hub, key!, "like", p.id);
                   await checkVotes(null);
                 }),
@@ -911,7 +911,7 @@ async function renderVotes(st?: Status) {
 
 // Reads proposals and likes from your node, and adds every amendment that has passed.
 async function checkVotes(btn: HTMLButtonElement | null) {
-  await busy(btn, "Checking...", async () => {
+  await busy(btn, "Checking…", async () => {
     if (!societyLog) return;
     const st = await advance(hub, societyLog, { cache: approvals });
     if (st.passed.length) {
@@ -956,7 +956,7 @@ function renderDraft() {
 function wireVotes() {
   $("v-check").addEventListener("click", (e) => checkVotes(e.currentTarget as HTMLButtonElement));
   $("v-recount").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Recounting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Recounting…", async () => {
       if (!societyLog) return;
       const r = await replay(societyLog, verifier);
       if (r.problems.length) throw new Error(`Recount failed at ${r.problems.join("; ")}`);
@@ -979,7 +979,7 @@ function wireVotes() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   });
   $("v-add").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Looking up...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Looking up…", async () => {
       const input = $<HTMLInputElement>("v-who");
       const who = input.value.trim();
       const fid = /^\d+$/.test(who) ? Number(who) : await hub.fidByUsername(who);
@@ -993,7 +993,7 @@ function wireVotes() {
   );
   $("v-propose-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    void busy($<HTMLButtonElement>("v-post"), "Posting...", async () => {
+    void busy($<HTMLButtonElement>("v-post"), "Posting…", async () => {
       if (!key || !charter || !draft.length) return;
       const changes = draft.map(({ op, role, fid }) => ({ op, role, fid }));
       const r = await propose(hub, key, { head: versions.at(-1)!.head, body: charter }, changes);
@@ -1050,14 +1050,14 @@ function wireCharter() {
     }),
   );
   $("ch-join").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Following...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Following…", async () => {
       if (!key || !charter) return;
       const k = key;
       const todo = charter.members.filter((m) => m !== k.fid && !myFollowing.has(m));
       let n = 0;
       let unconfirmed = 0;
       for (const m of todo) {
-        say(`Following member ${++n} of ${todo.length} (FID ${m})...`);
+        say(`Following member ${++n} of ${todo.length} (FID ${m})…`);
         const r = await follow(hub, k, m, { timeoutMs: 15_000 });
         if (r.confirmed) myFollowing.add(m);
         else unconfirmed++;
@@ -1070,7 +1070,7 @@ function wireCharter() {
     }),
   );
   $("ch-census-btn").addEventListener("click", (e) =>
-    busy(e.currentTarget as HTMLButtonElement, "Counting...", async () => {
+    busy(e.currentTarget as HTMLButtonElement, "Counting…", async () => {
       if (!charter) return;
       const c = await census(hub, charter, { days: 7 });
       const names = await feed.appNames(items);
