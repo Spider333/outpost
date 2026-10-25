@@ -275,9 +275,10 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
   not allow. Run it over your own node's SSH tunnel.
 - Outpost prints DigitalOcean prices only. On Hetzner it asks for a 1 TB volume, because new
   Hetzner accounts can hold at most 1024 GB of volumes.
-- Sizing up was tested on a real DigitalOcean server (21 October 2026, about a minute offline).
-  `./outpost shrink` has only run against the simulated DigitalOcean and Hetzner in our tests,
-  and no synced node has run on 8 GB for long yet. On Hetzner, sizing up is untested too.
+- Sizing up and `./outpost shrink` were tested on a real DigitalOcean server (21 and 25 October
+  2026). The shrink took about 2 minutes with the node offline for about 1.5; afterwards the
+  synced node ran 4 hours on 8 GB with no restarts or memory kills, peaking at 1.4 GB used.
+  On Hetzner, sizing up and shrinking have only run against a simulated Hetzner in our tests.
 - A server made by an older Outpost (before 21 October 2026) started at full size, so its disk
   is too big for the small plan and it cannot shrink. To run small, make a new one.
 - The node costs money for as long as it exists, whether or not you use the client.
