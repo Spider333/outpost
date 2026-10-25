@@ -491,6 +491,8 @@ cmd_node() {
   host="$(node_host)"
   # Made small by provision: size it up for the snapshot load first (see "server size").
   if [ -z "${OUTPOST_HOST:-}" ] && [ -n "$(state_get SMALL_SIZE)" ] && [ "$(state_get SHRUNK)" != 1 ]; then
+    # After provision --no-wait the first boot may still run; a shutdown now would cut it short.
+    wait_for_ssh
     resize_server "$(state_get SYNC_SIZE)" || exit 1
   fi
   say "setting up the read node on $host"
@@ -1170,7 +1172,7 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
