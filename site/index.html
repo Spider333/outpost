@@ -508,7 +508,7 @@ Check later with ./outpost status.
 next: ./outpost client</pre>
 </details>
 <p class="muted">This is a second run on our already synced node, so it found the node running and returned at once. On a new server the last lines show download and loading progress until the node is synced.</p>
-<p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.14.3, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
+<p>This runs the official <code>farcasterxyz/snapchain</code> Docker image, pinned to version 0.15.0, with the official compose file. Outpost does not use the official installer script, because it reads from <code>/dev/tty</code> and so fails without a terminal, and because with no operator FID it exits before starting the node (<a href="https://github.com/farcasterxyz/snapchain/issues/1030">issue #1030</a>).</p>
 <p>Our test server was a DigitalOcean one with 8 vCPU, 32 GB RAM and a 1.2 TB volume, on 18 to 19 October 2026: loading took 1 hour 43 minutes and catching up 4 hours 11 minutes. Our first outside tester, on 22 October 2026, went from start to synced in 7 hours 33 minutes. Snapchain's own loader took 6 hours 40 minutes to load on the same kind of server. Catching up takes longer the older the snapshot is. <code>./outpost status</code> shows where it is:</p>
 <pre class="out">node: loading snapshot: shard 1: 200 of 2672 chunks loaded, 20 GB on disk</pre>
 <p>Once it has caught up:</p>
@@ -801,7 +801,7 @@ keys added in the web client are revoked from its 'Your app key' panel.</pre>
   <dt id="g-shard">Shard</dt>
   <dd>Snapchain splits its data into shards, each with its own chain of blocks. A node is synced when every shard is at or near the tip.</dd>
   <dt id="g-snapchain">Snapchain</dt>
-  <dd>The network of nodes that stores Farcaster's data, and the program those nodes run. Outpost runs its official Docker image, version 0.14.3.</dd>
+  <dd>The network of nodes that stores Farcaster's data, and the program those nodes run. Outpost runs its official Docker image, version 0.15.0.</dd>
   <dt id="g-snapshot">Snapshot</dt>
   <dd>A compressed copy of the network's data. A new node loads it first, then catches up on the blocks since. On 18 October 2026 it was about 400 GB compressed and 557 GB once loaded.</dd>
   <dt id="g-tunnel">SSH tunnel</dt>

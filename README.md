@@ -101,7 +101,7 @@ flowchart LR
   progress for 2 hours (`--stall-hours`) once it has started. It runs on your computer, because
   deleting needs your provider login, which never goes to the server. If the computer sleeps,
   it acts when it wakes. `./outpost watchdog stop` keeps the server; `./outpost status` shows it.
-- **node** runs the official `farcasterxyz/snapchain` image, pinned to 0.14.3, as a read node.
+- **node** runs the official `farcasterxyz/snapchain` image, pinned to 0.15.0, as a read node.
   The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone submit
   messages through it. It does not use the official installer, which needs a terminal and can
   stop before starting the node (snapchain issue #1030).
