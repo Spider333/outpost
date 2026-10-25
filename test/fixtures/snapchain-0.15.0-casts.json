@@ -1,0 +1,123 @@
+{
+  "source": "tenK*: GET https://snap.farcaster.xyz:3381/v1/events (Farcaster public read node, Snapchain 0.15.0), shards 1 and 2, blocks after the V21/V22 activation of 2026-10-23 12:00 UTC, fetched 2026-10-25. Public mainnet messages, unmodified. No mainnet cast with formatVersion or chain existed yet (all 6171 casts in those blocks scanned). chainPart: Snapchain's own conformance vector tests/conformance/corpus/v1/messages/cast_add_chain_part.pb at tag v0.15.0 (devnet test key), written as Snapchain 0.15.0's HTTP API returns it (src/network/http_server.rs, site/docs/pages/reference/httpapi/casts.md).",
+  "messages": {
+    "tenK": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 1231120,
+        "timestamp": 183361562,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": null,
+          "text": "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec pede justo, fringilla vel, aliquet nec, vulputate eget, arcu. In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus. Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in, viverra quis, feugiat a, tellus. Phasellus viverra nulla ut metus varius laoreet. Quisque rutrum. Aenean imperdiet. Etiam ultricies nisi vel augue. Curabitur ullamcorper ultricies nisi. Nam eget dui. Etiam rhoncus. Maecenas tempus, tellus eget condimentum rhoncus, sem quam semper libero, sit amet adipiscing sem neque sed ipsum. Nam quam nunc, blandit vel, luctus pulvinar, hendrerit id, lorem. Maecenas nec odio et ante tincidunt tempus. Donec vitae sapien ut libero venenatis faucibus. Nullam quis ante. Etiam sit amet orci eget eros faucibus tincidunt. Duis leo. Sed fringilla mauris sit amet nibh. Donec sodales sagittis magna. Sed consequat, leo eget bibendum sodales, augue velit cursus nunc, quis gravida magna mi a libero. Fusce vulputate eleifend sapien. Vestibulum purus quam, scelerisque ut, mollis sed, nonummy id, metus. Nullam accumsan lorem in dui. Cras ultricies mi eu turpis hendrerit fringilla. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; In ac dui quis mi consectetuer lacinia. Nam pretium turpis et arcu. Duis arcu tortor, suscipit eget, imperdiet nec, imperdiet iaculis, ipsum. Sed aliquam ultrices mauris. Integer ante arcu, accumsan a, consectetuer eget, posuere ut, mauris. Praesent adipiscing. Phasellus ullamcorper ipsum rutrum nunc. Nunc nonummy metus. Vestibulum volutpat pretium libero. Cras id dui. Aenean ut eros et nisl sagittis vestibulum. Nullam nulla eros, ultricies sit amet, nonummy id, imperdiet feugiat, pede. Sed lectus. Donec mollis hendrerit risus. Phasellus nec sem in justo pellentesque facilisis. Etiam imperdiet imperdiet orci. Nunc nec neque. Phasellus leo dolor, tempus non, auctor et, hendrerit quis, nisi. Curabitur ligula sapien, tincidunt non, euismod vitae, posuere imperdiet, leo. Maecenas malesuada. Praesent congue erat at massa. Sed cursus turpis vitae tortor. Donec posuere vulputate arcu. Phasellus accumsan cursus velit. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Sed aliquam, nisi quis porttitor congue, elit erat euismod orci, ac placerat dolor lectus quis orci. Phasellus consectetuer vestibulum elit. Aenean tellus metus, bibendum sed, posuere ac, mattis non, nunc. Vestibulum fringilla pede sit amet augue. In turpis. Pellentesque posuere. Praesent turpis. Aenean posuere, tortor sed cursus feugiat, nunc augue blandit nunc, eu sollicitudin urna dolor sagittis lacus. Donec elit libero, sodales nec, volutpat a, suscipit non, turpis. Nullam sagittis. Suspendisse pulvinar, augue ac venenatis condimentum, sem libero volutpat nibh, nec pellentesque velit pede quis nunc. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Fusce id purus. Ut varius tincidunt libero. Phasellus dolor. Maecenas vestibulum mollis diam. Pellentesque ut neque. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. In dui magna, posuere eget, vestibulum et, tempor auctor, justo. In ac felis quis tortor malesuada pretium. Pellentesque auctor neque nec urna. Proin sapien ipsum, porta a, auctor quis, euismod ut, mi. Aenean viverra rhoncus pede. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Ut non enim eleifend felis pretium feugiat. Vivamus quis mi. Phasellus a est. Phasellus magna. In hac habitasse platea dictumst. Curabitur at lacus ac velit ornare lobortis. Curabitur a felis in nunc fringilla tristique. Morbi mattis ullamcorper velit. Phasellus gravida semper nisi. Nullam vel sem. Pellentesque libero tortor, tincidunt et, tincidunt eget, semper nec, quam. Sed hendrerit. Morbi ac felis. Nunc egestas, augue at pellentesque laoreet, felis eros vehicula leo, at malesuada velit leo quis pede. Donec interdum, metus et hendrerit aliquet, dolor diam sagittis ligula, eget egestas libero turpis vel mi. Nunc nulla. Fusce risus nisl, viverra et, tempor et, pretium in, sapien. Donec venenatis vulputate lorem. Morbi nec metus. Phasellus blandit leo ut odio. Maecenas ullamcorper, dui et placerat feugiat, eros pede varius nisi, condimentum viverra felis nunc et lorem. Sed magna purus, fermentum eu, tincidunt eu, varius ut, felis. In auctor lobortis lacus. Quisque libero metus, condimentum nec, tempor a, commodo mollis, magna. Vestibulum ullamcorper mauris at ligula. Fusce fermentum. Nullam cursus lacinia erat. Praesent blandit laoreet nibh. Fusce convallis metus id felis luctus adipiscing. Pellentesque egestas, neque sit amet convallis pulvinar, justo nulla eleifend augue, ac auctor orci leo non est. Quisque id mi. Ut tincidunt tincidunt erat. Etiam feugiat lorem non metus. Vestibulum dapibus nunc ac augue. Curabitur vestibulum aliquam leo. Praesent egestas neque eu enim. In hac habitasse platea dictumst. Fusce a quam. Etiam ut purus mattis mauris sodales aliquam. Curabitur nisi. Quisque malesuada placerat nisl. Nam ipsum risus, rutrum vitae, vestibulum eu, molestie vel, lacus. Sed augue ipsum, egestas nec, vestibulum et, malesuada adipiscing, dui. Vestibulum facilisis, purus nec pulvinar iaculis, ligula mi congue nunc, vitae euismod ligula urna in dolor. Mauris sollicitudin fermentum libero. Praesent nonummy mi in odio. Nunc interdum lacus sit amet orci. Vestibulum rutrum, mi nec elementum vehicula, eros quam gravida nisl, id fringilla neque ante vel mi. Morbi mollis tellus ac sapien. Phasellus volutpat, metus eget egestas mollis, lacus lacus blandit dui, id egestas quam mauris ut lacus. Fusce vel dui. Sed in libero ut nibh placerat accumsan. Proin faucibus arcu quis ante. In consectetuer turpis ut velit. Nulla sit amet est. Praesent metus tellus, elementum eu, semper a, adipiscing nec, purus. Cras risus ipsum, faucibus ut, ullamcorper id, varius ac, leo. Suspendisse feugiat. Suspendisse enim turpis, dictum sed, iaculis a, condimentum nec, nisi. Praesent nec nisl a purus blandit viverra. Praesent ac massa at ligula laoreet iaculis. Nulla neque dolor, sagittis eget, iaculis quis, molestie non, velit. Mauris turpis nunc, blandit et, volutpat molestie, porta ut, ligula. Fusce pharetra convallis urna. Quisque ut nisi. Donec mi odio, faucibus at, scelerisque quis, convallis in, nisi. Suspendisse non nisl sit amet velit hendrerit rutrum. Ut leo. Ut a nisl id ante tempus hendrerit. Proin pretium, leo ac pellentesque mollis, felis nunc ultrices eros, sed gravida augue augue mollis justo. Suspendisse eu ligula. Nulla facilisi. Donec id justo. Praesent porttitor, nulla vitae posuere iaculis, arcu nisl dignissim dolor, a pretium mi sem ut ipsum. Curabitur suscipit suscipit tellus. Praesent vestibulum dapibus nibh. Etiam iaculis nunc ac metus. Ut id nisl quis enim dignissim sagittis. Etiam sollicitudin, ipsum eu pulvinar rutrum, tellus ipsum laoreet sapien, quis venenatis ante odio sit amet eros. Proin magna. Duis vel nibh at velit scelerisque suscipit. Curabitur turpis. Vestibulum suscipit nulla quis orci. Fusce ac felis sit amet ligula pharetra condimentum. Maecenas egestas arcu quis ligula mattis placerat. Duis lobortis massa imperdiet quam. Suspendisse potenti. Pellentesque commodo eros a enim. Vestibulum turpis sem, aliquet eget, lobortis pellentesque, rutrum eu, nisl. Sed libero. Aliquam erat volutpat. Etiam vitae tortor. Morbi vestibulum volutpat enim. Aliquam eu nunc. Nunc sed turpis. Sed mollis, eros et ultrices tempus, mauris ipsum aliquam libero, non adipiscing dolor urna a orci. Nulla porta dolor. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos hymenaeos. Pellentesque dapibus hendrerit tortor. Praesent egestas tristique nibh. Sed a libero. Cras varius. Donec vitae orci sed dolor rutrum auctor. Fusce egestas elit eget lorem. Suspendisse nisl elit, rhoncus eget, elementum ac, condimentum eget, diam. Nam at tortor in tellus interdum sagittis. Aliquam lobortis. Donec orci lectus, aliquam ut, faucibus non, euismod id, nulla. Curabitur blandit mollis lacus. Nam adipiscing. Vestibulum eu odio. Vivamus laoreet. Nullam tincidunt adipiscing enim. Phasellus tempus. Proin viverra, ligula sit amet ultrices semper, ligula arcu tristique sapien, a accumsan nisi mauris ac eros. Fusce neque. Suspendisse faucibus, nunc et pellentesque egestas, lacus ante convallis tellus, vitae iaculis lacus elit id tortor. Vivamus aliquet elit ac nisl. Fusce fermentum odio nec arcu. Vivamus euismod mauris. In ut quam vitae odio lacinia tincidunt. Praesent ut ligula non mi varius sagittis. Cras sagittis. Praesent ac sem eget est egestas volutpat. Vivamus consectetuer hendrerit lacus. Cras non dolor. Vivamus in erat ut urna cursus vestibulum. Fusce commodo aliquam arcu. Nam commodo suscipit quam. Quisque id odio. Praesent venenatis metus at tortor pulvinar varius. Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec pede justo, fringilla vel, aliquet nec, vulputate eget, arcu. In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus. Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu, consequat vita",
+          "embeds": [],
+          "mentionsPositions": [],
+          "type": "TEN_K_CAST"
+        }
+      },
+      "hash": "0x61d87281250e569afff108512c04d1882062f738",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "ShL6zJeCGeXLXFwa2wLIzQtYNhRqhIpS7IvWbi7CdY7N6Eyo6A21pUUSZKqk9mibfsNPryhA9ozgEeyr/yHpBQ==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xb7c9f43cb1613222499e8b78e689a94f154d304be1a11a7e07333fa44cd6aaf2"
+    },
+    "tenKChannel": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 320189,
+        "timestamp": 183388040,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [
+            3355551,
+            3355551
+          ],
+          "parentCastId": null,
+          "parentUrl": "https://warpcast.com/~/channel/drak-thedegen",
+          "text": "A VERY VERY SPECIAL GM from my own snapchain read node thanks to the wonderful tech by  .\n\nThe snapchain node is running on my beast of a workstation, and I am writing to you from this same non-Farcaster node!\n\nInfo @ townhallfc.xyz\n\nBut basically, setup a cloud account initially using Hetzner Cloud and follow the 3 easy command prompts outlined in their site above.  If you need help,  is a WEALTH of information, and I haven't had this much fun on web3 in a very long time!  \n\nThank you for allow me to have fun again, TH!  Next steps for me are:\n-  purchase a 2-3 year domain ownership on a webgl/web3 domain\n-  using Cloudflare, linked my own domain to my Townhall node\n-  build around my new domain creating sub-domains to handle different aspects of technology/business (email, casts, database, tools, etc. vs. all on primary > best practice security)\n-  Using Cloudflare, FAFO on rulesets and analyze traffic data to combine and analyze against my local firewall network traffic running off my Firewalla private network",
+          "embeds": [
+            {
+              "url": "https://townhallfc.xyz/"
+            },
+            {
+              "url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/2683e077-eb02-493b-aeba-2f3a0cb76c00/original"
+            }
+          ],
+          "mentionsPositions": [
+            87,
+            388
+          ],
+          "type": "TEN_K_CAST"
+        }
+      },
+      "hash": "0x2c7c69e16a4a2238477bd98b0707b29fc8547531",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "V1sub8j3lTlLmm63ts+OaTmvaEDjIFn4x3402hQF50FF5h48xg75mhMENdtwQJJAgBXbUTVBAxgB9rL6KA5cBw==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0x6cef2aba449d117777bd7b306e344071f3da2e7136984a8968306505bceb43d9"
+    },
+    "tenKEmbeds": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 556004,
+        "timestamp": 183403753,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": null,
+          "text": "🇪🇸☀️ MADRID, LA COMUNIDAD SOLANA TIENE UNA CITA: ¡EL ENCUENTRO 2026! 💜🌐\n\nEl ecosistema Web3 no crece únicamente gracias a la tecnología. Crece gracias a las personas que comparten ideas, construyen proyectos, resuelven problemas y se atreven a crear algo nuevo.\n\nPor eso, los encuentros de comunidad son tan importantes. Detrás de cada proyecto hay una historia, detrás de cada idea hay personas y detrás de cada gran oportunidad puede haber una conversación que todavía no ha sucedido. 🤝\n\n📍 El próximo 26 de octubre, Malasaña, Madrid, será el punto de encuentro para la comunidad Solana en España.\n\n🚀 ¿Qué hace especial a El Encuentro 2026?\n\n💡 Ideas y conocimiento: conversaciones para descubrir nuevas perspectivas sobre Solana y Web3.\n\n🛠️ Builders y proyectos: una oportunidad para conectar con personas que están creando, experimentando e impulsando nuevas ideas.\n\n🤝 Networking real: conocer a otros miembros de la comunidad, compartir experiencias y abrir la puerta a futuras colaboraciones.\n\n🌍 Comunidad: acercar a quienes ya forman parte del ecosistema y a quienes quieren aprender, explorar y descubrir lo que está pasando en Web3.\n\nNo importa si llevas años construyendo o si todavía estás descubriendo todo lo que ofrece este ecosistema. Las comunidades más fuertes son aquellas donde las personas pueden compartir, aprender y crecer juntas.\n\n🔥 Un día. Una comunidad. Nuevas conexiones. Más ideas para el futuro de Web3.\n\n📅 26 de octubre de 2026\n📍 Malasaña, Madrid, España\n🕙 10:00–22:00\n🎟️ Entrada gratuita con reserva confirmada, sujeta a disponibilidad.\n\nEl Encuentro 2026 está organizado por @LaFamilia_so, una iniciativa para acercar a las personas que forman parte del ecosistema Solana en España.\n\n👇 Descubre todos los detalles y consulta la información oficial:\nhttps://lafamilia.so/ir/encuentro-st\n\nLa tecnología nos conecta online. La comunidad nos impulsa a construir juntos. 💜\n\n#Solana #Web3 #ElEncuentro2026 #Madrid #Blockchain",
+          "embeds": [
+            {
+              "url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/83b81067-0ce9-4755-3dfe-667c1504fc00/original"
+            }
+          ],
+          "mentionsPositions": [],
+          "type": "TEN_K_CAST"
+        }
+      },
+      "hash": "0x6afafce6d3fbfc693c988bc7b9688a1bdf913160",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "QSct45xmX/GHRX3y6A2pXNmIVU5T1AYJm3MsltoV6SAoBEYkEUttpyNJAAhLC06Qub7CKx9ED0AvH/7828uZAQ==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0xcbd7aa94805090af0522457f22572a54594a2ed87d9e05b62dd2adfc1451015b"
+    },
+    "chainPart": {
+      "data": {
+        "type": "MESSAGE_TYPE_CAST_ADD",
+        "fid": 1234,
+        "timestamp": 94608000,
+        "network": "FARCASTER_NETWORK_MAINNET",
+        "castAddBody": {
+          "embedsDeprecated": [],
+          "mentions": [],
+          "parentCastId": null,
+          "parentUrl": null,
+          "text": "Part two.",
+          "embeds": [],
+          "mentionsPositions": [],
+          "type": "CAST",
+          "formatVersion": 1,
+          "chain": {
+            "root": {
+              "fid": 1234,
+              "hash": "0x0303030303030303030303030303030303030303"
+            },
+            "index": 1,
+            "count": 3
+          }
+        }
+      },
+      "hash": "0xb4068eb367669e2e84390e021acae60226f18cb0",
+      "hashScheme": "HASH_SCHEME_BLAKE3",
+      "signature": "HJSd87ZQwoi0BAiWvXE3r1dYkJ8D7rfrM2ChfoifMbY6XJWpidkn8SnEWjHkeuOiv3+1/DPjl4rLu+5p046VCg==",
+      "signatureScheme": "SIGNATURE_SCHEME_ED25519",
+      "signer": "0x69104ef20c6676aacc9e8c291800d1b7e911e20f85b4066156ea118ace44b8d7"
+    }
+  }
+}

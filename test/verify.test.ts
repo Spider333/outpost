@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CastType, FarcasterNetwork, makeCastAdd, NobleEd25519Signer } from "@farcaster/core";
+import { CastAddBody, CastType, FarcasterNetwork, makeCastAdd, MessageData, MessageType, NobleEd25519Signer } from "@farcaster/core";
+import { blake3 } from "@noble/hashes/blake3";
 import { bytesToHex } from "viem";
 import {
   checkMessage,
@@ -382,4 +383,82 @@ test("the member's own app key is never held back, even with no way to check key
   const items = await new FeedBuilder(hub).fromAuthors([AUTHOR], { limit: 10 });
   assert.equal(items[0]?.app.keyCheck, "own");
   assert.equal(verifier.unverified, 0);
+});
+
+// Snapchain 0.15.0: 10k casts for every account, and casts with format_version and chain
+// (FIP "Cast Format and Chained Casts"), which @farcaster/core 0.20.0 does not know.
+const v015 = JSON.parse(readFileSync(new URL("./fixtures/snapchain-0.15.0-casts.json", import.meta.url), "utf8")).messages as Record<string, HubMessage>;
+
+test("snapchain 0.15.0: real 10k casts and a chained article cast pass and round-trip exactly", async () => {
+  for (const [name, m] of Object.entries(v015)) {
+    assert.equal(await checkMessage(m), "ok", name);
+    assert.deepEqual(await verifyMessage(m), m, name);
+  }
+  assert.equal(new TextEncoder().encode(v015.tenK!.data.castAddBody!.text).length, 10000);
+  const rebuilt = (await verifyMessage(v015.chainPart!)) as HubMessage;
+  assert.equal(rebuilt.data.castAddBody!.formatVersion, 1);
+  assert.deepEqual(rebuilt.data.castAddBody!.chain, { root: { fid: 1234, hash: `0x${"03".repeat(20)}` }, index: 1, count: 3 });
+});
+
+test("snapchain 0.15.0: formatVersion and chain are signed, so a node cannot add, drop or change them", async () => {
+  const edits: Array<[string, HubMessage, (b: NonNullable<HubMessage["data"]["castAddBody"]>) => void]> = [
+    ["chain dropped", v015.chainPart!, (b) => delete b.chain],
+    ["formatVersion dropped", v015.chainPart!, (b) => delete b.formatVersion],
+    ["index changed", v015.chainPart!, (b) => (b.chain!.index = 2)],
+    ["count changed", v015.chainPart!, (b) => (b.chain!.count = 0)],
+    ["root dropped", v015.chainPart!, (b) => delete b.chain!.root],
+    ["root changed", v015.chainPart!, (b) => (b.chain!.root!.hash = `0x${"04".repeat(20)}`)],
+    ["root hash upper case", v015.chainPart!, (b) => (b.chain!.root!.hash = `0x${"0A".repeat(20)}`)],
+    ["formatVersion changed", v015.chainPart!, (b) => (b.formatVersion = 2)],
+    ["formatVersion not an integer", v015.chainPart!, (b) => (b.formatVersion = 1.5)],
+    ["formatVersion added", v015.tenK!, (b) => (b.formatVersion = 1)],
+    ["formatVersion 0 added", v015.tenK!, (b) => (b.formatVersion = 0)],
+    ["chain added", v015.tenKChannel!, (b) => (b.chain = { index: 0, count: 2 })],
+    ["chain field added", v015.chainPart!, (b) => ((b.chain as unknown as Record<string, unknown>).injected = PHISH)],
+  ];
+  for (const [label, m, edit] of edits) {
+    const x = copy(m);
+    edit(x.data.castAddBody!);
+    assert.equal(await checkMessage(x), "altered", label);
+  }
+});
+
+test("snapchain 0.15.0: a chained cast written the @farcaster/core way (empty lists kept, channel after mentions) passes too", async () => {
+  const signer = throwaway();
+  const fid = 1234;
+  const body = { text: "Part two.", type: CastType.CAST, embeds: [], embedsDeprecated: [], mentions: [], mentionsPositions: [], parentUrl: "https://warpcast.com/~/channel/outpost" };
+  // format_version 1 and chain { root: 1234/0x03.., index 1, count 3 }, as Snapchain's own vector writes them.
+  const extra = Buffer.from(`4801521f0a1908d2091214${"03".repeat(20)}10011803`, "hex");
+  const head = MessageData.encode({ type: MessageType.CAST_ADD, fid, timestamp: real.quote!.data.timestamp + 10, network: FarcasterNetwork.MAINNET }).finish();
+  const cast = Buffer.concat([CastAddBody.encode(body).finish(), extra]);
+  assert.ok(cast.length < 0x80);
+  const dataBytes = Buffer.concat([head, Buffer.from([0x2a, cast.length]), cast]);
+  const hash = blake3(dataBytes, { dkLen: 20 });
+  const m: HubMessage = {
+    data: {
+      type: "MESSAGE_TYPE_CAST_ADD",
+      fid,
+      timestamp: real.quote!.data.timestamp + 10,
+      network: "FARCASTER_NETWORK_MAINNET",
+      castAddBody: {
+        embedsDeprecated: [],
+        mentions: [],
+        parentCastId: null,
+        parentUrl: body.parentUrl,
+        text: body.text,
+        embeds: [],
+        mentionsPositions: [],
+        type: "CAST",
+        formatVersion: 1,
+        chain: { root: { fid, hash: `0x${"03".repeat(20)}` }, index: 1, count: 3 },
+      },
+    },
+    hash: bytesToHex(hash),
+    hashScheme: "HASH_SCHEME_BLAKE3",
+    signature: Buffer.from((await signer.signMessageHash(hash))._unsafeUnwrap()).toString("base64"),
+    signatureScheme: "SIGNATURE_SCHEME_ED25519",
+    signer: await keyOf(signer),
+  };
+  assert.equal(await checkMessage(m), "ok");
+  assert.deepEqual(await verifyMessage(m), m);
 });

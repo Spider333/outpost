@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-SNAPCHAIN_VERSION="${SNAPCHAIN_VERSION:-0.14.3}"
+SNAPCHAIN_VERSION="${SNAPCHAIN_VERSION:-0.15.0}"
 DATA_DIR="${OUTPOST_DATA_DIR:-}"
 # 900, not 1000: a new 1000 GB volume shows less than 1000 GB free after formatting, and new
 # Hetzner accounts cannot have a bigger one.

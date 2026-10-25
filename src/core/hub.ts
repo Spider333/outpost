@@ -23,6 +23,10 @@ export interface HubMessage {
       parentCastId?: { fid: number; hash: string } | null;
       parentUrl?: string | null;
       type: string;
+      // Since Snapchain 0.15.0, only when set: 1 is article Markdown; absent is plain text.
+      formatVersion?: number;
+      // Since Snapchain 0.15.0, on every cast of a chain; `root` is absent on the first one.
+      chain?: { root?: { fid: number; hash: string }; index: number; count: number };
     };
     castRemoveBody?: { targetHash: string }; // base64
     reactionBody?: { type: string; targetCastId?: { fid: number; hash: string }; targetUrl?: string };

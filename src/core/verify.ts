@@ -3,7 +3,9 @@
 //
 // Snapchain's HTTP API (v0.14, src/network/http_server.rs) returns messages as JSON without
 // the signed bytes, so the data is encoded again with Farcaster's protobuf schema
-// (@farcaster/core), in the two forms apps produce (see castBytesProto3). Then: blake3 of those
+// (@farcaster/core), in the two forms apps produce (see castBytes). @farcaster/core 0.20.0 does
+// not have the two cast fields Snapchain 0.15.0 added, so those are encoded here (castExtra).
+// Then: blake3 of those
 // bytes must equal `hash`, `signature` must be a valid
 // ed25519 signature of `hash` by `signer` (strict rules, as Snapchain checks them), and the
 // message must be what was asked for (the right account, cast or target).
@@ -29,6 +31,7 @@ import {
   reactionTypeToJSON,
   userDataTypeToJSON,
   CastAddBody,
+  CastId as CastIdCodec,
   MessageData,
   type CastId,
 } from "@farcaster/core";
@@ -99,6 +102,58 @@ export function messageData(d: HubMessage["data"]): MessageData {
   return MessageData.fromJSON({ ...d, castAddBody: cast, reactionBody: reaction });
 }
 
+// The cast fields Snapchain 0.15.0 added (FIP "Cast Format and Chained Casts"), which
+// @farcaster/core 0.20.0 does not know: format_version (field 9, uint32) and chain (field 10, a
+// ChainCast: root CastId 1, index 2, count 3). The node's JSON has formatVersion only when it
+// is not 0, and chain only when the cast has one (proto/definitions/message.proto, v0.15.0).
+export interface CastExtra {
+  formatVersion?: number;
+  chain?: { root?: CastId; index: number; count: number };
+}
+
+function uint32(v: unknown): number {
+  if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 0xffffffff) throw new Error("not a uint32");
+  return v as number;
+}
+
+export function castExtra(d: HubMessage["data"]): CastExtra {
+  const b = d.castAddBody;
+  const out: CastExtra = {};
+  if (!b) return out;
+  if (b.formatVersion !== undefined && b.formatVersion !== null) out.formatVersion = uint32(b.formatVersion);
+  if (b.chain !== undefined && b.chain !== null) {
+    const { root, index, count } = b.chain;
+    out.chain = { index: uint32(index), count: uint32(count) };
+    if (root !== undefined && root !== null) out.chain.root = { fid: root.fid, hash: strictHexToBytes(root.hash) };
+  }
+  return out;
+}
+
+function varint(n: number): number[] {
+  const out: number[] = [];
+  for (; n >= 0x80; n = Math.floor(n / 128)) out.push((n % 128) | 0x80);
+  out.push(n);
+  return out;
+}
+
+// Fields 9 and 10 of CastAddBody, as every proto3 encoder writes them: format_version only when
+// not 0, chain whenever it is set (it is `optional`), index and count only when not 0.
+function castExtraBytes(e: CastExtra): number[] {
+  const out: number[] = [];
+  if (e.formatVersion) out.push(0x48, ...varint(e.formatVersion));
+  if (e.chain) {
+    const c: number[] = [];
+    if (e.chain.root) {
+      const root = CastIdCodec.encode(e.chain.root).finish();
+      c.push(0x0a, ...varint(root.length), ...root);
+    }
+    if (e.chain.index) c.push(0x10, ...varint(e.chain.index));
+    if (e.chain.count) c.push(0x18, ...varint(e.chain.count));
+    out.push(0x52, ...varint(c.length), ...c);
+  }
+  return out;
+}
+
 // One level of protobuf bytes rewritten the way strict proto3 encoders write it: fields in
 // field-number order, and no length-0 field among `dropIfEmpty`.
 function proto3Order(bytes: Uint8Array, dropIfEmpty: number[]): Uint8Array {
@@ -128,21 +183,15 @@ function proto3Order(bytes: Uint8Array, dropIfEmpty: number[]): Uint8Array {
 // and a channel's `parentUrl` (field 7) right after `mentions` (field 2). Apps built on other
 // protobuf libraries (Rust, Go, protobuf-es) leave empty lists out and write fields in number
 // order. The hash covers the posting app's own bytes, so both forms are tried. Both decode to
-// the same cast.
-function castBytesProto3(d: MessageData): Uint8Array | undefined {
+// the same cast. The 0.15.0 fields (9 and 10) come last in both: they have the highest numbers,
+// and they follow `type` (8) in the schema, the order @farcaster/core writes fields in.
+function castBytes(d: MessageData, extra: CastExtra, proto3: boolean): Uint8Array | undefined {
   if (!d.castAddBody) return undefined;
-  const body = proto3Order(CastAddBody.encode(d.castAddBody).finish(), [2, 5]);
+  const raw = Uint8Array.from([...CastAddBody.encode(d.castAddBody).finish(), ...castExtraBytes(extra)]);
+  const body = proto3 ? proto3Order(raw, [2, 5]) : raw;
   const head = MessageData.encode({ ...d, castAddBody: undefined }).finish();
-  const len: number[] = [];
-  for (let n = body.length; ; n >>>= 7) {
-    if (n < 0x80) {
-      len.push(n);
-      break;
-    }
-    len.push((n & 0x7f) | 0x80);
-  }
   // castAddBody is field 5 and every field before it is in `head`.
-  return Uint8Array.from([...head, 0x2a, ...len, ...body]);
+  return Uint8Array.from([...head, 0x2a, ...varint(body.length), ...body]);
 }
 
 // Ed25519 through WebCrypto where the platform has it (about 20 times faster), else the strict
@@ -166,7 +215,7 @@ const bytesToBase64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
 
 // A message in the node's JSON shape, built only from signed data: `d` is what was encoded and
 // matched the hash. Bodies the client never reads (verifications, frames, ...) are left out.
-export function signedMessage(d: MessageData, hash: Uint8Array, signature: Uint8Array, signer: Uint8Array): HubMessage {
+export function signedMessage(d: MessageData, hash: Uint8Array, signature: Uint8Array, signer: Uint8Array, extra: CastExtra = {}): HubMessage {
   const id = (c: CastId | undefined) => c && { fid: c.fid, hash: bytesToHex(c.hash) };
   const data: HubMessage["data"] = { type: messageTypeToJSON(d.type), fid: d.fid, timestamp: d.timestamp, network: farcasterNetworkToJSON(d.network) };
   const c = d.castAddBody;
@@ -181,6 +230,9 @@ export function signedMessage(d: MessageData, hash: Uint8Array, signature: Uint8
       parentUrl: c.parentUrl ?? null,
       type: castTypeToJSON(c.type),
     };
+    if (extra.formatVersion) data.castAddBody.formatVersion = extra.formatVersion;
+    const chain = extra.chain;
+    if (chain) data.castAddBody.chain = { ...(chain.root && { root: id(chain.root)! }), index: chain.index, count: chain.count };
   }
   if (d.castRemoveBody) data.castRemoveBody = { targetHash: bytesToBase64(d.castRemoveBody.targetHash) };
   const r = d.reactionBody;
@@ -220,11 +272,12 @@ export async function verifyMessage(m: HubMessage): Promise<HubMessage | "altere
   try {
     if (m.hashScheme !== "HASH_SCHEME_BLAKE3" || m.signatureScheme !== "SIGNATURE_SCHEME_ED25519") return "altered";
     const d = messageData(m.data);
+    const extra = castExtra(m.data);
     const want = m.hash; // compared with lower-case hex, so any other spelling fails
     const hashOf = (b: Uint8Array) => blake3(b, { dkLen: 20 });
-    let hash = hashOf(MessageData.encode(d).finish());
+    let hash = hashOf(castBytes(d, extra, false) ?? MessageData.encode(d).finish());
     if (bytesToHex(hash) !== want) {
-      const alt = castBytesProto3(d);
+      const alt = castBytes(d, extra, true);
       if (!alt || bytesToHex((hash = hashOf(alt))) !== want) return "altered";
     }
     const signature = base64ToBytes(m.signature);
@@ -232,7 +285,7 @@ export async function verifyMessage(m: HubMessage): Promise<HubMessage | "altere
     if (bytesToBase64(signature) !== m.signature) return "altered";
     const signer = strictHexToBytes(m.signer);
     if (!(await verifyEd25519(signature, hash, signer))) return "signature";
-    const signed = signedMessage(d, hash, signature, signer);
+    const signed = signedMessage(d, hash, signature, signer, extra);
     return extraField(m, signed) ? "altered" : signed; // the node added something
   } catch {
     return "altered"; // malformed JSON, hex, base64 or bytes: nothing to trust

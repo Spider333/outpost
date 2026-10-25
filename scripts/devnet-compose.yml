@@ -1,7 +1,7 @@
 # Local 4-validator devnet from the published image, for end-to-end tests only.
 # Only node1's HTTP and gRPC are published, on 127.0.0.1.
 x-common: &common
-  image: farcasterxyz/snapchain:0.14.3
+  image: farcasterxyz/snapchain:0.15.0
   init: true
   # Cap each node log at 3 x 50 MB. Uncapped logs filled the devbox disk on 19 Oct.
   logging: { driver: json-file, options: { max-size: "50m", max-file: "3" } }
