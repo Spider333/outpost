@@ -7,7 +7,7 @@ import type { Verifier } from "./verify.js";
 
 export type HexString = `0x${string}`;
 
-// JSON shapes returned by snapchain v0.14.x (src/network/http_server.rs).
+// JSON shapes returned by snapchain v0.15.x (src/network/http_server.rs).
 export interface HubMessage {
   data: {
     type: string; // e.g. "MESSAGE_TYPE_CAST_ADD"

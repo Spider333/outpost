@@ -415,6 +415,10 @@ test("snapchain 0.15.0: formatVersion and chain are signed, so a node cannot add
     ["formatVersion 0 added", v015.tenK!, (b) => (b.formatVersion = 0)],
     ["chain added", v015.tenKChannel!, (b) => (b.chain = { index: 0, count: 2 })],
     ["chain field added", v015.chainPart!, (b) => ((b.chain as unknown as Record<string, unknown>).injected = PHISH)],
+    // Each of these would encode to the signed 1234, so only a strict check stops them.
+    ["root fid with a fraction", v015.chainPart!, (b) => (b.chain!.root!.fid = 1234.9)],
+    ["root fid as a string", v015.chainPart!, (b) => ((b.chain!.root! as unknown as Record<string, unknown>).fid = "1234")],
+    ["root fid with a leading zero", v015.chainPart!, (b) => ((b.chain!.root! as unknown as Record<string, unknown>).fid = "01234")],
   ];
   for (const [label, m, edit] of edits) {
     const x = copy(m);
@@ -461,4 +465,47 @@ test("snapchain 0.15.0: a chained cast written the @farcaster/core way (empty li
   };
   assert.equal(await checkMessage(m), "ok");
   assert.deepEqual(await verifyMessage(m), m);
+});
+
+test("snapchain 0.15.0: the first cast of a chain (no root) and a present but empty chain pass", async () => {
+  const signer = throwaway();
+  const make = async (extraHex: string, chain: NonNullable<HubMessage["data"]["castAddBody"]>["chain"], formatVersion?: number) => {
+    const head = MessageData.encode({ type: MessageType.CAST_ADD, fid: 1234, timestamp: 94608000, network: FarcasterNetwork.MAINNET }).finish();
+    // Field order as prost writes it: text (4), then 9 and 10.
+    const cast = Buffer.concat([Buffer.from("2209506172742074776f2e", "hex"), Buffer.from(extraHex, "hex")]);
+    const hash = blake3(Buffer.concat([head, Buffer.from([0x2a, cast.length]), cast]), { dkLen: 20 });
+    const m: HubMessage = {
+      data: {
+        type: "MESSAGE_TYPE_CAST_ADD",
+        fid: 1234,
+        timestamp: 94608000,
+        network: "FARCASTER_NETWORK_MAINNET",
+        castAddBody: { embedsDeprecated: [], mentions: [], parentCastId: null, parentUrl: null, text: "Part two.", embeds: [], mentionsPositions: [], type: "CAST", ...(formatVersion && { formatVersion }), ...(chain && { chain }) },
+      },
+      hash: bytesToHex(hash),
+      hashScheme: "HASH_SCHEME_BLAKE3",
+      signature: Buffer.from((await signer.signMessageHash(hash))._unsafeUnwrap()).toString("base64"),
+      signatureScheme: "SIGNATURE_SCHEME_ED25519",
+      signer: await keyOf(signer),
+    };
+    return m;
+  };
+  for (const [label, m] of [
+    ["first of three", await make("480152021803", { index: 0, count: 3 }, 1)],
+    ["empty chain", await make("5200", { index: 0, count: 0 })],
+    ["formatVersion 300", await make("48ac02", undefined, 300)],
+  ] as const) {
+    assert.equal(await checkMessage(m), "ok", label);
+    assert.deepEqual(await verifyMessage(m), m, label);
+  }
+});
+
+test("a parent cast's fid that only encodes to the signed one (1234.9, a string) marks the cast altered", async () => {
+  const reply = Object.values(real).find((m) => m.data.castAddBody?.parentCastId);
+  assert.ok(reply, "a real reply in the fixtures");
+  for (const fid of [reply.data.castAddBody!.parentCastId!.fid + 0.5, String(reply.data.castAddBody!.parentCastId!.fid)]) {
+    const x = copy(reply);
+    (x.data.castAddBody!.parentCastId as unknown as Record<string, unknown>).fid = fid;
+    assert.equal(await checkMessage(x), "altered", String(fid));
+  }
 });

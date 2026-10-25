@@ -1,7 +1,7 @@
 // Every message read from a node is checked here, in the member's own code, before anything
 // uses it. The node is not asked whether a message is valid: a dishonest node would say yes.
 //
-// Snapchain's HTTP API (v0.14, src/network/http_server.rs) returns messages as JSON without
+// Snapchain's HTTP API (v0.15, src/network/http_server.rs) returns messages as JSON without
 // the signed bytes, so the data is encoded again with Farcaster's protobuf schema
 // (@farcaster/core), in the two forms apps produce (see castBytes). @farcaster/core 0.20.0 does
 // not have the two cast fields Snapchain 0.15.0 added, so those are encoded here (castExtra).
@@ -85,6 +85,13 @@ function strictHexToBytes(hex: string): Uint8Array {
   return hexToBytes(hex as HexString);
 }
 
+// MessageData.fromJSON would turn "1234" or 1234.9 into 1234, and the hash would still match, so
+// callers would see a value nobody signed. Only a plain non-negative integer passes.
+function fidOf(v: unknown): number {
+  if (!Number.isSafeInteger(v) || (v as number) < 0) throw new Error("not a fid");
+  return v as number;
+}
+
 function hexToBase64(hex: string): string {
   return btoa(String.fromCharCode(...strictHexToBytes(hex)));
 }
@@ -92,7 +99,7 @@ function hexToBase64(hex: string): string {
 // Snapchain JSON -> protobuf MessageData. Cast ids carry hex hashes in Snapchain's JSON and
 // base64 in @farcaster/core's JSON form; everything else has the same names.
 export function messageData(d: HubMessage["data"]): MessageData {
-  const id = (c?: { fid: number; hash: string } | null) => (c ? { fid: c.fid, hash: hexToBase64(c.hash) } : undefined);
+  const id = (c?: { fid: number; hash: string } | null) => (c ? { fid: fidOf(c.fid), hash: hexToBase64(c.hash) } : undefined);
   const cast = d.castAddBody && {
     ...d.castAddBody,
     parentCastId: id(d.castAddBody.parentCastId),
@@ -124,7 +131,7 @@ export function castExtra(d: HubMessage["data"]): CastExtra {
   if (b.chain !== undefined && b.chain !== null) {
     const { root, index, count } = b.chain;
     out.chain = { index: uint32(index), count: uint32(count) };
-    if (root !== undefined && root !== null) out.chain.root = { fid: root.fid, hash: strictHexToBytes(root.hash) };
+    if (root !== undefined && root !== null) out.chain.root = { fid: fidOf(root.fid), hash: strictHexToBytes(root.hash) };
   }
   return out;
 }
