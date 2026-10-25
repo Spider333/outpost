@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
-# Fake doctl: keeps resources as "id name ip" lines and honours --format.
+# Fake doctl: keeps resources as "id name ip" lines (droplets: "id name ip size status disk")
+# and honours --format.
 S="${FAKE_STATE:?}"; echo "doctl $*" >> "$S/calls.log"
 # Like the API with no network: every call fails.
 [ -e "$S/api-down" ] && { echo "Error: dial tcp: network is unreachable" >&2; exit 1; }
 # Like a DigitalOcean outage for volumes only: get and delete answer 503, the rest works.
 case "$1 $2 $3" in "compute volume get"|"compute volume delete")
   [ -e "$S/volume-503" ] && { echo "Error: 503 Service Unavailable" >&2; exit 1; } ;; esac
-fmt=""; tag=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; [ "$prev" = "--tag-names" ] && tag="$a"; prev="$a"; done
+fmt=""; tag=""; size=""; prev=""; for a in "$@"; do [ "$prev" = "--format" ] && fmt="$a"; [ "$prev" = "--tag-names" ] && tag="$a"; [ "$prev" = "--size" ] && size="$a"; prev="$a"; done
 list() { # $1 = file glob prefix
-  for f in "$S"/$1.*; do [ -e "$f" ] || continue; read -r id name ip < "$f"
-    case "$fmt" in ID,Name) echo "$id $name";; Name) echo "$name";; Name,PublicIPv4) echo "$name $ip";; DropletIDs) echo "[]";; *) echo "$id $name $ip";; esac; done; }
+  for f in "$S"/$1.*; do [ -e "$f" ] || continue; read -r id name ip sz st _ < "$f"
+    case "$fmt" in ID,Name) echo "$id $name";; Name) echo "$name";; Name,PublicIPv4) echo "$name $ip";; DropletIDs) echo "[]";;
+      ID,Name,SizeSlug,Status) echo "$id $name $sz $st";; *) echo "$id $name $ip";; esac; done; }
+disk_of() { case "$1" in s-8vcpu-32gb-amd) echo 400;; *) echo 100;; esac; }
+# Sets field $2 (size or status) of droplet $1 to $3.
+droplet_set() {
+  for f in "$S"/droplet.*; do [ -e "$f" ] || continue; read -r id name ip sz st dk < "$f"; [ "$id" = "$1" ] || continue
+    case "$2" in size) sz="$3";; status) st="$3";; esac
+    echo "$id $name $ip $sz $st $dk" > "$f"; return 0; done
+  echo "Error: droplet $1 not found (404)" >&2; exit 1; }
 case "$1 $2 $3" in
   "compute droplet list") list droplet ;;
-  "compute droplet create") echo "d-1 $4 203.0.113.7" > "$S/droplet.$4"
+  "compute droplet create") echo "d-1 $4 203.0.113.7 $size active $(disk_of "$size")" > "$S/droplet.$4"
     # Like DigitalOcean on a bad day: --volumes is accepted but nothing is attached.
     [ -n "${FAKE_SKIP_ATTACH:-}" ] || : > "$S/attached" ;;
   "compute droplet delete") [ -z "${FAKE_DELETE_SECS:-}" ] || sleep "$FAKE_DELETE_SECS"
@@ -45,5 +54,17 @@ case "$1 $2 $3" in
   "compute tag get") [ -e "$S/tag.$4" ] || exit 1 ;;
   "compute tag create") echo "t-1 $4" > "$S/tag.$4" ;;
   "compute tag delete") rm -f "$S/tag.$4" ;;
+  # FAKE_NO_SHUTDOWN: like a server that ignores the shutdown signal.
+  "compute droplet-action shutdown") [ -n "${FAKE_NO_SHUTDOWN:-}" ] || droplet_set "$4" status off ;;
+  "compute droplet-action power-off") droplet_set "$4" status off ;;
+  "compute droplet-action power-on") droplet_set "$4" status active ;;
+  # Like DigitalOcean: it powers the droplet off first, and the disk only grows, with
+  # --resize-disk; a plan with a smaller disk than the droplet's is refused.
+  "compute droplet-action resize") droplet_set "$4" status off
+    for f in "$S"/droplet.*; do read -r id _ _ _ _ dk < "$f"; [ "$id" = "$4" ] && break; done
+    [ "$(disk_of "$size")" -ge "$dk" ] || { echo "Error: the disk of $size is smaller than the droplet's ($dk GB) (422)" >&2; exit 1; }
+    droplet_set "$4" size "$size"
+    case " $* " in *" --resize-disk "*) : > "$S/disk-resized" ;; esac ;;
+  "compute size list") printf 's-2vcpu-8gb-amd 42.00\ns-8vcpu-32gb-amd 168.00\n' ;;
   *) echo "fake doctl: unhandled $*" >&2; exit 3 ;;
 esac

@@ -12,10 +12,11 @@ app key.
 
 - **What you get**: a Snapchain read node on a server you rent, a web client at
   http://127.0.0.1:8381, and a command-line client with the same features.
-- **What it costs**: the server, billed by the hour while it exists. The DigitalOcean default is
-  about $0.41/h: an 8 vCPU / 32 GB droplet at $0.25/h plus a 1.2 TB volume at about $0.16/h
-  (October 2026 list prices). `./outpost destroy` deletes the server, volume and firewall and
-  stops the bill.
+- **What it costs**: the server, billed by the hour while it exists. On DigitalOcean (October
+  2026 list prices) the 1.2 TB volume is about $0.16/h. The droplet is 8 vCPU / 32 GB at $0.25/h
+  for the first sync, and 2 vCPU / 8 GB at $0.06/h after `./outpost shrink`: about $0.41/h in
+  all while it syncs, then about $0.23/h ($5.50 a day). `./outpost destroy` deletes the server,
+  volume and firewall and stops the bill.
 - **How long it takes**: the first sync takes 6 to 8 hours. On our test server (DigitalOcean,
   8 vCPU, 32 GB RAM, 1.2 TB volume, 18 to 19 October 2026) it was 1 h 43 min to load the snapshot
   and 4 h 11 min to catch up; our first outside tester's run on 22 October 2026 took 7 h 33 min.
@@ -41,6 +42,10 @@ You need:
 ./outpost client      # open http://127.0.0.1:8381
 ```
 
+Once `./outpost status` says synced, `./outpost shrink` moves the server to 8 GB of RAM (a
+synced node used about 3 GB on our server), and the bill drops from about $0.41/h to $0.23/h on
+DigitalOcean.
+
 When you are done:
 
 ```
@@ -48,9 +53,9 @@ When you are done:
 ./outpost destroy     # delete the server and stop paying
 ```
 
-Every command is safe to run twice. `./outpost provision --dry-run` and
-`./outpost destroy --dry-run` print the exact provider commands without running them.
-`./outpost status` shows the server and how far the node has synced.
+Every command is safe to run twice. `--dry-run` on `provision`, `shrink` and `destroy` prints
+the exact provider commands without running them. `./outpost status` shows the server and how
+far the node has synced.
 
 Just trying it? `./outpost provision --watchdog 24` deletes the server for you after 24 hours,
 or after 2 hours with no progress. Ran it? [VOUCHER.md](VOUCHER.md) has a checklist and a
@@ -86,7 +91,8 @@ flowchart LR
   N <-->|"gossip, 3382/udp"| F["Farcaster network"]
 ```
 
-- **provision** creates a server, a 1.2 TB volume (`--disk` to change) and a firewall that opens
+- **provision** creates a small server (2 vCPU / 8 GB on DigitalOcean, `ccx13` on Hetzner;
+  `--small-size` to change), a 1.2 TB volume (`--disk` to change) and a firewall that opens
   only SSH (22/tcp) and gossip (3382/udp). On Hetzner the volume is 1 TB, because new Hetzner
   accounts can hold at most 1024 GB of volumes; the data fits, since Outpost never keeps the
   snapshot and the database on the volume at once.
@@ -99,11 +105,20 @@ flowchart LR
   The HTTP and gRPC ports are bound to 127.0.0.1, because an open node lets anyone submit
   messages through it. It does not use the official installer, which needs a terminal and can
   stop before starting the node (snapchain issue #1030).
+  On a server that `provision` made, it first sizes the server up to 8 vCPU / 32 GB (`ccx33` on
+  Hetzner; `provision --size` to change) for loading the snapshot, which needs the memory: the
+  server restarts once, about a minute offline.
   On a new server it loads the network snapshot itself, 8 chunks at a time, streamed straight
   into the database: about 4 times faster than Snapchain's own loader, which goes one chunk at a
   time, and it never needs room for the snapshot and the database at once. Each shard goes into
   the database only when it is complete, and `./outpost node` resumes an interrupted load.
-  `OUTPOST_FAST_RESTORE=0` uses Snapchain's loader instead.
+  `OUTPOST_FAST_RESTORE=0` uses Snapchain's loader instead. The node's log is capped at
+  3 x 50 MB, so it cannot fill the server's disk.
+- **shrink** moves the server back to its small size once the node is synced: a synced node
+  used about 3 GB of RAM on our server. Only CPU and RAM change. The disk stays the small
+  size's, which is what lets the server go back down, since no provider shrinks a disk. The
+  chain data is on the volume, and the address, firewall and society members stay. It refuses
+  before the node is synced, and on a server it did not make small.
 - **client** opens an SSH tunnel to the node and serves the web client on 127.0.0.1:8381. Reads
   and writes both go through your node: the feed is built from its data, and each message you
   sign is submitted to it and relayed from there to the network.
@@ -260,6 +275,12 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
   not allow. Run it over your own node's SSH tunnel.
 - Outpost prints DigitalOcean prices only. On Hetzner it asks for a 1 TB volume, because new
   Hetzner accounts can hold at most 1024 GB of volumes.
+- Sizing up and `./outpost shrink` were tested on a real DigitalOcean server (21 and 25 October
+  2026). The shrink took about 2 minutes with the node offline for about 1.5; afterwards the
+  synced node ran 4 hours on 8 GB with no restarts or memory kills, peaking at 1.4 GB used.
+  On Hetzner, sizing up and shrinking have only run against a simulated Hetzner in our tests.
+- A server made by an older Outpost (before 21 October 2026) started at full size, so its disk
+  is too big for the small plan and it cannot shrink. To run small, make a new one.
 - The node costs money for as long as it exists, whether or not you use the client.
 
 ## Shard 0 did not load
@@ -276,7 +297,7 @@ in [docs/troubleshooting.md](docs/troubleshooting.md).
 npm ci
 npm run typecheck
 npm test                         # unit tests, including known test vectors
-bash test/providers.sh           # provision and destroy, twice each, against fake doctl and hcloud
+bash test/providers.sh           # provision, sizing, shrink and destroy, against fake doctl and hcloud
 bash test/watchdog.sh            # the watchdog, with a one-second hour (not in CI: timing-sensitive)
 bash test/snapshot-restore.sh    # Linux only: the snapshot loader against a local fake bucket
 ```
@@ -288,8 +309,8 @@ runs on mainnet and a local devnet are saved in [docs/evidence/](docs/evidence/R
 ## Project layout
 
 ```
-outpost              the CLI: provision, node, client, status, cli, uninstall, destroy, watchdog,
-                     society, members, sponsor
+outpost              the CLI: provision, node, client, status, shrink, cli, uninstall, destroy,
+                     watchdog, society, members, sponsor
 VOUCHER.md           checklist and draft cast for people who vouch for a run
 AGENTS.md            rules and step checkpoints for AI assistants that run Outpost for someone
 infra/               cloud-init, node setup, snapshot loader, phone access, society mode

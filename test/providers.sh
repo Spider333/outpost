@@ -177,6 +177,135 @@ out="$("$ROOT/outpost" provision --provider hetzner --disk 1200 --dry-run 2>&1)"
 [[ "$out" == *"at most 1024 GB"* ]] || fail "hetzner: no warning for a volume over 1024 GB"
 echo "ok: default disk 1000 GB on Hetzner, 1200 GB on DigitalOcean"
 
+# Server size: provision makes the server small, node sizes it up for the first sync, shrink
+# takes it back down once the node is synced. Only CPU and RAM change, so the disk stays small
+# enough for the server to go back down.
+STATE="$OUTPOST_STATE_DIR/state"
+resizes() { grep -E "droplet-action|server (shutdown|poweroff|poweron|change-type)" "$FAKE_STATE/calls.log" || true; }
+for p in "do" hetzner; do
+  find "$FAKE_STATE" -type f -delete
+  if [ "$p" = "do" ]; then small=s-2vcpu-8gb-amd big=s-8vcpu-32gb-amd; else small=ccx13 big=ccx33; fi
+  # Prints "<size> <on|off>" for the one server.
+  server() {
+    if [ "$p" = "do" ]; then awk '{print $4, ($5 == "off" ? "off" : "on")}' "$FAKE_STATE"/droplet.*
+    else awk '{print $1, ($2 == "off" ? "off" : "on")}' "$FAKE_STATE"/hz.server.*; fi
+  }
+  set_off() {
+    local f
+    if [ "$p" = "do" ]; then f="$(echo "$FAKE_STATE"/droplet.*)"; awk '{$5="off"; print}' "$f" >"$f.new"
+    else f="$(echo "$FAKE_STATE"/hz.server.*)"; awk '{$2="off"; print}' "$f" >"$f.new"; fi
+    mv "$f.new" "$f"
+  }
+  "$ROOT/outpost" provision --provider "$p" --yes --no-wait >/dev/null
+  [ "$(server)" = "$small on" ] || fail "$p: provision did not make the server $small: $(server)"
+  mkdir -p "$FAKE_STATE/server"
+  : >"$FAKE_STATE/server/outpost-ready"
+  echo "node container is not running" >"$FAKE_STATE/node-line"
+  : >"$FAKE_STATE/calls.log"
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink before node failed: $out"
+  [[ "$out" == *"./outpost node sizes it up"* ]] || fail "$p: shrink before node: $out"
+  [ -z "$(resizes)" ] || fail "$p: shrink touched a server that was never sized up"
+
+  "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node failed"
+  [ "$(server)" = "$big on" ] || fail "$p: node did not size the server up to $big and start it: $(server)"
+  if [ "$p" = "do" ]; then
+    grep -q "droplet-action shutdown d-1 --wait" "$FAKE_STATE/calls.log" || fail "do: no clean shutdown before the resize"
+    [ ! -e "$FAKE_STATE/disk-resized" ] || fail "do: the resize grew the disk, so the droplet can never shrink"
+  else
+    grep -q "hcloud server shutdown outpost-node" "$FAKE_STATE/calls.log" || fail "hetzner: no clean shutdown before the resize"
+    grep -q "server change-type --keep-disk outpost-node $big" "$FAKE_STATE/calls.log" || fail "hetzner: resize without --keep-disk"
+  fi
+  : >"$FAKE_STATE/calls.log"
+  "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node twice failed"
+  [ -z "$(resizes)" ] || fail "$p: node twice resized again: $(resizes)"
+
+  echo "catching up: furthest shard is 5000 blocks behind" >"$FAKE_STATE/node-line"
+  : >"$FAKE_STATE/calls.log"
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" && fail "$p: shrink ran before the node was synced: $out"
+  [[ "$out" == *"not synced yet"* ]] || fail "$p: shrink before sync said: $out"
+  [ -z "$(resizes)" ] || fail "$p: shrink before sync touched the server"
+
+  echo "synced: every shard is within 2 blocks of the tip" >"$FAKE_STATE/node-line"
+  out="$("$ROOT/outpost" status)"
+  [[ "$out" == *"./outpost shrink moves it to $small"* ]] || fail "$p: status does not point to shrink: $out"
+  : >"$FAKE_STATE/calls.log"
+  out="$("$ROOT/outpost" shrink --dry-run 2>&1)" || fail "$p: shrink --dry-run failed: $out"
+  if [ "$p" = "do" ]; then want="droplet-action resize"; else want="change-type --keep-disk outpost-node $small"; fi
+  [[ "$out" == *"$want"* && "$out" == *"$small"* ]] || fail "$p: shrink --dry-run did not show the resize: $out"
+  if [ "$(server)" != "$big on" ] || [ -n "$(resizes)" ]; then fail "$p: shrink --dry-run changed the server"; fi
+  ! grep -qx "SHRUNK=1" "$STATE" || fail "$p: shrink --dry-run marked the server shrunk"
+
+  # Stopped after the shutdown, before the resize: the server is off, so the node cannot say it
+  # is synced. A second shrink finishes the job without asking it (an answer other than synced
+  # would make it refuse).
+  echo "SHRUNK=1" >>"$STATE"
+  set_off
+  echo "catching up: furthest shard is 5000 blocks behind" >"$FAKE_STATE/node-line"
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink after one stopped halfway failed: $out"
+  [ "$(server)" = "$small on" ] || fail "$p: shrink after one stopped halfway: $(server)"
+  "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node after an interrupted shrink failed"
+  [ "$(server)" = "$small on" ] || fail "$p: node sized up a server whose shrink was interrupted"
+  # Back to big and synced, for the plain run below.
+  grep -v '^SHRUNK=' "$STATE" >"$STATE.new" && mv "$STATE.new" "$STATE"
+  "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node to size up again failed"
+  [ "$(server)" = "$big on" ] || fail "$p: node did not size up again: $(server)"
+  echo "synced: every shard is within 2 blocks of the tip" >"$FAKE_STATE/node-line"
+
+  : >"$FAKE_STATE/calls.log"
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink failed: $out"
+  [ "$(server)" = "$small on" ] || fail "$p: shrink did not move the server to $small and start it: $(server)"
+  [[ "$out" == *"node: synced"* ]] || fail "$p: shrink did not report the node afterwards: $out"
+  [ "$p" = hetzner ] || [[ "$out" == *"from \$168.00 to \$42.00 a month"* ]] || fail "do: shrink did not show the price: $out"
+  [ ! -e "$FAKE_STATE/disk-resized" ] || fail "$p: shrink resized the disk"
+  ! grep -qE " (create|delete) " "$FAKE_STATE/calls.log" || fail "$p: shrink created or deleted something"
+  grep -qx "SHRUNK=1" "$STATE" || fail "$p: shrink did not record it"
+  : >"$FAKE_STATE/calls.log"
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink twice failed: $out"
+  if [[ "$out" != *"already $small"* ]] || [ -n "$(resizes)" ]; then fail "$p: shrink twice: $out"; fi
+  # Stopped after the resize, before the server was started again: shrink starts it.
+  set_off
+  out="$("$ROOT/outpost" shrink --yes 2>&1)" || fail "$p: shrink of a small server left off failed: $out"
+  [ "$(server)" = "$small on" ] || fail "$p: shrink left a small server off: $(server)"
+  : >"$FAKE_STATE/calls.log"
+  "$ROOT/outpost" node --no-wait >/dev/null || fail "$p: node after shrink failed"
+  if [ "$(server)" != "$small on" ] || [ -n "$(resizes)" ]; then fail "$p: node sized a shrunk server up again"; fi
+  [[ "$("$ROOT/outpost" status)" != *"./outpost shrink"* ]] || fail "$p: status still points to shrink"
+  "$ROOT/outpost" destroy --yes >/dev/null
+  echo "ok: $p provision small, node sizes up once, shrink only once synced, twice is a no-op"
+done
+
+# A resize the provider refuses (here: a droplet made at full size, whose disk is bigger than the
+# small plan's) leaves the server running on its old plan.
+find "$FAKE_STATE" -type f -delete
+"$ROOT/outpost" provision --provider "do" --size s-8vcpu-32gb-amd --small-size s-8vcpu-32gb-amd --yes --no-wait >/dev/null
+grep -v '^SMALL_SIZE=' "$STATE" >"$STATE.new" && echo "SMALL_SIZE=s-2vcpu-8gb-amd" >>"$STATE.new" && mv "$STATE.new" "$STATE"
+mkdir -p "$FAKE_STATE/server"
+: >"$FAKE_STATE/server/outpost-ready"
+echo "synced: every shard is within 2 blocks of the tip" >"$FAKE_STATE/node-line"
+out="$("$ROOT/outpost" shrink --yes 2>&1)" && fail "do: shrink succeeded where the provider refused: $out"
+[[ "$out" == *"could not move outpost-node to s-2vcpu-8gb-amd"* ]] || fail "do: refused resize said: $out"
+[ "$(awk '{print $4, $5}' "$FAKE_STATE"/droplet.*)" = "s-8vcpu-32gb-amd active" ] || fail "do: refused resize left the droplet off or changed"
+! grep -qx "SHRUNK=1" "$STATE" || fail "do: a refused shrink still counts as shrunk"
+[[ "$("$ROOT/outpost" status)" == *"./outpost shrink moves it to"* ]] || fail "do: status stopped pointing to shrink after a refused one"
+"$ROOT/outpost" destroy --yes >/dev/null
+echo "ok: do shrink the provider refuses starts the server again on its old plan"
+
+# Servers shrink must not touch: one Outpost found already there, and one given by OUTPOST_HOST.
+find "$FAKE_STATE" -type f -delete
+"$ROOT/outpost" provision --provider "do" --yes --no-wait >/dev/null
+echo "d-2 legacy 203.0.113.8 s-8vcpu-32gb-amd active 400" >"$FAKE_STATE/droplet.legacy"
+"$ROOT/outpost" provision --provider "do" --name legacy --yes --no-wait >/dev/null
+echo "synced: every shard is within 2 blocks of the tip" >"$FAKE_STATE/node-line"
+: >"$FAKE_STATE/calls.log"
+out="$("$ROOT/outpost" shrink --yes 2>&1)" && fail "do: shrink ran on a server Outpost did not make small: $out"
+[[ "$out" == *"was not made small"* ]] || fail "do: shrink on a found server said: $out"
+out="$(OUTPOST_HOST=192.0.2.1 "$ROOT/outpost" shrink --yes 2>&1)" && fail "shrink ran with OUTPOST_HOST: $out"
+[[ "$out" == *"only resizes a server made here"* ]] || fail "shrink with OUTPOST_HOST said: $out"
+[ -z "$(resizes)" ] || fail "do: a refused shrink touched a server"
+rm -f "$FAKE_STATE/droplet.legacy"
+"$ROOT/outpost" destroy --name outpost-node --yes >/dev/null
+echo "ok: shrink leaves alone servers it did not make small"
+
 # No network: destroy must fail and keep the state, never call the resources gone.
 for p in "do" hetzner; do
   find "$FAKE_STATE" -type f -delete
