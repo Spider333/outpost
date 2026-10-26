@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { checkShape, Hub, HubError, parseInvite, signCharter, takeInvite, verifyCharter, type CharterBody } from "../src/core/index.js";
+import { checkShape, DEFAULT_CHECK_NODE, Hub, HubError, parseInvite, signCharter, takeInvite, verifyCharter, type CharterBody } from "../src/core/index.js";
 
 const TOKEN = "s3cr3t-token_ABCDEFGHIJKLMNOP";
 const NODE = "https://203.0.113.7.sslip.io";
@@ -49,6 +49,21 @@ test("society node: every request carries the bearer token; 401 says the token w
   });
   await assert.rejects(hub.info(), (e: unknown) => e instanceof HubError && e.status === 401 && /refused the access token/.test(e.message));
   assert.deepEqual(seen, [`Bearer ${TOKEN}`]);
+});
+
+test("public node: reads are plain GETs with no authorization or content-type, so a page needs no CORS preflight", async () => {
+  const seen: Array<{ method?: string; headers: string[] }> = [];
+  const hub = new Hub({
+    url: DEFAULT_CHECK_NODE,
+    fetch: async (_url, init) => {
+      const headers: string[] = [];
+      new Headers(init?.headers).forEach((_v, k) => headers.push(k));
+      seen.push({ method: init?.method, headers });
+      return new Response(JSON.stringify({ version: "0.15.0", numShards: 2, shardInfos: [] }));
+    },
+  });
+  await hub.info();
+  assert.deepEqual(seen, [{ method: "GET", headers: [] }]);
 });
 
 test("society node: 429 waits for Retry-After and retries; a long wait is reported, not slept", async () => {

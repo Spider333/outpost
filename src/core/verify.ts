@@ -429,7 +429,8 @@ export class Verifier {
 
   // Tells "failed verification" (the node altered or forged something) apart from "could not
   // be checked" (no answer about a key). Never says "all passed" while either happened.
-  summary(): string {
+  // `node`: who sent the messages, as the start of a sentence.
+  summary(node = "Your node"): string {
     const d = this.dropped;
     const parts = [
       d.altered && `${d.altered} altered`,
@@ -438,7 +439,7 @@ export class Verifier {
       d.mismatch && `${d.mismatch} not matching the request`,
     ].filter(Boolean);
     const out: string[] = [];
-    if (this.failed) out.push(`Your node sent ${this.failed} of ${this.checked} messages that failed verification${parts.length ? ` (${parts.join(", ")})` : ""}; they are not shown.`);
+    if (this.failed) out.push(`${node} sent ${this.failed} of ${this.checked} messages that failed verification${parts.length ? ` (${parts.join(", ")})` : ""}; they are not shown.`);
     const unchecked = this.unverified - this.unlisted;
     if (unchecked) {
       out.push(
