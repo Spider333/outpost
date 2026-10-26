@@ -946,7 +946,7 @@ async function showCharter(c: unknown, source: string, saved = false) {
     (v.issuerCheck === "custody"
       ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked ${chain ? "on Optimism" : "on your node"}.`
       : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`) +
-    (log.amendments.length ? ` Members have changed it ${log.amendments.length} time${log.amendments.length === 1 ? "" : "s"}${saved ? "" : "; every change recounted from your node"}.` : "");
+    (log.amendments.length ? ` Members have changed it ${log.amendments.length} time${log.amendments.length === 1 ? "" : "s"}${saved ? "" : `; every change recounted from ${source}`}.` : "");
   $("ch-name").textContent = ch.name;
   $("ch-desc").textContent = ch.description ?? "";
   const coc = $("ch-coc");
@@ -1138,8 +1138,8 @@ function wireVotes() {
       const weak = versions.filter((v) => v.amendment && !v.amendment.recountable).length;
       say(
         weak
-          ? `Recounted ${versions.length - 1} change(s) from your node; ${weak} cannot be recounted from scratch (see the notes under Votes).`
-          : `Recounted from your node: all ${versions.length - 1} change(s) check out, every signature and key.`,
+          ? `Recounted ${versions.length - 1} change(s) from ${source}; ${weak} cannot be recounted from scratch (see the notes under Votes).`
+          : `Recounted from ${source}: all ${versions.length - 1} change(s) check out, every signature and key.`,
         weak > 0,
       );
       showVerification();
