@@ -57,6 +57,10 @@ Every command is safe to run twice. `--dry-run` on `provision`, `shrink` and `de
 the exact provider commands without running them. `./outpost status` shows the server and how
 far the node has synced.
 
+Only looking? The [hosted client](https://spider333.github.io/outpost/app/) reads through
+Farcaster's public node with no setup: press "Read with the public node". It cannot post there,
+and with only one node it cannot cross-check gasless keys ([TRUST.md](TRUST.md)).
+
 Just trying it? `./outpost provision --watchdog 24` deletes the server for you after 24 hours,
 or after 2 hours with no progress. Ran it? [VOUCHER.md](VOUCHER.md) has a checklist and a
 draft cast.

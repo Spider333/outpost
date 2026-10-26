@@ -69,6 +69,7 @@ import { httpsUrl, initial, isImageEmbed } from "./media.js";
 const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
 const SOCIETY_STORAGE = "outpost.society";
+const PUBLIC_STORAGE = "outpost.public";
 const RPC_STORAGE = "outpost.rpc";
 const CHECKNODE_STORAGE = "outpost.checknode";
 const PICTURES_STORAGE = "outpost.pictures";
@@ -158,6 +159,11 @@ try {
 }
 const society = store<Society>(SOCIETY_STORAGE);
 if (invite && invite.node === society?.node && invite.token === society.token) invite = undefined; // already in use
+// With no node of your own, Farcaster's public node can be read, never written to: a page may only
+// send it plain GETs (no token, no POST), and no app key is loaded, so no button that writes is shown.
+// A society node, once chosen, comes first.
+const publicNode = !society && store<boolean>(PUBLIC_STORAGE) === true;
+const source = society ? "the society node" : publicNode ? "Farcaster's public node" : "your node";
 // An invite opened in this tab while the page is open only changes the fragment: start over to read it.
 addEventListener("hashchange", () => {
   if (/(^#|&)(node|token)=/.test(location.hash)) location.reload();
@@ -168,13 +174,13 @@ const chain = rpc ? new Optimism(rpc) : undefined;
 // Gasless keys have no onchain record, so a second, independent node is asked. "" turns it off;
 // a second node on the same origin as the node being read is skipped.
 const checkUrl = store<string>(CHECKNODE_STORAGE) ?? DEFAULT_CHECK_NODE;
-const readUrl = society?.node ?? location.origin;
+const readUrl = society?.node ?? (publicNode ? DEFAULT_CHECK_NODE : location.origin);
 const second = checkUrl ? secondNode(checkUrl, readUrl) : undefined;
 const verifier = new Verifier(chain, second);
 const hub = new Hub({ url: readUrl, token: society?.token, verifier });
 let feed = new FeedBuilder(hub);
 
-let key: AppKey | undefined = store<AppKey>(KEY_STORAGE);
+let key: AppKey | undefined = publicNode ? undefined : store<AppKey>(KEY_STORAGE);
 if (key) verifier.trust(key.fid, key.publicKey);
 // Mainnet unless the local server says it fronts a test devnet.
 let network = FarcasterNetwork.MAINNET;
@@ -221,7 +227,7 @@ let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
 
 async function checkNode() {
   const pill = $("node-status");
-  const which = society ? `society node ${new URL(society.node).host}` : "node";
+  const which = society ? `society node ${new URL(society.node).host}` : publicNode ? "public node, read-only," : "node";
   try {
     const info = await hub.info();
     const { synced, maxDelay } = syncState(info);
@@ -229,7 +235,7 @@ async function checkNode() {
     pill.className = `pill ${synced ? "ok" : "warn"}`;
     if (!$("first-run").hidden) {
       $("first-run").hidden = true;
-      $("connect").hidden = !!key;
+      $("connect").hidden = !!key || publicNode;
     }
     return synced;
   } catch (e) {
@@ -244,6 +250,7 @@ async function checkNode() {
       pill.textContent = "no node";
       pill.className = "pill";
       $("first-run-why").textContent = `No node answers at ${hub.url} (${reason}).`;
+      $("first-run-public").hidden = publicNode;
       $("first-run").hidden = false;
       $("connect").hidden = true;
     } else {
@@ -257,7 +264,7 @@ async function checkNode() {
 function showVerification() {
   const el = $("verify-status");
   if (!verifier.checked) return;
-  el.replaceChildren(verifier.summary());
+  el.replaceChildren(verifier.summary(source[0]!.toUpperCase() + source.slice(1)));
   if (verifier.failed) el.append(" (A failed check can rarely come from an honest node, when the app that posted the message encoded it unusually.)");
   if (verifier.unverified && !verifier.showUnverified) {
     el.append(" ", h("button", { type: "button", onclick: (e: Event) => busy(e.currentTarget as HTMLButtonElement, "Loading…", showUnverified) }, "Show them anyway"));
@@ -283,9 +290,15 @@ function wireNodeSettings() {
     details.open = true;
     $("soc-node").focus();
   });
+  $("first-run-public").addEventListener("click", () => {
+    if (store(PUBLIC_STORAGE, true) === true) return location.reload();
+    say("This browser does not let the page save that choice. Allow this site to store data (in Safari: turn off Settings > Safari > Block All Cookies), then try again.", true);
+  });
   $("soc-current").textContent = society
     ? `Using the society node ${society.node}.`
-    : `Using your own node (this page's origin, ${location.origin}).`;
+    : publicNode
+      ? `Reading Farcaster's public node ${DEFAULT_CHECK_NODE}, read-only.`
+      : `Using your own node (this page's origin, ${location.origin}).`;
   $<HTMLInputElement>("rpc-url").value = rpc;
   $<HTMLInputElement>("check-node").value = checkUrl;
   $("check-note").textContent = !checkUrl
@@ -293,7 +306,11 @@ function wireNodeSettings() {
     : !second
       ? "The second node is the node you read from, so the gasless-key check is skipped. Choose a different node."
       : `Gasless keys are checked with ${checkUrl}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
-  $("node-note").textContent = society ? `Reads and writes go to the society node ${society.node}.` : "Reads and writes go only to your own node.";
+  $("node-note").textContent = society
+    ? `Reads and writes go to the society node ${society.node}.`
+    : publicNode
+      ? `Reads go to Farcaster's public node ${DEFAULT_CHECK_NODE}; nothing is written.`
+      : "Reads and writes go only to your own node.";
   $("soc-save").addEventListener("click", () =>
     busy(null, "", async () => {
       const s: Society = { node: checkNodeUrl($<HTMLInputElement>("soc-node").value), token: checkToken($<HTMLInputElement>("soc-token").value) };
@@ -304,6 +321,7 @@ function wireNodeSettings() {
   );
   $("soc-forget").addEventListener("click", () => {
     store(SOCIETY_STORAGE, null);
+    store(PUBLIC_STORAGE, null);
     location.reload();
   });
   $("check-save").addEventListener("click", () =>
@@ -559,7 +577,7 @@ function wireConnect() {
 
 async function renderAccount() {
   const logged = !!key;
-  $("connect").hidden = logged;
+  $("connect").hidden = logged || publicNode;
   $("compose").hidden = !logged;
   $("key").hidden = !logged;
   $("who").textContent = key ? `FID ${key.fid}` : "";
@@ -824,10 +842,10 @@ async function loadFeed(fid?: number) {
   list.setAttribute("aria-busy", "true");
   try {
     if (charter) {
-      say(`Loading the "${charter.name}" society feed from your node…`);
+      say(`Loading the "${charter.name}" society feed from ${source}…`);
       items = await charterFeed(feed, charter, { limit: 100, perAuthor });
     } else {
-      say(`Loading the feed for FID ${viewFid} from your node…`);
+      say(`Loading the feed for FID ${viewFid} from ${source}…`);
       items = await feed.following(viewFid!, { limit: 100, perAuthor });
     }
     appNames = await feed.appNames(items);
@@ -928,7 +946,7 @@ async function showCharter(c: unknown, source: string, saved = false) {
     (v.issuerCheck === "custody"
       ? `Signature OK: signed by the owner of FID ${ch.issuer!.fid}, checked ${chain ? "on Optimism" : "on your node"}.`
       : `Signature OK, signed by ${v.signer}. ${ch.issuer ? "Could not confirm it is the issuer's key." : "It names no issuer account."}`) +
-    (log.amendments.length ? ` Members have changed it ${log.amendments.length} time${log.amendments.length === 1 ? "" : "s"}${saved ? "" : "; every change recounted from your node"}.` : "");
+    (log.amendments.length ? ` Members have changed it ${log.amendments.length} time${log.amendments.length === 1 ? "" : "s"}${saved ? "" : `; every change recounted from ${source}`}.` : "");
   $("ch-name").textContent = ch.name;
   $("ch-desc").textContent = ch.description ?? "";
   const coc = $("ch-coc");
@@ -1038,7 +1056,7 @@ function proposalItem(t: Tally): HTMLLIElement {
             },
             "Approve (like it)",
           )
-        : h("p", { class: "muted small" }, key ? "Only members can approve." : "Connect an account to approve."),
+        : h("p", { class: "muted small" }, key ? "Only members can approve." : publicNode ? "Approving needs your own node or a society's: the public node is read-only here." : "Connect an account to approve."),
   );
 }
 
@@ -1120,8 +1138,8 @@ function wireVotes() {
       const weak = versions.filter((v) => v.amendment && !v.amendment.recountable).length;
       say(
         weak
-          ? `Recounted ${versions.length - 1} change(s) from your node; ${weak} cannot be recounted from scratch (see the notes under Votes).`
-          : `Recounted from your node: all ${versions.length - 1} change(s) check out, every signature and key.`,
+          ? `Recounted ${versions.length - 1} change(s) from ${source}; ${weak} cannot be recounted from scratch (see the notes under Votes).`
+          : `Recounted from ${source}: all ${versions.length - 1} change(s) check out, every signature and key.`,
         weak > 0,
       );
       showVerification();
@@ -1269,6 +1287,7 @@ async function main() {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
     if (savedLog) await showCharter(savedLog, "saved in this browser", true).catch((e) => say(errText(e), true));
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
+    else if (publicNode) say('Enter an FID or username to read a feed. This is read-only: to post, run your own node or join a society (see "Node and checks").');
     else say('Enter an FID or username to read a feed. To post, see "Post from Outpost" below.');
   }
   if (inviteError) say(inviteError, true);

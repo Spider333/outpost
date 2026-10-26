@@ -40,11 +40,15 @@
       <h2 id="first-run-h">Connect to a node to start</h2>
       <p>Outpost is a Farcaster client that reads and posts only through a node you choose, and checks every message itself.</p>
       <ol class="ways">
+        <li><strong>Just looking?</strong> Read through Farcaster's public node, with no setup. You cannot post there: posting needs your own node or a society's.</li>
         <li><strong>Got an invite link?</strong> Open it again and press Join.</li>
         <li><strong>Have a server?</strong> Run <code>./outpost client</code> there and open the address it prints.</li>
       </ol>
       <p id="first-run-why" class="muted small"></p>
-      <button id="first-run-open" type="button">Enter a node address</button>
+      <div class="row wrap start">
+        <button id="first-run-public" class="primary" type="button">Read with the public node</button>
+        <button id="first-run-open" type="button">Enter a node address</button>
+      </div>
     </section>
 
     <section id="connect" class="card" hidden aria-labelledby="connect-h">
