@@ -74,6 +74,7 @@ import {
   generatePrivateKey,
   publicKeyOf,
   SignInClient,
+  requestFidOf,
   waitFor,
   type Notification,
 } from "../core/index.js";
@@ -517,7 +518,7 @@ async function approveInApp() {
   const seen = await waitFor(async () => (run.cancelled ? true : hub.signer(userFid!, pub)), { timeoutMs: 5 * 60_000, intervalMs: 3000 });
   if (run.cancelled) return;
   if (!seen || seen === true) throw new Error(`The Farcaster app reports the key as added, but ${source} does not list it after 5 minutes. Nothing was saved; try again later.`);
-  if (seen.source !== "SIGNER_SOURCE_ONCHAIN" || seen.requestFid !== req.requestFid) {
+  if (seen.source !== "SIGNER_SOURCE_ONCHAIN" || requestFidOf(seen) !== req.requestFid) {
     throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} lists the key, but not as the onchain key this request asked for. Nothing was saved.`);
   }
   const k: AppKey = { fid: userFid!, privateKey: bytesToHex(priv), publicKey: pub, requestFid: req.requestFid, scopes: [], ttl: 0, network, onchain: true };

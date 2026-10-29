@@ -14,9 +14,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { ViemLocalEip712Signer } from "@farcaster/core";
+import type { HexString } from "../src/core/index.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { addAppKey, cast, FeedBuilder, follow, Hub, notificationsFor, notificationText, react, resolveMentions, type AppKey } from "../src/core/index.js";
-import { HTTP, network, onchainKey, registerFid, setUsername, until } from "./devnet-lib.js";
+import { readFileSync, statSync } from "node:fs";
+import { hexToBytes } from "viem";
+import { addAppKey, cast, FeedBuilder, requestFidOf, follow, Hub, notificationsFor, notificationText, react, resolveMentions, type AppKey } from "../src/core/index.js";
+import { addOnchainSigner, HTTP, network, onchainKey, registerFid, setUsername, until } from "./devnet-lib.js";
+import { fakeFarcaster } from "../test/fake-farcaster.js";
 
 const hub = new Hub({ url: HTTP });
 let step = 0;
@@ -26,15 +30,16 @@ function check(cond: unknown, what: string): asserts cond {
 }
 const wait = { timeoutMs: 20_000, intervalMs: 500 };
 
-async function account(fid: number, name: string): Promise<{ key: AppKey; name: string }> {
-  const custody = privateKeyToAccount(generatePrivateKey());
+async function account(fid: number, name: string): Promise<{ key: AppKey; name: string; custody: HexString }> {
+  const custodyKey = generatePrivateKey();
+  const custody = privateKeyToAccount(custodyKey);
   await registerFid(fid, custody.address);
   await until(`FID ${fid}`, async () => ((await hub.storageLimits(fid)).units > 0 ? true : undefined));
   const full = await onchainKey(hub, fid);
   await setUsername(hub, fid, custody.address, full, name);
   const { key, confirmed } = await addAppKey(hub, { fid, custody: new ViemLocalEip712Signer(custody), network }, wait);
   check(confirmed, `app key for ${fid}`);
-  return { key, name };
+  return { key, name, custody: custodyKey };
 }
 
 async function main() {
@@ -42,10 +47,11 @@ async function main() {
   const base = 300000 + Math.floor(Math.random() * 600000);
   const tag = base.toString(36);
   const save = process.argv.indexOf("--save") > 0 ? process.argv[process.argv.indexOf("--save") + 1] : undefined;
-  const [me, friend, other] = await Promise.all([
+  const [me, friend, other, app] = await Promise.all([
     account(base, `me-${tag}`),
     account(base + 1, `friend-${tag}`),
     account(base + 2, `other-${tag}`),
+    account(base + 3, `app-${tag}`),
   ]);
   log(`devnet ${HTTP}: @${me.name} (${me.key.fid}), @${friend.name} (${friend.key.fid}), @${other.name} (${other.key.fid}), each with a username and an app key`);
 
@@ -113,10 +119,44 @@ async function main() {
   check(new RegExp(`, 0 new`).test(out3), "CLI: 0 new after mark-read");
   log("CLI: ./outpost cli notifications lists them; 0 new after --mark-read");
 
+  // Approve in the Farcaster app, from the CLI. A stand-in for Farcaster's endpoint checks the
+  // app account's signature; its "approval" adds the onchain key on the devnet, as the KeyGateway
+  // would. A fourth account, made in "the app", signs in with no phrase.
+  const appUser = await account(base + 4, `appuser-${tag}`);
+  const appAddress = privateKeyToAccount(app.custody).address;
+  const fc = await fakeFarcaster({
+    appAddress,
+    userFid: appUser.key.fid,
+    autoApproveAfter: 2,
+    onApprove: (r) => void addOnchainSigner(appUser.key.fid, hexToBytes(r.body.key), app.key.fid),
+  });
+  const appHome = mkdtempSync(join(tmpdir(), "outpost-e2e-app-"));
+  writeFileSync(join(appHome, "app-account.json"), JSON.stringify({ fid: app.key.fid, custodyKey: app.custody, address: appAddress }), { mode: 0o600 });
+  const login = await promisify(execFile)(process.execPath, ["--import", "tsx", "src/cli/main.ts", "login", "--app", "--yes", "--network", "devnet", "--node", HTTP, "--rpc", "off", "--check-node", "off"], {
+    env: { ...process.env, OUTPOST_HOME: appHome, OUTPOST_SIGNIN_API: fc.url },
+  }).then((x) => x.stdout);
+  fc.close();
+  check(/full access and no expiry/.test(login) && /Manage connected apps/.test(login), "login --app warns before the QR code");
+  check(/farcaster:\/\/signed-key-request\?token=0x/.test(login) && /[▀▄█]/.test(login), "login --app prints the link and a QR code");
+  check(!login.includes(app.custody.slice(2)), "the app account's key is not printed");
+  const saved = JSON.parse(readFileSync(join(appHome, "appkey.json"), "utf8")) as AppKey;
+  check(saved.fid === appUser.key.fid && saved.onchain === true && saved.requestFid === app.key.fid, "saved key: the user's FID, onchain, requested by the app account");
+  check((statSync(join(appHome, "appkey.json")).mode & 0o777) === 0o600, "key file mode 600");
+  const signer = await hub.signer(saved.fid, saved.publicKey);
+  check(signer?.source === "SIGNER_SOURCE_ONCHAIN" && requestFidOf(signer) === app.key.fid, "node lists it as an onchain key for the app FID");
+  const viaApp = await cast(hub, saved, { text: "posted with a key approved in the app" }, wait);
+  check(viaApp.confirmed, "cast with the approved key merged");
+  const f2 = new FeedBuilder(hub);
+  const items = await f2.fromAuthors([saved.fid], { limit: 1 });
+  const names = await f2.appNames(items);
+  check(items[0]?.app.requestFid === app.key.fid && names.get(app.key.fid) === app.name, `feed shows it via @${app.name}`);
+  log(`login --app: QR + link printed, approved, key saved (onchain, mode 600), cast shows "via @${names.get(app.key.fid)}"`);
+
   if (save) {
     mkdirSync(save, { recursive: true, mode: 0o700 });
-    for (const [n, a] of [["me", me], ["friend", friend], ["other", other]] as const) {
-      writeFileSync(join(save, `${n}.json`), JSON.stringify({ ...a.key, username: a.name }), { mode: 0o600 });
+    writeFileSync(join(save, "app-account.json"), JSON.stringify({ fid: app.key.fid, custodyKey: app.custody, address: appAddress }), { mode: 0o600 });
+    for (const [n, a] of [["me", me], ["friend", friend], ["other", other], ["appuser", appUser]] as const) {
+      writeFileSync(join(save, `${n}.json`), JSON.stringify({ ...a.key, username: a.name, custody: a.custody }), { mode: 0o600 });
     }
     log(`devnet app keys saved in ${save}`);
   }

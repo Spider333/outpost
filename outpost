@@ -7,7 +7,8 @@
 #
 # Also: ./outpost status, ./outpost shrink (once synced: an 8 GB server instead of 32 GB, for a
 # quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
-# ./outpost watchdog start|stop|status (deletes a trial server for you)
+# ./outpost watchdog start|stop|status (deletes a trial server for you),
+# ./outpost app-account [status|remove] (the account that signs "Approve in the Farcaster app")
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
 # ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
 # ./outpost sponsor on|off|status (you pay for members' new Farcaster accounts, $0.20 each)
@@ -687,6 +688,20 @@ cmd_cli() {
   OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" "$@"
 }
 
+# "Approve in the Farcaster app": the app account's custody key is stored on this computer
+# (mode 600) and used by ./outpost client and ./outpost cli login --app. Setting it up looks the
+# account up on your node; status and remove need no server.
+cmd_app_account() {
+  ensure_build
+  case "${1:-}" in
+    status|remove) node "$OUTPOST_DIR/dist/cli.js" app-account "$@" ;;
+    *)
+      tunnel_up
+      OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" app-account "$@"
+      ;;
+  esac
+}
+
 # ---- society
 
 # Society mode: members use your node from their own browsers, with their own Farcaster
@@ -1172,7 +1187,7 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
@@ -1186,6 +1201,7 @@ main() {
     members) cmd_members "$@" ;;
     sponsor) cmd_sponsor "$@" ;;
     cli) cmd_cli "$@" ;;
+    app-account) cmd_app_account "$@" ;;
     status) cmd_status "$@" ;;
     shrink) cmd_shrink "$@" ;;
     uninstall) cmd_uninstall "$@" ;;
