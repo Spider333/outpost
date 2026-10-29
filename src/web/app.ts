@@ -3,7 +3,7 @@
 // By default the page and the node share an origin: `./outpost client` serves this page and
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
-import { zeroAddress, type EIP1193Provider } from "viem";
+import { bytesToHex, zeroAddress, type EIP1193Provider } from "viem";
 import { optimism } from "viem/chains";
 import { FarcasterNetwork } from "@farcaster/core";
 import {
@@ -71,9 +71,14 @@ import {
   notificationText,
   seenUpTo,
   unreadCount,
+  generatePrivateKey,
+  publicKeyOf,
+  SignInClient,
+  waitFor,
   type Notification,
 } from "../core/index.js";
 import { httpsUrl, initial, isImageEmbed } from "./media.js";
+import { encode as qrEncode } from "uqr";
 
 const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
@@ -374,15 +379,17 @@ function askToJoin(inv: Society): Promise<void> {
 
 // ---- connect
 
-type ConnectStep = "choose" | "app" | "create" | "phrase" | "confirm";
+type ConnectStep = "choose" | "app" | "approve" | "create" | "phrase" | "confirm";
 
 function showConnectStep(step: ConnectStep) {
+  if (step !== "approve") stopApproval();
   $("app-box").hidden = step !== "app";
+  $("approve-box").hidden = step !== "approve";
   $("create-box").hidden = step !== "create";
   $("phrase-box").hidden = step !== "phrase";
   $("confirm-box").hidden = step !== "confirm";
   $("connect-choices").hidden = step === "confirm";
-  for (const [id, s] of [["new-account", "create"], ["app-user", "app"], ["use-phrase", "phrase"]] as const) {
+  for (const [id, s] of [["new-account", "create"], ["app-user", "app"], ["use-phrase", "phrase"], ["use-app", "approve"]] as const) {
     $(id).setAttribute("aria-expanded", String(step === s));
   }
 }
@@ -416,6 +423,136 @@ async function authorize(custody: Custody, account: AccountInfo) {
   renderAccount();
   await loadFeed(k.fid);
   void refreshNotifs().catch(() => undefined);
+}
+
+// ---- approve in the Farcaster app (appsignin.ts)
+
+// The page never talks to Farcaster: its own Outpost server, or the society node, signs the
+// request with its app account and fetches the approval link. The new key is made here.
+const signIn = society
+  ? new SignInClient(`${society.node.replace(/\/+$/, "")}/app-signin`, { authorization: `Bearer ${society.token}` })
+  : new SignInClient("/outpost/app-signin");
+let approval: { cancelled: boolean } | undefined;
+
+function stopApproval() {
+  if (approval) approval.cancelled = true;
+  approval = undefined;
+  $("approve-qr-box").hidden = true;
+  $("approve-qr").replaceChildren();
+}
+
+// The QR code as SVG drawn here, dark squares on white, from uqr (MIT, bundled, no requests).
+function qrSvg(text: string): SVGSVGElement {
+  const { data, size } = qrEncode(text, { ecc: "M", border: 2 });
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  svg.setAttribute("aria-hidden", "true");
+  let d = "";
+  data.forEach((row, y) => row.forEach((on, x) => (d += on ? `M${x} ${y}h1v1h-1z` : "")));
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "#000000");
+  svg.append(path);
+  return svg;
+}
+
+async function openApprove() {
+  showConnectStep("approve");
+  const info = $("approve-info");
+  const go = $("approve-go");
+  go.hidden = true;
+  info.textContent = "Checking whether this Outpost can ask the Farcaster app…";
+  const s = await signIn.service();
+  if (!s) {
+    info.textContent = society
+      ? "This society node does not offer approval in the Farcaster app. Ask its host, or use another way to connect."
+      : "This page is not served by an Outpost client server, so it cannot ask the Farcaster app. Run ./outpost client on your computer and open the address it prints.";
+    return;
+  }
+  if (!s.configured) {
+    info.textContent = society
+      ? "This society node has no app account set up, so it cannot ask the Farcaster app yet. Its host sets one up once."
+      : 'This Outpost has no app account yet, so it cannot ask the Farcaster app. Whoever runs it sets one up once, in a terminal: ./outpost app-account (see "Approve in the Farcaster app" in the README). Use an account made for this, never a main account.';
+    return;
+  }
+  const name = await feed.profile(s.fid!).then((p) => (p.username ? ` (@${p.username})` : ""), () => "");
+  info.textContent = `The request comes from the app account FID ${s.fid}${name}, which ${society ? "this society node" : "this Outpost"} holds. ${s.sponsored ? "It offers to pay the onchain fee." : "The Farcaster app shows any onchain fee before you approve; you pay it there."} Your recovery phrase stays in the app.`;
+  go.hidden = false;
+}
+
+async function approveInApp() {
+  stopApproval();
+  const run = { cancelled: false };
+  approval = run;
+  const state = $("approve-state");
+  const priv = generatePrivateKey();
+  const pub = bytesToHex(await publicKeyOf(priv));
+  const req = await signIn.start(pub);
+  if (run.cancelled) return;
+  $("approve-qr").replaceChildren(qrSvg(req.deeplinkUrl));
+  $<HTMLAnchorElement>("approve-link").href = req.deeplinkUrl;
+  $("approve-go").hidden = true;
+  $("approve-qr-box").hidden = false;
+  state.textContent = "Scan this with your phone's camera, then approve in the Farcaster app. Waiting…";
+  $("approve-link").focus();
+  let userFid: number | undefined;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (run.cancelled) return;
+    if (Date.now() / 1000 > req.deadline + 30) throw new Error("The request expired before it was approved. Nothing was added. Try again.");
+    const st = await signIn.state(req.token).catch((e: Error) => ({ state: "error" as const, error: e.message }));
+    if (run.cancelled) return;
+    if (st.state === "expired") throw new Error("The request expired before it was approved. Nothing was added. Try again.");
+    if (st.state === "error") state.textContent = `Could not check the request (${"error" in st ? st.error : ""}). Trying again…`;
+    else if (st.state === "pending") state.textContent = "Waiting for you to approve in the Farcaster app…";
+    else if (st.state === "approved") state.textContent = "Approved. Waiting for the onchain transaction…";
+    else if (st.state === "completed" && "userFid" in st && st.userFid) {
+      userFid = st.userFid;
+      break;
+    }
+  }
+  state.textContent = `Added onchain for FID ${userFid}. Waiting for ${source} to show the key…`;
+  const seen = await waitFor(async () => (run.cancelled ? true : hub.signer(userFid!, pub)), { timeoutMs: 5 * 60_000, intervalMs: 3000 });
+  if (run.cancelled) return;
+  if (!seen || seen === true) throw new Error(`The Farcaster app reports the key as added, but ${source} does not list it after 5 minutes. Nothing was saved; try again later.`);
+  if (seen.source !== "SIGNER_SOURCE_ONCHAIN" || seen.requestFid !== req.requestFid) {
+    throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} lists the key, but not as the onchain key this request asked for. Nothing was saved.`);
+  }
+  const k: AppKey = { fid: userFid!, privateKey: bytesToHex(priv), publicKey: pub, requestFid: req.requestFid, scopes: [], ttl: 0, network, onchain: true };
+  store(KEY_STORAGE, k);
+  key = k;
+  verifier.trust(k.fid, k.publicKey);
+  approval = undefined;
+  $("approve-qr-box").hidden = true;
+  say(`Signed in as FID ${k.fid} with a key approved in the Farcaster app.`);
+  renderAccount();
+  await loadFeed(k.fid);
+  void refreshNotifs().catch(() => undefined);
+}
+
+function wireApprove() {
+  $("use-app").addEventListener("click", () => void openApprove().catch((e) => say(errText(e), true)));
+  $("app-to-approve").addEventListener("click", () => void openApprove().catch((e) => say(errText(e), true)));
+  $("approve-go").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Asking…", async () => {
+      try {
+        await approveInApp();
+      } catch (err) {
+        $("approve-state").textContent = errText(err);
+        $("approve-qr-box").hidden = true;
+        $("approve-go").hidden = false;
+        approval = undefined;
+        throw err;
+      }
+    }),
+  );
+  $("approve-cancel").addEventListener("click", () => {
+    stopApproval();
+    $("approve-go").hidden = false;
+    say("Approval cancelled. Nothing was saved.");
+  });
 }
 
 // ---- create an account (paid by the society's sponsor)
@@ -550,6 +687,7 @@ function wireCreate() {
 
 function wireConnect() {
   wireCreate();
+  wireApprove();
   $("use-wallet").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
       const eth = walletProvider();
@@ -602,12 +740,21 @@ async function renderAccount() {
   }
   $("k-fid").textContent = String(key.fid);
   $("k-pub").textContent = key.publicKey;
+  $("k-kind").textContent = key.onchain
+    ? "Onchain key, approved in the Farcaster app: full access, no expiry. Outpost cannot revoke it."
+    : "Outpost's own app key: cast, react and follow only. Expires 30 days after last use.";
+  $("k-note").textContent = key.onchain
+    ? "The private part stays in this browser. To remove the key from your account, use the Farcaster app: Settings, then Advanced, then Manage connected apps. The button below only forgets it here."
+    : "The private part stays in this browser. Revoking needs no recovery phrase: the key signs its own removal.";
+  $("revoke").textContent = key.onchain ? "Forget this key in this browser" : "Revoke this key (uninstall)";
   $("k-status").textContent = "checking…";
   try {
     const s = await hub.signer(key.fid, key.publicKey);
     $("k-status").textContent = s
-      ? `active${s.expiresAt ? `, expires ${new Date(s.expiresAt * 1000).toLocaleDateString()} unless used` : ""}`
-      : "not active (revoked or expired). Revoke to remove it from this browser.";
+      ? `active${s.expiresAt ? `, expires ${new Date(s.expiresAt * 1000).toLocaleDateString()} unless used` : key.onchain ? ", no expiry" : ""}`
+      : key.onchain
+        ? "not active (removed in the Farcaster app). Forget it to sign in again."
+        : "not active (revoked or expired). Revoke to remove it from this browser.";
     myFollowing = new Set(await followingOf(hub, key.fid));
   } catch (e) {
     $("k-status").textContent = `unknown (${errText(e)})`;
@@ -618,6 +765,16 @@ function wireKey() {
   $("revoke").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Revoking…", async () => {
       if (!key) return;
+      if (key.onchain) {
+        // An onchain key can only be removed by the account's owner, in the Farcaster app.
+        if (!confirm("Forget this key in this browser? It stays on your account until you remove it in the Farcaster app: Settings, then Advanced, then Manage connected apps.")) return;
+        store(KEY_STORAGE, null);
+        key = undefined;
+        say("Forgot the key in this browser. To remove it from your account, use the Farcaster app: Settings, then Advanced, then Manage connected apps.");
+        renderAccount();
+        renderFeed();
+        return;
+      }
       if (!confirm("Revoke this app key? This client will no longer be able to post for you.")) return;
       // Same rule as `./outpost cli uninstall`: the stored key is the only way to revoke it without
       // the recovery phrase, and a node that is behind says "not found" for a live key.
@@ -1580,8 +1737,16 @@ function wireCharter() {
 
 async function main() {
   try {
-    const cfg = (await (await fetch("/outpost-config.json")).json()) as { network?: string };
-    if (cfg.network === "devnet") network = FarcasterNetwork.DEVNET;
+    const cfg = (await (await fetch("/outpost-config.json")).json()) as { network?: string; checkNode?: string };
+    if (cfg.network === "devnet") {
+      network = FarcasterNetwork.DEVNET;
+      // Optimism mainnet and Farcaster's public node know nothing of devnet keys. Unless chosen
+      // under "Node and checks", key checks use the devnet's own second node, or are off.
+      let changed = false;
+      if (store<string>(RPC_STORAGE) === undefined) changed = store(RPC_STORAGE, "") === "" || changed;
+      if (store<string>(CHECKNODE_STORAGE) === undefined) changed = store(CHECKNODE_STORAGE, cfg.checkNode ?? "") !== undefined || changed;
+      if (changed) return location.reload();
+    }
   } catch {
     // Served without Outpost's server (e.g. Caddy for phones): mainnet.
   }

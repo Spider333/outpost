@@ -2,9 +2,9 @@
 // Verifier asks. Used by votes.test.ts, and served over HTTP by votes-demo.ts for the web client.
 
 import { existsSync, readFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { FarcasterNetwork, makeUserDataAdd, Message, UserDataType, type Message as MessageT } from "@farcaster/core";
+import { encodeGaslessSignedKeyRequestMetadata, FarcasterNetwork, makeUserDataAdd, Message, UserDataType, type Message as MessageT } from "@farcaster/core";
 import { bytesToHex } from "viem";
 import {
   buildCast,
@@ -56,6 +56,9 @@ export class World {
   likes: HubMessage[] = [];
   links: HubMessage[] = [];
   userData: HubMessage[] = [];
+  // Onchain keys added through an app's signed key request ("Approve in the Farcaster app"):
+  // "fid:key" -> the app's FID, listed by signersByFid with that metadata.
+  approved = new Map<string, number>();
   onchain = new Map<string, "added" | "removed">();
   gasless = new Map<string, KeyScopes>();
   keys = new Map<number, AppKey>();
@@ -123,8 +126,20 @@ export class World {
     return { status: 200, body: m };
   }
 
+  // An onchain key requested by `requestFid`, as the KeyGateway adds it after an approval.
+  approve(fid: number, key: HexString, requestFid: number) {
+    this.approved.set(`${fid}:${key.toLowerCase()}`, requestFid);
+    this.onchain.set(`${fid}:${key.toLowerCase()}`, "added");
+  }
+
   private signers(fid: number) {
-    return [...this.gasless].filter(([id]) => id.startsWith(`${fid}:`)).map(([id, s]) => ({ source: "SIGNER_SOURCE_OFFCHAIN", key: id.split(":")[1], keyType: 1, fid, requestFid: fid, scopes: s.scopes }));
+    const gasless = [...this.gasless].filter(([id]) => id.startsWith(`${fid}:`)).map(([id, s]) => ({ source: "SIGNER_SOURCE_OFFCHAIN", key: id.split(":")[1], keyType: 1, fid, requestFid: fid, scopes: s.scopes }));
+    const onchain = [...this.approved].filter(([id]) => id.startsWith(`${fid}:`)).map(([id, requestFid]) => {
+      const metadata = encodeGaslessSignedKeyRequestMetadata({ requestFid: BigInt(requestFid), requestSigner: "0x00000000000000000000000000000000000000aa", signature: new Uint8Array(65), deadline: 1n })._unsafeUnwrap();
+      const key = id.split(":")[1] as HexString;
+      return { source: "SIGNER_SOURCE_ONCHAIN", key, keyType: 1, fid, requestFid, onChainEvent: { fid, signerEventBody: { key, eventType: "SIGNER_EVENT_TYPE_ADD", metadata: Buffer.from(metadata).toString("base64"), metadataType: 1 } } };
+    });
+    return [...gasless, ...onchain];
   }
 
   // The node's answers. signersByFid lists the gasless keys, as a second node would.
@@ -191,8 +206,14 @@ export class World {
   // Over HTTP, open to any page (as Farcaster's public node is), plus JSON files at fixed paths,
   // and a built web client from `web` for every other path outside /v1/.
   async serve(port = 0, files: Record<string, unknown> = {}, web?: string): Promise<{ url: string; close: () => void }> {
+    const server = createServer(this.handler(files, web));
+    await new Promise<void>((ok) => server.listen(port, "127.0.0.1", ok));
+    return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, close: () => server.close() };
+  }
+
+  handler(files: Record<string, unknown> = {}, web?: string): (req: IncomingMessage, res: ServerResponse) => void {
     const types: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
-    const server = createServer((req, res) => {
+    return (req, res) => {
       const chunks: Buffer[] = [];
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => {
@@ -205,9 +226,7 @@ export class World {
         const r = url.pathname in files ? { status: 200, body: files[url.pathname] } : this.answer(url.pathname, url.searchParams, Buffer.concat(chunks));
         res.writeHead(r.status, { "content-type": "application/json", "access-control-allow-origin": "*" }).end(JSON.stringify(r.body));
       });
-    });
-    await new Promise<void>((ok) => server.listen(port, "127.0.0.1", ok));
-    return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, close: () => server.close() };
+    };
   }
 }
 

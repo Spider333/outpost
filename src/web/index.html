@@ -64,11 +64,28 @@
         <button id="app-user" type="button">I made my account in the Farcaster app</button>
         <button id="use-wallet" type="button">My account's owner key is in a browser wallet</button>
         <button id="use-phrase" type="button">I have a test account's recovery phrase</button>
+        <button id="use-app" type="button">Approve in the Farcaster app</button>
       </div>
 
       <div id="app-box" class="step" hidden>
-        <p>The Farcaster app keeps your account's owner key inside the app, so Outpost cannot get a posting key for it yet. Read every feed here, and post from the app for now.</p>
-        <p class="muted small">Approving Outpost from inside the Farcaster app is next on the list. Want to post here today? Create a second account with "I have no Farcaster account".</p>
+        <p>The Farcaster app keeps your account's owner key inside the app. Choose "Approve in the Farcaster app": you scan a QR code and approve on your phone, and your recovery phrase stays in the app.</p>
+        <button id="app-to-approve" type="button">Approve in the Farcaster app</button>
+      </div>
+
+      <div id="approve-box" class="step" hidden>
+        <div class="danger" role="note">
+          <strong class="danger-h"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg>This adds a key with full access and no expiry.</strong>
+          <p>The Farcaster app adds the key onchain. It can do everything your account can do apart from moving it: post, delete, like, follow and change your profile. It never expires, and Outpost cannot revoke it.</p>
+          <p>To remove it, use the Farcaster app: Settings, then Advanced, then Manage connected apps.</p>
+        </div>
+        <p id="approve-info" aria-live="polite"></p>
+        <button id="approve-go" class="primary" type="button" hidden>I understand. Show the QR code</button>
+        <div id="approve-qr-box" hidden>
+          <div id="approve-qr" class="qr" role="img" aria-label="QR code that opens this approval in the Farcaster app"></div>
+          <p><a id="approve-link" href="#" class="big-link">Open in the Farcaster app</a> <span class="muted small">(on the phone where you use it)</span></p>
+          <p id="approve-state" role="status" aria-live="polite"></p>
+          <button id="approve-cancel" type="button">Cancel</button>
+        </div>
       </div>
 
       <div id="create-box" class="step" hidden>
@@ -285,10 +302,11 @@
       <h2 id="key-h">Your app key</h2>
       <dl class="facts">
         <dt>FID</dt><dd id="k-fid"></dd>
+        <dt>Kind</dt><dd id="k-kind"></dd>
         <dt>Public key</dt><dd id="k-pub" class="mono"></dd>
         <dt>Status</dt><dd id="k-status"></dd>
       </dl>
-      <p class="muted small">The private part stays in this browser. Revoking needs no recovery phrase: the key signs its own removal.</p>
+      <p id="k-note" class="muted small">The private part stays in this browser. Revoking needs no recovery phrase: the key signs its own removal.</p>
       <button id="revoke" class="danger-btn" type="button">Revoke this key (uninstall)</button>
     </section>
   </main>
