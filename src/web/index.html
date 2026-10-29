@@ -124,7 +124,9 @@
       <h2 id="compose-h" class="sr-only">New cast</h2>
       <p id="reply-to" class="reply-to" hidden></p>
       <label for="text" class="sr-only">Cast text</label>
-      <textarea id="text" rows="3" maxlength="1024" placeholder="Write a cast"></textarea>
+      <textarea id="text" rows="3" maxlength="1024" placeholder="Write a cast. Type @ to mention someone." aria-autocomplete="list" aria-controls="mention-list" aria-expanded="false" aria-describedby="mention-note"></textarea>
+      <ul id="mention-list" class="mention-list" role="listbox" aria-label="People to mention" hidden></ul>
+      <p id="mention-note" class="sr-only" aria-live="polite"></p>
       <div class="row">
         <span id="count" class="muted small tabular">0 / 1024</span>
         <button id="post" class="primary" type="button">Cast</button>

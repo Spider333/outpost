@@ -250,11 +250,12 @@ export class Hub {
     return evs.at(-1)?.idRegisterEventBody?.to;
   }
 
-  // fname (e.g. "dwr") -> FID. ENS names need an Ethereum RPC on the node, so we only
-  // look up plain fnames here.
+  // Username (an fname such as "dwr", or an ENS name such as "vitalik.eth") -> FID, from the
+  // username proof the node stores. The node's answer is not proof: check it against the
+  // account's signed profile before relying on it.
   async fidByUsername(name: string): Promise<number | undefined> {
     const n = name.trim().replace(/^@/, "").toLowerCase();
-    if (!/^[a-z0-9][a-z0-9-]{0,15}$/.test(n)) return undefined;
+    if (!/^[a-z0-9][a-z0-9-]{0,15}$/.test(n) && !/^[a-z0-9-]+(\.[a-z0-9-]+)*\.eth$/.test(n)) return undefined;
     return this.optional(async () => (await this.request<{ fid: number }>("GET", "/v1/userNameProofByName", { name: n })).fid);
   }
 

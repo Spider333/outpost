@@ -36,6 +36,7 @@ import {
   Optimism,
   secondNode,
   Verifier,
+  resolveMentions,
   type AppFilter,
   type FeedItem,
   type AppKey,
@@ -71,7 +72,9 @@ const USAGE = `usage: ./outpost cli <command> [options]
   status                         node sync state
   login                          import a TEST account's phrase, add a gasless app key
   whoami                         show the saved app key and its expiry
-  cast <text> [--reply fid:0xhash] [--channel url] [--embed url]
+  cast <text> [--reply fid:0xhash] [--channel url] [--embed url] [--no-mentions]
+                                 each @username becomes a mention (looked up on your node);
+                                 an unknown one stops the cast. --no-mentions posts @ as text
   delete <0xhash>                remove one of your casts
   follow <fid> | unfollow <fid>
   like <fid> <0xhash> | unlike <fid> <0xhash>
@@ -340,6 +343,7 @@ async function main(argv: string[]) {
       rpc: { type: "string" },
       "check-node": { type: "string" },
       "show-unverified": { type: "boolean" },
+      "no-mentions": { type: "boolean" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },
@@ -383,11 +387,12 @@ async function main(argv: string[]) {
     feed: () => cmdFeed(hub, values),
     charter: () => cmdCharter(hub, args, requireKey, chain, values),
     cast: async () => {
-      const text = args.join(" ");
+      const key = requireKey();
+      const text = values["no-mentions"] ? { text: args.join(" ") } : await resolveMentions(hub, args.join(" "));
       report(
         "cast",
-        await cast(hub, requireKey(), {
-          text,
+        await cast(hub, key, {
+          ...text,
           embeds: values.embed,
           replyTo: values.reply ? parseCastRef(values.reply) : undefined,
           channelUrl: values.channel,

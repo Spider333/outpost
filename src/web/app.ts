@@ -63,6 +63,10 @@ import {
   type Custody,
   type FeedItem,
   type HexString,
+  type Profile,
+  extractMentions,
+  mapLimit,
+  mentionQuery,
 } from "../core/index.js";
 import { httpsUrl, initial, isImageEmbed } from "./media.js";
 
@@ -635,14 +639,166 @@ function setReply(target?: { fid: number; hash: HexString; name: string }) {
   }
 }
 
+// ---- @mentions in the composer
+
+// Signed profiles seen so far (feed authors, accounts you follow), for the suggestions.
+const people = new Map<number, Profile>();
+// Names picked from the suggestions. Only these become mentions when posting (mentions.ts).
+let picks = new Map<string, number>();
+let suggestions: Profile[] = [];
+let activeSuggestion = -1;
+let followedProfiles: Promise<void> | undefined;
+let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
+function remember(p: Profile | undefined) {
+  if (p?.username) people.set(p.fid, p);
+}
+
+// Profiles of up to 300 accounts you follow, read once, the first time you type "@".
+function loadFollowedProfiles(): Promise<void> {
+  if (!myFollowing.size) return Promise.resolve(); // not read yet: try again on the next "@"
+  followedProfiles ??= mapLimit([...myFollowing].filter((f) => !people.has(f)).slice(0, 300), 8, (f) =>
+    feed.profile(f).then(remember, () => undefined),
+  ).then(() => undefined);
+  return followedProfiles;
+}
+
+function closeSuggestions() {
+  suggestions = [];
+  activeSuggestion = -1;
+  const list = $("mention-list");
+  list.hidden = true;
+  list.replaceChildren();
+  const text = $("text");
+  text.setAttribute("aria-expanded", "false");
+  text.removeAttribute("aria-activedescendant");
+}
+
+function renderSuggestions() {
+  const list = $("mention-list");
+  const text = $("text");
+  if (!suggestions.length) return closeSuggestions();
+  list.replaceChildren(
+    ...suggestions.map((p, i) =>
+      h(
+        "li",
+        {
+          id: `mention-${i}`,
+          role: "option",
+          "aria-selected": String(i === activeSuggestion),
+          // mousedown, not click: the textarea keeps focus and its cursor.
+          onmousedown: (e: Event) => {
+            e.preventDefault();
+            pickSuggestion(i);
+          },
+        },
+        h("span", { class: "mn" }, `@${p.username}`),
+        p.displayName ? h("span", { class: "md" }, p.displayName) : null,
+        myFollowing.has(p.fid) ? h("span", { class: "md" }, "you follow") : null,
+      ),
+    ),
+  );
+  list.hidden = false;
+  text.setAttribute("aria-expanded", "true");
+  if (activeSuggestion >= 0) text.setAttribute("aria-activedescendant", `mention-${activeSuggestion}`);
+  else text.removeAttribute("aria-activedescendant");
+  $("mention-note").textContent = `${suggestions.length} ${suggestions.length === 1 ? "person" : "people"} to mention. Up and down arrows to choose, Enter to pick, Escape to close.`;
+}
+
+function matches(query: string): Profile[] {
+  const q = query.toLowerCase();
+  const rank = (p: Profile) => (myFollowing.has(p.fid) ? 0 : 2) + (p.username!.toLowerCase().startsWith(q) ? 0 : 1);
+  return [...people.values()]
+    .filter((p) => p.username!.toLowerCase().startsWith(q) || (q && p.displayName?.toLowerCase().includes(q)))
+    .sort((a, b) => rank(a) - rank(b) || a.username!.localeCompare(b.username!))
+    .slice(0, 6);
+}
+
+// A full username nobody here has loaded is looked up on the node, and kept only if the account's
+// own signed profile carries that name.
+async function lookUp(query: string) {
+  const fid = await hub.fidByUsername(query).catch(() => undefined);
+  if (!fid) return;
+  const p = await feed.profile(fid).catch(() => undefined);
+  if (p?.username?.toLowerCase() !== query.toLowerCase()) return;
+  remember(p);
+  const now = mentionQuery($<HTMLTextAreaElement>("text").value, $<HTMLTextAreaElement>("text").selectionStart);
+  if (now?.query.toLowerCase() === query.toLowerCase()) {
+    suggestions = matches(query);
+    renderSuggestions();
+  }
+}
+
+function suggest() {
+  const text = $<HTMLTextAreaElement>("text");
+  const q = mentionQuery(text.value, text.selectionStart);
+  clearTimeout(lookupTimer);
+  if (!q || text.selectionStart !== text.selectionEnd) return closeSuggestions();
+  void loadFollowedProfiles().then(() => {
+    const again = mentionQuery(text.value, text.selectionStart);
+    if (again?.query === q.query && !suggestions.length && matches(q.query).length) {
+      suggestions = matches(q.query);
+      renderSuggestions();
+    }
+  });
+  suggestions = matches(q.query);
+  activeSuggestion = suggestions.length ? 0 : -1;
+  renderSuggestions();
+  if (!suggestions.some((p) => p.username!.toLowerCase() === q.query.toLowerCase()) && q.query.length >= 2) {
+    lookupTimer = setTimeout(() => void lookUp(q.query), 300);
+  }
+}
+
+function pickSuggestion(i: number) {
+  const p = suggestions[i];
+  const text = $<HTMLTextAreaElement>("text");
+  const q = mentionQuery(text.value, text.selectionStart);
+  if (!p?.username || !q) return closeSuggestions();
+  const insert = `@${p.username} `;
+  text.value = text.value.slice(0, q.start) + insert + text.value.slice(text.selectionStart);
+  const at = q.start + insert.length;
+  text.setSelectionRange(at, at);
+  picks.set(p.username.toLowerCase(), p.fid);
+  closeSuggestions();
+  $("mention-note").textContent = `Mentioning @${p.username}.`;
+  text.dispatchEvent(new Event("input"));
+  text.focus();
+}
+
+function wireMentions() {
+  const text = $<HTMLTextAreaElement>("text");
+  text.addEventListener("input", suggest);
+  text.addEventListener("click", suggest);
+  text.addEventListener("blur", () => setTimeout(closeSuggestions, 150));
+  text.addEventListener("keydown", (e) => {
+    if ($("mention-list").hidden) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = suggestions.length;
+      activeSuggestion = (activeSuggestion + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      renderSuggestions();
+      document.getElementById(`mention-${activeSuggestion}`)?.scrollIntoView({ block: "nearest" });
+    } else if ((e.key === "Enter" || e.key === "Tab") && activeSuggestion >= 0) {
+      e.preventDefault();
+      pickSuggestion(activeSuggestion);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSuggestions();
+    }
+  });
+}
+
 function wireCompose() {
+  wireMentions();
   const text = $<HTMLTextAreaElement>("text");
   text.addEventListener("input", () => ($("count").textContent = `${new TextEncoder().encode(text.value).length} / 1024`));
   $("post").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Posting…", async () => {
       if (!key) return;
-      const r = await cast(hub, key, { text: text.value, replyTo });
+      const m = extractMentions(text.value, [...picks].map(([name, fid]) => ({ name, fid })));
+      const r = await cast(hub, key, { text: m.text, replyTo, ...(m.mentions.length ? { mentions: m.mentions, mentionsPositions: m.mentionsPositions } : {}) });
       text.value = "";
+      picks = new Map();
       $("count").textContent = "0 / 1024";
       setReply();
       say(r.confirmed ? `Cast ${r.hash.slice(0, 10)} is on your node.` : `Cast ${r.hash.slice(0, 10)} was accepted for relay; not visible yet.`);
@@ -849,6 +1005,7 @@ async function loadFeed(fid?: number) {
       items = await feed.following(viewFid!, { limit: 100, perAuthor });
     }
     appNames = await feed.appNames(items);
+    for (const it of items) remember(it.author);
   } finally {
     list.removeAttribute("aria-busy");
   }
@@ -876,7 +1033,7 @@ function wireFeed() {
     void busy(null, "", async () => {
       const v = $<HTMLInputElement>("view").value.trim();
       const fid = /^\d+$/.test(v) ? Number(v) : await hub.fidByUsername(v);
-      if (!fid) throw new Error(`No FID found for "${v}". Plain usernames only; .eth names need an Ethereum RPC on the node.`);
+      if (!fid) throw new Error(`No FID found for "${v}" on ${source}.`);
       perAuthor = 5;
       if (charter) leaveCharter();
       await loadFeed(fid);
