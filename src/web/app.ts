@@ -296,7 +296,7 @@ async function showUnverified() {
   verifier.showUnverified = true;
   verifier.reset();
   feed = new FeedBuilder(hub);
-  await loadFeed();
+  await Promise.all([loadFeed(), refreshNotifs()]);
 }
 
 // ---- node settings
@@ -898,6 +898,7 @@ async function lookUp(query: string) {
   const now = mentionQuery($<HTMLTextAreaElement>("text").value, $<HTMLTextAreaElement>("text").selectionStart);
   if (now?.query.toLowerCase() === query.toLowerCase()) {
     suggestions = matches(query);
+    activeSuggestion = suggestions.length ? 0 : -1;
     renderSuggestions();
   }
 }
@@ -911,6 +912,7 @@ function suggest() {
     const again = mentionQuery(text.value, text.selectionStart);
     if (again?.query === q.query && !suggestions.length && matches(q.query).length) {
       suggestions = matches(q.query);
+      activeSuggestion = 0;
       renderSuggestions();
     }
   });
