@@ -12,4 +12,5 @@ export * from "./society.js";
 export * from "./secondnode.js";
 export * from "./votes.js";
 export * from "./mentions.js";
+export * from "./notifications.js";
 export * from "./sponsor.js";

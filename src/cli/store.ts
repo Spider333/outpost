@@ -39,6 +39,24 @@ export function savedApprovals(): ApprovalCache {
   );
 }
 
+// Per FID, the time up to which notifications were marked read (`notifications --mark-read`).
+const seenPath = () => join(stateDir(), "notifications-seen.json");
+
+export function notificationsSeen(fid: number): number | undefined {
+  const p = seenPath();
+  if (!existsSync(p)) return undefined;
+  const v = (JSON.parse(readFileSync(p, "utf8")) as Record<string, number>)[String(fid)];
+  return typeof v === "number" ? v : undefined;
+}
+
+export function markNotificationsSeen(fid: number, at: number): void {
+  const p = seenPath();
+  const all = existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as Record<string, number>) : {};
+  all[String(fid)] = at;
+  mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
+  writeFileSync(p, JSON.stringify(all) + "\n", { mode: 0o600 });
+}
+
 export function deleteKey(): void {
   const p = keyPath();
   if (existsSync(p)) unlinkSync(p);

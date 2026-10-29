@@ -4,11 +4,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { FarcasterNetwork, Message, type Message as MessageT } from "@farcaster/core";
+import { FarcasterNetwork, makeUserDataAdd, Message, UserDataType, type Message as MessageT } from "@farcaster/core";
 import { bytesToHex } from "viem";
 import {
   buildCast,
+  buildFollow,
   buildReaction,
+  signerOf,
+  unwrap,
+  type CastInput,
   genesisHead,
   Hub,
   proposalCast,
@@ -50,6 +54,8 @@ type Answer = { status: number; body: unknown };
 export class World {
   casts: HubMessage[] = [];
   likes: HubMessage[] = [];
+  links: HubMessage[] = [];
+  userData: HubMessage[] = [];
   onchain = new Map<string, "added" | "removed">();
   gasless = new Map<string, KeyScopes>();
   keys = new Map<number, AppKey>();
@@ -77,6 +83,26 @@ export class World {
     return m;
   }
 
+  // A cast by a member (a reply when input.replyTo is set), newest first like the real node.
+  async cast(fid: number, input: CastInput, now?: number): Promise<HubMessage> {
+    const m = json(await buildCast(this.keys.get(fid)!, input, now));
+    this.casts.unshift(m);
+    return m;
+  }
+
+  async follow(fid: number, target: number, now?: number): Promise<HubMessage> {
+    const m = json(await buildFollow(this.keys.get(fid)!, target, now));
+    this.links.push(m);
+    return m;
+  }
+
+  // The member's username, signed with their key, as userDataByFid returns it.
+  async name(fid: number, username: string): Promise<void> {
+    const k = this.keys.get(fid)!;
+    const m = unwrap(await makeUserDataAdd({ type: UserDataType.USERNAME, value: username }, { fid, network: k.network, timestamp: Math.floor((Date.now() - 1609459200000) / 1000) }, signerOf(k)));
+    this.userData.push(json(m));
+  }
+
   verifier(): Verifier {
     const chain: KeyRegistry = { keyState: async (fid, key) => this.onchain.get(`${fid}:${key}`) ?? "none" };
     const second = {
@@ -93,6 +119,7 @@ export class World {
     if (m.data.type === "MESSAGE_TYPE_REACTION_ADD") this.likes.push(m);
     else if (m.data.type === "MESSAGE_TYPE_REACTION_REMOVE") this.likes = this.likes.filter((l) => !(l.data.fid === m.data.fid && l.data.reactionBody?.targetCastId?.hash === r?.targetCastId?.hash));
     else if (m.data.type === "MESSAGE_TYPE_CAST_ADD") this.casts.unshift(m);
+    else if (m.data.type === "MESSAGE_TYPE_LINK_ADD") this.links.push(m);
     return { status: 200, body: m };
   }
 
@@ -115,8 +142,18 @@ export class World {
         return messages(this.casts.filter((m) => m.data.fid === fid));
       case "/v1/castById":
         return one(this.casts.find((m) => m.data.fid === fid && m.hash === hash));
-      case "/v1/reactionsByCast":
-        return messages(this.lieAboutTargets ? this.likes : this.likes.filter((m) => m.data.reactionBody?.targetCastId?.hash.toLowerCase() === hash));
+      case "/v1/reactionsByCast": {
+        const type = `REACTION_TYPE_${(q.get("reaction_type") ?? "Like").toUpperCase()}`;
+        return messages(this.lieAboutTargets ? this.likes : this.likes.filter((m) => m.data.reactionBody?.type === type && m.data.reactionBody.targetCastId?.hash.toLowerCase() === hash));
+      }
+      case "/v1/castsByMention":
+        return messages(this.casts.filter((m) => m.data.castAddBody?.mentions.includes(fid)));
+      case "/v1/linksByTargetFid":
+        return messages(this.links.filter((m) => m.data.linkBody?.targetFid === Number(q.get("target_fid"))));
+      case "/v1/userNameProofByName": {
+        const u = this.userData.find((m) => m.data.userDataBody?.value === q.get("name"));
+        return u ? { status: 200, body: { fid: u.data.fid } } : { status: 400, body: { error: "not found" } };
+      }
       case "/v1/reactionById": {
         const type = `REACTION_TYPE_${(q.get("reaction_type") ?? "").toUpperCase()}`;
         return one(this.likes.find((m) => m.data.fid === fid && m.data.reactionBody?.type === type && m.data.reactionBody.targetCastId?.hash === hash));
@@ -124,8 +161,9 @@ export class World {
       case "/v1/castsByParent":
         return messages(this.casts.filter((m) => m.data.castAddBody?.parentCastId?.hash === hash));
       case "/v1/linksByFid":
+        return messages(this.links.filter((m) => m.data.fid === fid));
       case "/v1/userDataByFid":
-        return messages([]);
+        return messages(this.userData.filter((m) => m.data.fid === fid));
       case "/v1/signersByFid": {
         const signers = this.signers(fid);
         return { status: 200, body: { signers, gaslessSignerCount: signers.length, gaslessSignerLimit: 1000, currentUserNonce: 0 } };

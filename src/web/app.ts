@@ -67,6 +67,11 @@ import {
   extractMentions,
   mapLimit,
   mentionQuery,
+  notificationsFor,
+  notificationText,
+  seenUpTo,
+  unreadCount,
+  type Notification,
 } from "../core/index.js";
 import { httpsUrl, initial, isImageEmbed } from "./media.js";
 
@@ -78,6 +83,8 @@ const RPC_STORAGE = "outpost.rpc";
 const CHECKNODE_STORAGE = "outpost.checknode";
 const PICTURES_STORAGE = "outpost.pictures";
 const APPROVALS_STORAGE = "outpost.approvals";
+// Per FID: the time up to which notifications were marked read.
+const seenStorage = (fid: number) => `outpost.notifs.seen.${fid}`;
 
 // Set by scripts/build.mjs: the git commit this bundle was built from.
 declare const __OUTPOST_COMMIT__: string;
@@ -408,6 +415,7 @@ async function authorize(custody: Custody, account: AccountInfo) {
   say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
   renderAccount();
   await loadFeed(k.fid);
+  void refreshNotifs().catch(() => undefined);
 }
 
 // ---- create an account (paid by the society's sponsor)
@@ -584,7 +592,10 @@ async function renderAccount() {
   $("connect").hidden = logged || publicNode;
   $("compose").hidden = !logged;
   $("key").hidden = !logged;
+  $("notifs").hidden = !logged;
   $("who").textContent = key ? `FID ${key.fid}` : "";
+  if (!key) notifs = [];
+  renderUnread();
   if (!key) {
     showConnectStep("choose");
     return;
@@ -947,9 +958,10 @@ function castCard(it: FeedItem): HTMLLIElement {
     }, () => undefined);
   }
   const embeds = it.embeds.filter((u) => /^https?:\/\//.test(u));
+  if (!thread || thread.root.hash !== it.hash) actions.append(h("button", { type: "button", onclick: () => void busy(null, "", () => openThread(target, it.hash)) }, "Thread"));
   return h(
     "li",
-    { class: "cast" },
+    { class: `cast${thread?.focus === it.hash ? " focus" : ""}`, id: `cast-${it.hash}`, tabindex: "-1" },
     avatar(it),
     h(
       "div",
@@ -983,13 +995,40 @@ function renderFeed() {
       ),
     );
   }
-  $("more").hidden = items.length === 0;
-  if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
+  $("more").hidden = items.length === 0 || !!thread;
+  $("thread-back").hidden = !thread;
+  if (thread) $("feed-title").textContent = `A cast by ${thread.author} and ${shown.length - 1} repl${shown.length === 2 ? "y" : "ies"}, oldest first`;
+  else if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
   else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid} · ${shown.length} of ${items.length} casts`;
   else $("feed-title").textContent = "";
 }
 
+// ---- a cast and its replies
+
+let thread: { root: { fid: number; hash: HexString }; focus?: HexString; author: string } | undefined;
+
+async function openThread(root: { fid: number; hash: HexString }, focus?: HexString) {
+  say(`Loading the cast and its replies from ${source}…`);
+  const [cast, replies] = await Promise.all([hub.castById(root.fid, root.hash), hub.repliesTo(root, { pageSize: 100 })]);
+  if (!cast) throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} does not have that cast, or it did not pass the checks.`);
+  const msgs = [cast, ...replies.items.sort((a, b) => a.data.timestamp - b.data.timestamp)];
+  const loaded = await feed.items(msgs);
+  if (!loaded.length || loaded[0]!.hash !== cast.hash) throw new Error("That cast did not pass the key check, so it is not shown.");
+  const a = loaded[0]!.author;
+  thread = { root, focus: focus ?? root.hash, author: a?.username ? `@${a.username}` : `fid ${root.fid}` };
+  items = loaded;
+  for (const it of items) remember(it.author);
+  chipState.clear();
+  renderFeed();
+  showVerification();
+  say(`Showing a cast and ${items.length - 1} repl${items.length === 2 ? "y" : "ies"}.`);
+  const el = document.getElementById(`cast-${thread.focus}`) ?? $("feed-h");
+  el.scrollIntoView({ block: "center" });
+  el.focus({ preventScroll: true });
+}
+
 async function loadFeed(fid?: number) {
+  thread = undefined;
   if (fid) viewFid = fid;
   const t0 = performance.now();
   if (!charter && !viewFid) return;
@@ -1012,6 +1051,126 @@ async function loadFeed(fid?: number) {
   renderFeed();
   showVerification();
   say(`Loaded ${items.length} cast${items.length === 1 ? "" : "s"} in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+}
+
+// ---- notifications
+
+let notifs: Notification[] = [];
+let notifShown = 10;
+let notifLoading = false;
+
+function lastSeen(): number | undefined {
+  return key ? store<number>(seenStorage(key.fid)) : undefined;
+}
+
+function renderUnread() {
+  const n = unreadCount(notifs, lastSeen());
+  $("notif-pill").hidden = !key;
+  $("notif-count").textContent = `${n} new`;
+  $("notif-pill").setAttribute("aria-label", `Notifications: ${n} new`);
+}
+
+function excerpt(text: string | undefined): string {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  return t.length > 140 ? `${t.slice(0, 139)}…` : t;
+}
+
+function notifItem(n: Notification, seen: number | undefined): HTMLLIElement {
+  const open =
+    n.kind === "follow"
+      ? h("button", { type: "button", onclick: () => void busy(null, "", () => loadFeed(n.actors[0]!.fid)) }, "Show their feed")
+      : h(
+          "button",
+          {
+            type: "button",
+            onclick: () =>
+              void busy(null, "", async () => {
+                // A reply opens under your cast; a mention opens the cast that mentions you.
+                const c = n.cast;
+                if (n.kind === "reply" && c?.parent && "hash" in c.parent) await openThread({ fid: c.parent.fid, hash: c.parent.hash as HexString }, c.hash);
+                else if (c) await openThread({ fid: c.fid, hash: c.hash });
+                else if (n.target) await openThread({ fid: n.target.fid, hash: n.target.hash });
+              }),
+          },
+          "Open",
+        );
+  const about = n.kind === "reply" || n.kind === "mention" ? n.cast?.text : n.target?.text;
+  const unread = n.time > (seen ?? 0);
+  return h(
+    "li",
+    { class: `notif${unread ? " unread" : ""}` },
+    h(
+      "div",
+      { class: "notif-main" },
+      h("span", { class: "notif-what" }, notificationText(n), unread ? h("span", { class: "sr-only" }, " (new)") : null, h("span", { class: "meta" }, ` · ${ago(n.time)}`)),
+      about ? h("p", { class: "notif-excerpt" }, excerpt(about)) : null,
+    ),
+    open,
+  );
+}
+
+function renderNotifs(pending = 0, failed: string[] = []) {
+  const seen = lastSeen();
+  $("notif-list").replaceChildren(...notifs.slice(0, notifShown).map((n) => notifItem(n, seen)));
+  $("notif-more").hidden = notifs.length <= notifShown;
+  const notes: string[] = [];
+  if (pending) notes.push(`Still loading (${pending} of 5 parts left)…`);
+  if (failed.length) notes.push(`${source[0]!.toUpperCase()}${source.slice(1)} did not answer for: ${failed.join(", ")}. Refresh to try again.`);
+  if (!pending && !notifs.length && !failed.length) notes.push("Nothing yet.");
+  $("notif-status").textContent = notes.join(" ");
+  renderUnread();
+}
+
+async function refreshNotifs() {
+  if (!key || notifLoading) return;
+  notifLoading = true;
+  const fid = key.fid;
+  $("notifs").hidden = false;
+  try {
+    const r = await notificationsFor(feed, fid, {
+      onUpdate: (u) => {
+        if (key?.fid !== fid) return;
+        notifs = u.items;
+        renderNotifs(u.pending, u.failed);
+      },
+    });
+    if (key?.fid !== fid) return;
+    notifs = r.items;
+    for (const n of notifs) n.actors.forEach(remember);
+    renderNotifs(0, r.failed);
+    showVerification();
+  } finally {
+    notifLoading = false;
+  }
+}
+
+function wireNotifs() {
+  $("notif-refresh").addEventListener("click", (e) => busy(e.currentTarget as HTMLButtonElement, "Refreshing…", refreshNotifs));
+  $("notif-read").addEventListener("click", () => {
+    if (!key) return;
+    store(seenStorage(key.fid), seenUpTo(notifs));
+    renderNotifs();
+    say("All notifications marked read.");
+  });
+  $("notif-more").addEventListener("click", () => {
+    notifShown += 20;
+    renderNotifs();
+  });
+  $("notif-pill").addEventListener("click", () => setTimeout(() => $("notifs-h").focus(), 0));
+  $("thread-back").addEventListener("click", () =>
+    busy(null, "", async () => {
+      thread = undefined;
+      if (charter || viewFid) await loadFeed();
+      else {
+        items = [];
+        renderFeed();
+      }
+    }),
+  );
+  // A light poll while the page is visible; a society node rate-limits each member.
+  setInterval(() => {
+    if (document.visibilityState === "visible") void refreshNotifs().catch(() => undefined);
+  }, 120_000);
 }
 
 function showPicturesNote() {
@@ -1438,12 +1597,14 @@ async function main() {
   wireFeed();
   wireCharter();
   wireVotes();
+  wireNotifs();
   await renderAccount();
   if (invite) await askToJoin(invite);
   if (await checkNode()) {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
     if (savedLog) await showCharter(savedLog, "saved in this browser", true).catch((e) => say(errText(e), true));
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
+    if (key) void refreshNotifs().catch((e) => say(errText(e), true));
     else if (publicNode) say('Enter an FID or username to read a feed. This is read-only: to post, run your own node or join a society (see "Node and checks").');
     else say('Enter an FID or username to read a feed. To post, see "Post from Outpost" below.');
   }

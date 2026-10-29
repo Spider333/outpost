@@ -37,6 +37,10 @@ import {
   secondNode,
   Verifier,
   resolveMentions,
+  notificationsFor,
+  notificationText,
+  seenUpTo,
+  unreadCount,
   type AppFilter,
   type FeedItem,
   type AppKey,
@@ -45,7 +49,7 @@ import {
 } from "../core/index.js";
 import { askHidden, confirm, printable } from "./prompt.js";
 import { cmdCharter, verificationNote } from "./charter.js";
-import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
+import { deleteKey, keyPath, loadKey, markNotificationsSeen, notificationsSeen, saveKey } from "./store.js";
 
 const WARNING = `
   STOP. Read this before you paste a recovery phrase.
@@ -82,6 +86,9 @@ const USAGE = `usage: ./outpost cli <command> [options]
   feed [--fid n] [--channel url] [--include apps] [--exclude apps] [--limit n]
                                  following feed (or a channel) from your node. apps is a
                                  comma list of app FIDs, "self" or "unknown"
+  notifications [--fid n] [--limit n] [--mark-read]
+                                 replies, mentions, likes, recasts and new followers, newest
+                                 first; "*" marks what is new since you last used --mark-read
   charter new <file>             start a charter file
   charter sign <in> <out>        sign it with the society's key ($CHARTER_PRIVATE_KEY or phrase)
   charter verify <file|url>      check the signature and the issuer's custody on your node;
@@ -266,6 +273,31 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   console.log(verificationNote(hub));
 }
 
+async function cmdNotifications(hub: Hub, v: { fid?: string; limit?: string; "mark-read"?: boolean }) {
+  const fid = v.fid ? parseFid(v.fid) : requireKey().fid;
+  const limit = v.limit ? Number(v.limit) : 30;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("--limit must be 1 to 500");
+  const t0 = Date.now();
+  const r = await notificationsFor(new FeedBuilder(hub), fid);
+  const seen = notificationsSeen(fid);
+  for (const n of r.items.slice(0, limit)) {
+    const about = n.kind === "reply" || n.kind === "mention" ? n.cast : n.target;
+    console.log(printable(`${n.time > (seen ?? 0) ? "*" : " "} ${new Date(n.time).toISOString().slice(0, 16).replace("T", " ")}  ${notificationText(n)}`));
+    if (about) {
+      console.log(`    ${printable(about.text.replace(/\s+/g, " ")).slice(0, 160)}`);
+      console.log(`    ${about.fid}:${about.hash}`);
+    }
+  }
+  const unread = unreadCount(r.items, seen);
+  console.log(`\n${r.items.length} notification${r.items.length === 1 ? "" : "s"} for FID ${fid}, ${unread} new, in ${((Date.now() - t0) / 1000).toFixed(2)} s from ${hub.url}`);
+  if (r.failed.length) console.log(printable(`the node did not answer for: ${r.failed.join(", ")}. Run it again to retry.`));
+  if (v["mark-read"]) {
+    markNotificationsSeen(fid, seenUpTo(r.items));
+    console.log("marked all read");
+  } else if (unread) console.log("mark them read with: ./outpost cli notifications --mark-read");
+  console.log(verificationNote(hub));
+}
+
 async function cmdUninstall(hub: Hub) {
   const key = loadKey();
   if (!key) {
@@ -344,6 +376,7 @@ async function main(argv: string[]) {
       "check-node": { type: "string" },
       "show-unverified": { type: "boolean" },
       "no-mentions": { type: "boolean" },
+      "mark-read": { type: "boolean" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },
@@ -385,6 +418,7 @@ async function main(argv: string[]) {
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
+    notifications: () => cmdNotifications(hub, values),
     charter: () => cmdCharter(hub, args, requireKey, chain, values),
     cast: async () => {
       const key = requireKey();
