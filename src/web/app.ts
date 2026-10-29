@@ -1753,6 +1753,9 @@ async function main() {
       if (store<string>(RPC_STORAGE) === undefined) changed = store(RPC_STORAGE, "") === "" || changed;
       if (store<string>(CHECKNODE_STORAGE) === undefined) changed = store(CHECKNODE_STORAGE, cfg.checkNode ?? "") !== undefined || changed;
       if (changed) return location.reload();
+      // A devnet usually has no second node this page may reach (it allows https only), so its
+      // gasless keys cannot be checked: show what they signed, marked "signer not verified".
+      if (!second) verifier.showUnverified = true;
     }
   } catch {
     // Served without Outpost's server (e.g. Caddy for phones): mainnet.
