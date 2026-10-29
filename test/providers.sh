@@ -137,6 +137,35 @@ rm -f "$C/outpost-phone"
 "$ROOT/outpost" destroy --yes >/dev/null
 echo "ok: phone access and society mode keep out of each other's way"
 
+# "Approve in the Farcaster app" on the society node: infra/society.sh with the fake docker. The
+# app account's key arrives on stdin, is stored mode 600, and is deleted again by app-signin-off.
+SOC="$WORK/soc"
+soc() { OUTPOST_SOCIETY_DIR="$SOC" OUTPOST_SOCIETY_HOST=203-0-113-7.sslip.io FAKE_DOCKER_LOGS='app-signin: app account FID 777; 127.0.0.1:3392' \
+  PATH="$ROOT/test/fake-providers/server:$PATH" bash "$ROOT/infra/society.sh" "$@"; }
+rm -f "$C"/*
+soc on <"$ROOT/src/server/gate.ts" >/dev/null
+! soc app-signin-on <"$ROOT/src/server/appsignin.ts" >/dev/null 2>&1 || fail "app-signin-on started without an app account"
+account='{"fid": 777, "custodyKey": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", "address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"}'
+printf '%s\n' "$account" | soc app-signin-account >/dev/null || fail "app-signin-account refused a good account"
+[ -n "$(find "$SOC/appsignin/account.json" -perm 600)" ] || fail "app account file is not mode 600"
+! printf 'not json\n' | soc app-signin-account >/dev/null 2>&1 || fail "app-signin-account took garbage"
+grep -q '"fid": 777' "$SOC/appsignin/account.json" || fail "garbage replaced the stored app account"
+for run in 1 2; do
+  out="$(soc app-signin-on <"$ROOT/src/server/appsignin.ts")" || fail "app-signin-on failed (run $run)"
+  [[ "$out" == *"requests come from FID 777"* ]] || fail "app-signin-on: $out"
+done
+grep -q -- "--network host --read-only --cap-drop ALL --security-opt no-new-privileges" "$C/outpost-appsignin" || fail "sign-in container not locked down"
+grep -q -- "-v $SOC/appsignin/account.json:/appsignin/account.json:ro" "$C/outpost-appsignin" || fail "app account not mounted read-only"
+want="$(printf '{\n\tlog {\n\t\texclude http.log http.handlers http.stdlib tls.handshake\n\t}\n}\n203-0-113-7.sslip.io {\n\thandle /app-signin* {\n\t\treverse_proxy 127.0.0.1:3392\n\t}\n\thandle {\n\t\treverse_proxy 127.0.0.1:3390\n\t}\n\theader -Server\n}')"
+[ "$(cat "$SOC/caddy/Caddyfile")" = "$want" ] || fail "Caddyfile with sign-in is not as expected:
+$(cat "$SOC/caddy/Caddyfile")"
+for run in 1 2; do soc app-signin-off >/dev/null || fail "app-signin-off failed (run $run)"; done
+[ ! -e "$C/outpost-appsignin" ] || fail "app-signin-off left the container running"
+[ ! -e "$SOC/appsignin/account.json" ] || fail "app-signin-off kept the app account's key on the server"
+grep -q "reverse_proxy 127.0.0.1:3392" "$SOC/caddy/Caddyfile" && fail "app-signin-off left the route in the Caddyfile"
+soc off >/dev/null
+echo "ok: society app-signin account (mode 600), on x2, off x2 (key deleted)"
+
 # DigitalOcean answering 503 for volume get and delete: destroy must fail and keep the state,
 # not call the volume gone.
 find "$FAKE_STATE" -type f -delete

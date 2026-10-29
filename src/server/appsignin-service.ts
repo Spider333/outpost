@@ -11,6 +11,7 @@
 // process handed out can be polled, so it is no open relay to Farcaster's endpoint.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import { createKeyRequest, isPublicKey, keyRequestState, signKeyRequest, FARCASTER_API, type AppAccount } from "../core/appsignin.js";
 
 export interface SignInOptions {
@@ -113,4 +114,37 @@ export function sameOrigin(req: IncomingMessage): string | undefined {
   const host = req.headers.host;
   if (!origin || !host || (origin !== `http://${host}` && origin !== `https://${host}`)) return "requests must come from this page";
   return undefined;
+}
+
+// For a society node (src/server/appsignin.ts behind Caddy at /app-signin): members only, by
+// the same Bearer tokens as the gate, from the pages the gate allows (CORS). The page is served
+// from another origin there, so the token, not the origin, is what keeps strangers out.
+const ORIGINS = new Set(["https://spider333.github.io", "http://127.0.0.1:8381", "http://localhost:8381"]);
+
+export function societySignIn(opts: Omit<SignInOptions, "refuse" | "headers"> & { members: () => Map<string, string> }) {
+  const cors = (req: IncomingMessage): Record<string, string> => {
+    const origin = req.headers.origin;
+    return origin && ORIGINS.has(origin) ? { vary: "Origin", "access-control-allow-origin": origin } : { vary: "Origin" };
+  };
+  const handler = signInHandler({
+    ...opts,
+    headers: cors,
+    refuse: (req) => {
+      const token = /^Bearer (\S+)$/.exec(req.headers.authorization ?? "")?.[1];
+      const known = token !== undefined && opts.members().has(createHash("sha256").update(token).digest("hex"));
+      return known ? undefined : "members only: this needs your access token for the society node";
+    },
+  });
+  return (req: IncomingMessage, res: ServerResponse) => {
+    const path = (req.url ?? "/").split("?")[0]!;
+    if (req.method === "OPTIONS") {
+      const c = cors(req);
+      const allow = c["access-control-allow-origin"] ? { "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Authorization, Content-Type" } : {};
+      return void res.writeHead(204, { ...c, ...allow }).end();
+    }
+    if (path !== "/app-signin" && !path.startsWith("/app-signin/")) {
+      return void res.writeHead(404, { "content-type": "application/json", ...cors(req) }).end(JSON.stringify({ error: "not found" }));
+    }
+    handler(req, res, path.slice("/app-signin".length));
+  };
 }

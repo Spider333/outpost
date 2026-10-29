@@ -243,20 +243,22 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork, ch
   console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: ./outpost cli uninstall");
 }
 
-const APP_WARNING = (path: string) => `
-  The app account signs every "Approve in the Farcaster app" request made from this
-  computer, and people see its name as the app their posts came from.
+// `where` is this computer's file, or the society node's server.
+const APP_WARNING = (where: string, society: boolean) => `
+  The app account signs every "Approve in the Farcaster app" request made ${society ? "through your society node" : "from this\n  computer"}, and people see its name as the app their posts came from.
 
   - Use an account made for this. Never your main account.
-  - Its custody key is saved on this computer, in ${path} (mode 600).
-    Anyone who can read your files can take that account.
-  - The key is used here only to sign key requests. It is never sent to a browser,
+  - Its custody key is saved ${where} (mode 600).
+    Anyone who can read ${society ? "that server's" : "your"} files can take that account.
+  - The key is used there only to sign key requests. It is never sent to a browser,
     to your node, or to Farcaster.
 `;
 
-async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean }, chain?: Optimism) {
+async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean; out?: string }, chain?: Optimism) {
   const sub = args[0] ?? "setup";
-  const existing = loadAppAccount();
+  // --out: for a society node, `./outpost app-account --society` copies this file to the server
+  // and deletes it here.
+  const existing = v.out ? undefined : loadAppAccount();
   if (sub === "status") {
     if (!existing) return console.log(`no app account on this computer. Set one up with: ./outpost app-account`);
     console.log(`app account: FID ${existing.fid}, custody ${existing.address}${existing.sponsor ? ", sponsors the onchain fee" : ""}`);
@@ -274,7 +276,7 @@ async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean },
     console.log("Run `./outpost app-account remove` first to use another one.");
     return;
   }
-  console.log(APP_WARNING(appAccountPath()));
+  console.log(v.out ? APP_WARNING("on the society node's server", true) : APP_WARNING(`on this computer, in ${appAccountPath()}`, false));
   if (!(await confirm("Is this an account made for this, and do you accept the above?"))) return;
   let secret = (await askHidden("App account's recovery phrase, or its custody private key (0x...), input hidden: ")).trim();
   let custodyKey: HexString;
@@ -292,7 +294,8 @@ async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean },
   console.log(`\ncustody address  ${account.custody}`);
   console.log(printable(`FID              ${account.fid}`));
   if (!(await confirm(`Use FID ${account.fid} as this computer's app account?`))) return;
-  const path = saveAppAccount({ fid: account.fid, custodyKey, address, ...(v.sponsor ? { sponsor: true } : {}) });
+  const path = saveAppAccount({ fid: account.fid, custodyKey, address, ...(v.sponsor ? { sponsor: true } : {}) }, v.out);
+  if (v.out) return;
   console.log(`\nsaved to ${path} (mode 600).`);
   console.log(`./outpost client now offers "Approve in the Farcaster app" (restart it if it is running).`);
   if (v.sponsor) console.log("Requests also carry a sponsorship: Farcaster pays the onchain fee only for apps it has approved for that.");
@@ -516,6 +519,7 @@ async function main(argv: string[]) {
       app: { type: "boolean" },
       yes: { type: "boolean" },
       sponsor: { type: "boolean" },
+      out: { type: "string" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },

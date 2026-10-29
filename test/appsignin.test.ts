@@ -129,3 +129,34 @@ test("an answer from the endpoint that is not a Farcaster link is refused", asyn
     bad.close();
   }
 });
+
+test("society node: members only by token, CORS for the hosted page, nothing outside /app-signin", async () => {
+  const { createHash } = await import("node:crypto");
+  const { societySignIn } = await import("../src/server/appsignin-service.js");
+  const fc = await fakeFarcaster({ appAddress: APP.address, userFid: 4242 });
+  const members = () => new Map([[createHash("sha256").update("member-token").digest("hex"), "alice"]]);
+  const server = createServer(societySignIn({ account: () => APP, api: fc.url, members }));
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    const pages = "https://spider333.github.io";
+    const pre = await fetch(`${url}/app-signin`, { method: "OPTIONS", headers: { origin: pages } });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get("access-control-allow-origin"), pages);
+    assert.match(pre.headers.get("access-control-allow-headers") ?? "", /Authorization/);
+    assert.equal((await fetch(`${url}/app-signin`, { method: "OPTIONS", headers: { origin: "https://evil.example" } })).headers.get("access-control-allow-origin"), null);
+
+    const stranger = new SignInClient(`${url}/app-signin`, { authorization: "Bearer wrong" });
+    assert.equal(await stranger.service(), undefined);
+    await assert.rejects(stranger.start(KEY), /members only/);
+    const member = new SignInClient(`${url}/app-signin`, { authorization: "Bearer member-token", origin: pages });
+    assert.deepEqual(await member.service(), { configured: true, fid: 777, sponsored: false });
+    const r = await member.start(KEY);
+    assert.match(r.deeplinkUrl, /^farcaster:\/\//);
+    assert.deepEqual(await member.state(r.token), { state: "pending" });
+    assert.equal((await fetch(`${url}/v1/info`, { headers: { authorization: "Bearer member-token" } })).status, 404);
+  } finally {
+    server.close();
+    fc.close();
+  }
+});

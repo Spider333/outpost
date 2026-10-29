@@ -8,7 +8,7 @@
 # Also: ./outpost status, ./outpost shrink (once synced: an 8 GB server instead of 32 GB, for a
 # quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
 # ./outpost watchdog start|stop|status (deletes a trial server for you),
-# ./outpost app-account [status|remove] (the account that signs "Approve in the Farcaster app")
+# ./outpost app-account [--society] [status|remove] (signs "Approve in the Farcaster app")
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
 # ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
 # ./outpost sponsor on|off|status (you pay for members' new Farcaster accounts, $0.20 each)
@@ -691,8 +691,15 @@ cmd_cli() {
 # "Approve in the Farcaster app": the app account's custody key is stored on this computer
 # (mode 600) and used by ./outpost client and ./outpost cli login --app. Setting it up looks the
 # account up on your node; status and remove need no server.
+# With --society the key goes to the society node's server instead (mode 600 there; the copy
+# made here on the way is deleted) and members get "Approve in the Farcaster app".
 cmd_app_account() {
   ensure_build
+  if [ "${1:-}" = "--society" ]; then
+    shift
+    app_account_society "$@"
+    return
+  fi
   case "${1:-}" in
     status|remove) node "$OUTPOST_DIR/dist/cli.js" app-account "$@" ;;
     *)
@@ -700,6 +707,35 @@ cmd_app_account() {
       OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" app-account "$@"
       ;;
   esac
+}
+
+app_account_society() {
+  local host tmp
+  case "${1:-}" in
+    status) society_run "" app-signin-status; return ;;
+    remove|off)
+      host="$(society_host)"
+      society_run "OUTPOST_SOCIETY_HOST='$host' " app-signin-off
+      return
+      ;;
+  esac
+  host="$(society_host)"
+  [ -f "$OUTPOST_DIR/dist/appsignin.js" ] || (cd "$OUTPOST_DIR" && node scripts/build.mjs)
+  tunnel_up
+  mkdir -p "$STATE_DIR"
+  tmp="$(umask 077; mktemp "$STATE_DIR/app-account.XXXXXX")"
+  # shellcheck disable=SC2064 # expand $tmp now: it is gone by the time the trap runs
+  trap "rm -f '$tmp'" EXIT
+  OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" app-account --out "$tmp" "$@"
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    say "nothing was sent to the server"
+    return
+  fi
+  society_run "" app-signin-account <"$tmp"
+  rm -f "$tmp"
+  society_run "OUTPOST_SOCIETY_HOST='$host' " app-signin-on <"$OUTPOST_DIR/dist/appsignin.js"
+  say "members now see \"Approve in the Farcaster app\". Turn it off (and delete the key there) with: ./outpost app-account --society off"
 }
 
 # ---- society

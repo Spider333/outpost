@@ -70,8 +70,7 @@ export function loadAppAccount(): AppAccount | undefined {
   return JSON.parse(readFileSync(p, "utf8")) as AppAccount;
 }
 
-export function saveAppAccount(a: AppAccount): string {
-  const p = appAccountPath();
+export function saveAppAccount(a: AppAccount, p = appAccountPath()): string {
   mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
   writeFileSync(p, JSON.stringify(a, null, 2) + "\n", { mode: 0o600 });
   chmodSync(p, 0o600);
