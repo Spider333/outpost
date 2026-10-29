@@ -187,6 +187,44 @@ The optional sponsor (`src/server/sponsor.ts` and `sponsor-service.ts`, tests in
 - The wallet's key lives on the server. Whoever controls the server controls the ETH in it, and
   nothing else.
 
+## Approve in the Farcaster app
+
+For accounts made in the Farcaster app (`src/core/appsignin.ts`, `src/server/appsignin-service.ts`,
+tests in `test/appsignin.test.ts`, `scripts/e2e-phase1.ts` on a devnet):
+
+- **The one extra host.** The approval link comes from Farcaster's endpoint
+  `https://api.farcaster.xyz` (`POST /v2/signed-key-requests`, then
+  `GET /v2/signed-key-request?token=`), with no API key. Only the Outpost server
+  (`./outpost client`), the society node's sign-in service, or the CLI (`login --app`) calls it.
+  The web page calls only its own origin, or the society node. Farcaster learns the new public
+  key, the app account's FID and, once you approve, your FID.
+- **What gets added.** An onchain key with full access and no expiry, added by the Farcaster app
+  when you approve. Outpost cannot revoke it: only the account's owner can, in the Farcaster app
+  (Settings, then Advanced, then Manage connected apps). The page says this before it shows the
+  QR code, and the key panel labels such a key.
+- **The new key's private half** is made in the browser (or the CLI) and stays there. Only the
+  public half goes to the server.
+- **The app account's custody key** is entered by its owner in a hidden prompt
+  (`./outpost app-account`) and stored mode 600: on the owner's computer, or with `--society`
+  only on the society node's server (`$DIR/appsignin/account.json`; `--society off` deletes it).
+  It is never sent to a browser, and no response or log carries it or the signature made with
+  it (checked in `test/appsignin.test.ts`). Whoever can read that file owns the app account, so
+  it should be an account made for this.
+- **Who may ask.** `./outpost client` takes a request only from its own page (the browser's
+  `Origin`), so another website cannot make it sign. A society node takes requests only with a
+  member's token, from the published client origins. Only request tokens the server handed out
+  can be polled.
+- **Before the key is used**, the client waits until the node lists it as an onchain key
+  requested by that app account (`/v1/signer`), and saves it only then.
+
+What a society host can still do here: the host's sign-in service could ask Farcaster to add a
+key the host made instead of the one your browser made. The request token is opaque to the page,
+so it cannot see which key you are approving; the Farcaster app shows the app asking. Your
+browser then never sees its own key listed and says so after 5 minutes, and the host's key would
+be on your account with full access until you remove it in the Farcaster app. Use this route only
+on a society node whose host you trust, or with your own `./outpost client`, where the server is
+your own computer.
+
 ## Running a society node
 
 ```

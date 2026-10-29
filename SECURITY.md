@@ -30,6 +30,21 @@ until it is revoked or expires.
 - The web client stores it in the browser's localStorage under `outpost.appkey`.
 - `./outpost uninstall`, or the web client's "Your app key" panel, revokes it with the key itself.
 
+**Keys approved in the Farcaster app.** "Approve in the Farcaster app" (`./outpost cli login
+--app`, or that choice in the web client) adds an onchain key with full access and no expiry.
+Outpost stores it in the same places as an app key, marked `"onchain": true`. Outpost cannot
+revoke it; `uninstall` and "Forget this key" only delete it locally. The account's owner
+removes it in the Farcaster app: Settings, then Advanced, then Manage connected apps.
+
+**App account.** `./outpost app-account` stores a Farcaster account's custody key, so that
+account can sign key requests: in `~/.config/outpost/app-account.json` (mode 600), or with
+`--society` only on the society node's server. Whoever reads that file owns that account. Use
+an account made for this, never a main account. The prompt hides input and needs a terminal.
+The key is used only to sign key requests and is never sent to a browser. It leaves the
+computer only with `--society`, over SSH to that server, and the copy made locally on the way is
+deleted. Only the signature goes to Farcaster's endpoint `api.farcaster.xyz`. The local server accepts
+sign-in requests only from its own page.
+
 **Node API ports.** Snapchain's HTTP (3381) and gRPC (3383) ports accept writes from anyone who
 can reach them. `infra/node-setup.sh` binds both to 127.0.0.1 and checks the result after every
 run; it stops with an error if either is published anywhere else. The client reaches the node

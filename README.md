@@ -133,7 +133,8 @@ flowchart LR
   company's servers or a hosted API.
 - **A narrow app key.** Logging in adds a gasless app key (`KEY_ADD`) that can only cast, react
   and follow, and undo those. It expires 30 days after last use (`--ttl-days`, 1 to 90, in the
-  command-line client).
+  command-line client). The one exception is "Approve in the Farcaster app", where the app adds
+  a full-access onchain key; the client labels it and says so before you approve.
 - **Revoke without the phrase.** The key revokes itself: `./outpost uninstall`, or the
   "Your app key" panel in the web client.
 - **A labelled, chronological feed.** The following feed is in time order, and each cast is
@@ -147,12 +148,15 @@ flowchart LR
   It passes when more than half of the members have liked it, and anyone can recount it from
   their own node. See [Society votes](#society-votes).
 
+- **Notifications from your node.** Replies, mentions, likes, recasts and new followers, newest
+  first, with likes and recasts grouped per cast and an unread count. See
+  [Notifications and mentions](#notifications-and-mentions).
 - **Every message checked.** The client checks the hash and signature of every message it reads,
   and that the signing key belongs to the author, before showing it. A node that alters or makes
   up messages gets caught; [TRUST.md](TRUST.md) says how far that goes.
 
-The client connects an account with a wallet signature or a test account's recovery phrase, and
-casts, replies, likes, recasts and follows. On a society node with a sponsor, someone without an
+The client connects an account with a wallet signature, an approval in the Farcaster app, or a
+test account's recovery phrase, and casts (with @mentions), replies, likes, recasts and follows. On a society node with a sponsor, someone without an
 account can create one in the client (see below). The command-line client has the same features:
 `./outpost cli --help`.
 
@@ -161,9 +165,76 @@ Which accounts can post from Outpost:
 | You have | Then |
 |---|---|
 | No Farcaster account | On a society node with a sponsor: "I have no Farcaster account" makes one in a minute. The society pays the $0.20 fee; you need no ETH, invite code or X account. |
-| An account made in the Farcaster app | Read here, post in the app for now (see Limits). |
+| An account made in the Farcaster app | "Approve in the Farcaster app": scan a QR code and approve on your phone. No phrase. The key has full access and no expiry (see below). Needs an app account on this Outpost or society node. |
 | An account whose owner key is in a browser wallet | "My account's owner key is in a browser wallet". |
 | A test account's recovery phrase | "I have a test account's recovery phrase". |
+
+## Approve in the Farcaster app
+
+An account made in the Farcaster app keeps its owner key inside the app. To post from Outpost
+with such an account, approve Outpost from the app, as with any other connected app:
+
+1. In the web client, choose "Approve in the Farcaster app" (or run `./outpost cli login --app`).
+2. Read the warning, then scan the QR code with your phone, or open the link on it.
+3. Approve in the Farcaster app. It shows any onchain fee first; you pay it there unless the
+   app account sponsors it.
+4. Outpost waits until your own node lists the new key, then saves it.
+
+Your recovery phrase stays in the app. What to know before you approve:
+
+- The app adds an **onchain key with full access and no expiry**. It can do everything your
+  account can do apart from moving it, including changing your profile. Outpost's own app key
+  (the other ways to connect) can only cast, react and follow, and expires.
+- **Outpost cannot revoke it.** Only you can, in the Farcaster app: Settings, then Advanced,
+  then Manage connected apps. "Forget this key" in Outpost only removes it from this browser.
+- The request is signed by an **app account**: a Farcaster account that whoever runs this
+  Outpost set up once. Your posts show "via" its name.
+
+The app account is set up once, by the owner, in their own terminal:
+
+```
+./outpost app-account               # this computer: ./outpost client and cli login --app use it
+./outpost app-account status
+./outpost app-account remove
+./outpost app-account --society     # a society node: members get the choice too
+./outpost app-account --society off # stops it and deletes the key from the server
+```
+
+It asks for that account's recovery phrase or custody key in a hidden prompt, checks on your
+node which FID it owns, and stores the custody key mode 600: in `~/.config/outpost/app-account.json`,
+or with `--society` on the society node's server only. Use an account made for this, never your
+main account: whoever can read that file owns the account. The key signs key requests and
+nothing else, and never goes to a browser. `--sponsor` also signs Farcaster's sponsorship, so
+people pay no fee; Farcaster honours that only for apps it has approved for it.
+
+This is the one route where Outpost talks to a host other than your node: the app account's
+signature goes to Farcaster's endpoint `api.farcaster.xyz` (no API key), which returns the
+approval link. The Outpost server or CLI makes that call, never the web page. Details in
+[TRUST.md](TRUST.md#approve-in-the-farcaster-app).
+
+## Notifications and mentions
+
+The Notifications section, and `./outpost cli notifications`, list newest first:
+
+- replies to your last 25 casts, and likes and recasts on them (grouped: "dwr and 3 others
+  liked your cast"),
+- casts that mention you,
+- new followers.
+
+Snapchain has no notifications endpoint, so these are read from your node with
+`castsByParent`, `reactionsByCast`, `castsByMention` and `linksByTargetFid`, and every message
+passes the same checks as the feed. The unread count in the header covers what is newer than
+the last "Mark all read" (stored per account in this browser; `--mark-read` in the CLI). Open
+takes you to the cast with its replies. The list refreshes when the page opens, with Refresh,
+and every 2 minutes while the page is visible. If the node is slow, what arrived is shown, with a
+note about what is still loading.
+
+To mention someone, type `@` in the composer or a reply: suggestions come from accounts you
+follow first, then other profiles loaded on the page, and a full username is looked up on your
+node. Pick one (arrow keys and Enter, or a tap) and it is posted as a real mention, which other
+Farcaster apps show as a link. Up to 10 per cast. A name you edit after picking it stays plain
+text. In the CLI, `./outpost cli cast "gm @dwr"` looks each name up and stops on one it cannot
+find; `--no-mentions` posts every `@` as plain text.
 
 ## Society votes
 
@@ -254,12 +325,13 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 
 - Outpost creates accounts only through a society's sponsor, and buys no extra storage.
 - The recovery-phrase login is for test accounts. With a real account, use the wallet path.
-- An account made in the Farcaster app keeps its custody key inside that app, and as far as we
-  can tell the app's built-in wallet uses a separate address. So such an account cannot connect to Outpost
-  without exporting its recovery phrase, which we advise against. The app's own "approve a
-  connected app" flow would work, but it adds an onchain key with full access and no expiry that
-  Outpost cannot revoke. Supporting it, clearly labelled, is next. Until then, read with Outpost
-  and post from the app, or create a second account on a society node.
+- An account made in the Farcaster app connects through "Approve in the Farcaster app", which
+  adds an onchain key with full access and no expiry that Outpost cannot revoke (see
+  [above](#approve-in-the-farcaster-app)). It needs an app account on the Outpost or society
+  node you use, and Farcaster's endpoint `api.farcaster.xyz` to answer. The hosted client on
+  GitHub Pages offers it only through a society node that has an app account.
+- "Approve in the Farcaster app" was tested against a stand-in for Farcaster's endpoint and on a
+  local devnet, not yet with the real Farcaster app on mainnet.
 - An account made outside the Farcaster app may be ranked low in that app's feeds at first. Its
   posts always show in Outpost.
 - App labels come from the key that signed each cast. Keys that people signed for themselves all
@@ -273,8 +345,9 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
   the late ones; someone holding a leaked, removed key and running a dishonest node could serve
   one, and it would show marked the same way.
 - Casts you write are text up to 1,024 bytes (the limit for a normal account) with up to 4
-  embedded URLs. There is no image upload, and an @name you type stays plain text; it does not
-  become a mention. There is no notifications view.
+  embedded URLs and up to 10 mentions. There is no image upload, and no channels view.
+- Notifications cover replies and reactions to your last 25 casts only, and are not pushed: the
+  page refreshes them while it is open.
 - `./outpost cli selftest` asks the node to validate messages, which a society node's gate does
   not allow. Run it over your own node's SSH tunnel.
 - Outpost prints DigitalOcean prices only. On Hetzner it asks for a 1 TB volume, because new
@@ -306,6 +379,11 @@ bash test/watchdog.sh            # the watchdog, with a one-second hour (not in 
 bash test/snapshot-restore.sh    # Linux only: the snapshot loader against a local fake bucket
 ```
 
+Two more need no account: `node --import tsx test/phase1-demo.ts` (after `npm run build`) runs
+the web client on a fake node to try mentions, notifications and "Approve in the Farcaster app"
+with a stand-in for Farcaster's endpoint, and `npx tsx scripts/e2e-phase1.ts` checks the same
+against a local devnet (start and stop commands at the top of `scripts/e2e-devnet.ts`).
+
 CI runs all of these except the watchdog test, plus shellcheck, on pull requests and pushes to
 `main`. Tests against a live node are in [CONTRIBUTING.md](CONTRIBUTING.md). Outputs from real
 runs on mainnet and a local devnet are saved in [docs/evidence/](docs/evidence/README.md).
@@ -326,6 +404,8 @@ src/web/             web client
 src/server/serve.ts  local server for the web client, forwards /v1 to the node
 src/server/gate.ts   society mode: member tokens, rate limits, read and post only
 src/server/sponsor*  society mode: pays for members' new accounts (registerFor), with caps
+src/server/appsignin*  "Approve in the Farcaster app": the app account signs key requests, on
+                     ./outpost client's server or, for members, on a society node
 scripts/             build, devnet end-to-end test, live checks, example charters,
                      society node check
 test/                unit tests and shell tests, with fake provider CLIs

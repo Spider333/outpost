@@ -517,7 +517,11 @@ async function approveInApp() {
   state.textContent = `Added onchain for FID ${userFid}. Waiting for ${source} to show the key…`;
   const seen = await waitFor(async () => (run.cancelled ? true : hub.signer(userFid!, pub)), { timeoutMs: 5 * 60_000, intervalMs: 3000 });
   if (run.cancelled) return;
-  if (!seen || seen === true) throw new Error(`The Farcaster app reports the key as added, but ${source} does not list it after 5 minutes. Nothing was saved; try again later.`);
+  if (!seen || seen === true) {
+    throw new Error(
+      `The Farcaster app reports a key as added, but ${source} does not list the key this page made, after 5 minutes. Nothing was saved. If the node is just slow, try again later. If not, a different key may have been added: remove the newest connected app in the Farcaster app (Settings, then Advanced, then Manage connected apps).`,
+    );
+  }
   if (seen.source !== "SIGNER_SOURCE_ONCHAIN" || requestFidOf(seen) !== req.requestFid) {
     throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} lists the key, but not as the onchain key this request asked for. Nothing was saved.`);
   }
