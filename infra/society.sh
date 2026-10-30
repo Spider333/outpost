@@ -13,6 +13,12 @@
 #                            and OUTPOST_SOCIETY_HOST; prints the wallet to fund
 #   society.sh sponsor-off   stops it; keeps the wallet key and the counts
 #   society.sh sponsor-status
+#   society.sh app-signin-account   the app account's JSON on stdin (fid, custodyKey, address);
+#                            stored mode 600 in $DIR/appsignin
+#   society.sh app-signin-on the sign-in bundle (dist/appsignin.js) on stdin; needs society mode,
+#                            the app account and OUTPOST_SOCIETY_HOST
+#   society.sh app-signin-off   stops it and deletes the app account's key from this server
+#   society.sh app-signin-status
 #
 # Caddy (official image, pinned) gets a TLS certificate for <ip>.sslip.io and passes every request
 # to the gate, which checks the token and lets only GET /v1/* and POST /v1/submitMessage through
@@ -24,6 +30,10 @@
 # The sponsor (optional, src/server/sponsor.ts) pays for members' new Farcaster accounts from a
 # hot wallet whose key is made here and stays in $DIR/sponsor/key. Caddy sends /sponsor/* to it
 # and everything else to the gate. Keep only a little ETH in that wallet.
+#
+# "Approve in the Farcaster app" (optional, src/server/appsignin.ts) signs members' key requests
+# with an app account whose custody key the host sent here ($DIR/appsignin/account.json, mode
+# 600). Caddy sends /app-signin and /app-signin/* to it, members only.
 
 set -euo pipefail
 
@@ -31,9 +41,11 @@ CADDY_IMAGE="caddy:2.10.2"
 NODE_IMAGE="node:24.21.0-alpine"
 GATE_PORT=3390
 SPONSOR_PORT=3391
+APPSIGNIN_PORT=3392
 DIR="${OUTPOST_SOCIETY_DIR:-/srv/outpost-society}"
 MEMBERS="$DIR/gate/members"
 SPONSOR="$DIR/sponsor"
+APPSIGNIN="$DIR/appsignin"
 
 say() { printf '[society] %s\n' "$*"; }
 die() { printf '[society] error: %s\n' "$*" >&2; exit 1; }
@@ -57,15 +69,25 @@ write_members() {
 # headers or client IP are dropped: http.log (incl. the error log when the gate is down),
 # http.handlers (reverse_proxy), http.stdlib (TLS handshake errors) and tls.handshake
 # (client addresses, at debug level). Start-up and certificate messages stay.
-# /sponsor/* goes to the sponsor only while it is on ($SPONSOR/on exists).
+# /sponsor/* goes to the sponsor only while it is on ($SPONSOR/on exists), /app-signin* to the
+# sign-in service only while it is on ($APPSIGNIN/on).
 write_caddyfile() {
   : "${OUTPOST_SOCIETY_HOST:?missing OUTPOST_SOCIETY_HOST}"
-  local route="	reverse_proxy 127.0.0.1:${GATE_PORT}"
+  local route="	reverse_proxy 127.0.0.1:${GATE_PORT}" extra=""
   if [ -f "$SPONSOR/on" ]; then
-    route="	handle /sponsor/* {
+    extra="	handle /sponsor/* {
 		reverse_proxy 127.0.0.1:${SPONSOR_PORT}
 	}
-	handle {
+"
+  fi
+  if [ -f "$APPSIGNIN/on" ]; then
+    extra="${extra}	handle /app-signin* {
+		reverse_proxy 127.0.0.1:${APPSIGNIN_PORT}
+	}
+"
+  fi
+  if [ -n "$extra" ]; then
+    route="${extra}	handle {
 		reverse_proxy 127.0.0.1:${GATE_PORT}
 	}"
   fi
@@ -125,9 +147,9 @@ case "$action" in
     say "serving the node API at https://${OUTPOST_SOCIETY_HOST} to members only (no web page)"
     ;;
   off)
-    docker rm -f outpost-society outpost-gate outpost-sponsor >/dev/null 2>&1 || true
-    rm -f "$SPONSOR/on"
-    say "stopped. Members, the sponsor's wallet key and the certificate are kept in $DIR"
+    docker rm -f outpost-society outpost-gate outpost-sponsor outpost-appsignin >/dev/null 2>&1 || true
+    rm -f "$SPONSOR/on" "$APPSIGNIN/on"
+    say "stopped. Members, the sponsor's wallet key, the app account and the certificate are kept in $DIR"
     ;;
   sponsor-on)
     exists outpost-society || die "society mode is off. Turn it on first: ./outpost society on"
@@ -189,8 +211,69 @@ case "$action" in
       say "outpost-sponsor: not running"
     fi
     ;;
+  app-signin-account)
+    mkdir -p "$APPSIGNIN"
+    chmod 700 "$APPSIGNIN"
+    (umask 077; cat >"$APPSIGNIN/account.json.tmp")
+    if ! grep -Eq '"custodyKey": *"0x[0-9a-fA-F]{64}"' "$APPSIGNIN/account.json.tmp" || ! grep -Eq '"fid": *[0-9]+' "$APPSIGNIN/account.json.tmp"; then
+      rm -f "$APPSIGNIN/account.json.tmp"
+      die "expected the app account's JSON on stdin"
+    fi
+    mv "$APPSIGNIN/account.json.tmp" "$APPSIGNIN/account.json"
+    chmod 600 "$APPSIGNIN/account.json"
+    say "app account stored in $APPSIGNIN/account.json (mode 600)"
+    ;;
+  app-signin-on)
+    exists outpost-society || die "society mode is off. Turn it on first: ./outpost society on"
+    [ -s "$APPSIGNIN/account.json" ] || die "no app account on this server. Run ./outpost app-account --society"
+    cat >"$APPSIGNIN/appsignin.js.tmp"
+    [ -s "$APPSIGNIN/appsignin.js.tmp" ] || die "no sign-in bundle on stdin"
+    mv "$APPSIGNIN/appsignin.js.tmp" "$APPSIGNIN/appsignin.js"
+    appsignin_failed() {
+      docker logs outpost-appsignin 2>&1 | tail -5 >&2 || true
+      docker rm -f outpost-appsignin >/dev/null 2>&1 || true
+      rm -f "$APPSIGNIN/on"
+      write_caddyfile
+      reload_caddy
+      die "$1"
+    }
+    : >"$APPSIGNIN/on"
+    docker rm -f outpost-appsignin >/dev/null 2>&1 || true
+    # Host networking: it reaches Farcaster's endpoint and listens on 127.0.0.1 only. It reads
+    # the app account and the gate's members file, and writes nothing.
+    docker run -d --name outpost-appsignin --restart unless-stopped --network host \
+      --read-only --cap-drop ALL --security-opt no-new-privileges \
+      -e OUTPOST_APPSIGNIN_PORT="$APPSIGNIN_PORT" -e OUTPOST_APPSIGNIN_MEMBERS=/gate/members \
+      -e OUTPOST_APPSIGNIN_ACCOUNT=/appsignin/account.json \
+      -v "$APPSIGNIN/appsignin.js:/appsignin/appsignin.js:ro" -v "$APPSIGNIN/account.json:/appsignin/account.json:ro" \
+      -v "$DIR/gate:/gate:ro" \
+      "$NODE_IMAGE" node /appsignin/appsignin.js >/dev/null || appsignin_failed "could not start the sign-in container"
+    fid=""
+    for _ in $(seq 1 20); do
+      fid="$(docker logs outpost-appsignin 2>&1 | grep -Eo 'app account FID [0-9]+' | head -1 | awk '{ print $4 }')" && [ -n "$fid" ] && break
+      sleep 1
+    done
+    [ -n "$fid" ] || appsignin_failed "the sign-in service did not start"
+    write_caddyfile
+    reload_caddy
+    say "approve in the Farcaster app: on for members, requests come from FID $fid"
+    ;;
+  app-signin-off)
+    docker rm -f outpost-appsignin >/dev/null 2>&1 || true
+    rm -f "$APPSIGNIN/on" "$APPSIGNIN/account.json" "$APPSIGNIN/account.json.tmp"
+    if exists outpost-society; then write_caddyfile; reload_caddy; fi
+    say "approve in the Farcaster app: off. The app account's key was deleted from this server"
+    ;;
+  app-signin-status)
+    if exists outpost-appsignin; then
+      say "outpost-appsignin: $(docker inspect -f '{{.State.Status}}' outpost-appsignin)"
+      docker logs outpost-appsignin 2>&1 | grep -E 'app-signin: ' | tail -1
+    else
+      say "outpost-appsignin: not running"
+    fi
+    ;;
   status)
-    for c in outpost-society outpost-gate outpost-sponsor; do
+    for c in outpost-society outpost-gate outpost-sponsor outpost-appsignin; do
       if exists "$c"; then say "$c: $(docker inspect -f '{{.State.Status}}' "$c")"; else say "$c: not running"; fi
     done
     say "members: $(grep -c . "$MEMBERS" || true)"

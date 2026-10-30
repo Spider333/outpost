@@ -7,7 +7,10 @@
 #
 # Also: ./outpost status, ./outpost shrink (once synced: an 8 GB server instead of 32 GB, for a
 # quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
-# ./outpost watchdog start|stop|status (deletes a trial server for you)
+# ./outpost watchdog start|stop|status (deletes a trial server for you),
+# ./outpost app-account [--society] [status|remove] (signs "Approve in the Farcaster app")
+# No server: ./outpost client --public (and cli, app-account, uninstall) use Farcaster's public node instead
+# of your own; --node <url> (or OUTPOST_NODE_URL=<url>) uses any other node.
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
 # ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
 # ./outpost sponsor on|off|status (you pay for members' new Farcaster accounts, $0.20 each)
@@ -29,6 +32,10 @@ CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 DRY_RUN=0
 ASSUME_YES=0
+# Set by --public or --node <url> (or OUTPOST_NODE_URL): client, cli and app-account then use
+# this node directly, with no server, SSH tunnel or provider.
+PUBLIC_NODE="https://snap.farcaster.xyz:3381"
+NODE_URL=""
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -655,10 +662,43 @@ cmd_phone() {
   say "turn it off with: ./outpost client --phone off"
 }
 
+# A node URL given with --node or OUTPOST_NODE_URL: https, or http on this machine, so what you
+# post never crosses a network in the clear.
+check_node_url() {
+  [[ "$1" =~ ^https://[^/[:space:]@]+(/[^[:space:]?#]*)?$ ]] && return 0
+  [[ "$1" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/?$ ]] && return 0
+  die "not a node URL Outpost can use: $1. It must be https://<host>[:port], or http://127.0.0.1:<port> for a node on this computer."
+}
+
+# True when NODE_URL is a node on this computer (yours), not someone else's.
+node_url_local() { [[ "$NODE_URL" =~ ^http://(127\.0\.0\.1|localhost)(:|/|$) ]]; }
+
+# ./outpost client --public / --node <url>: no server, no tunnel. The page says the node is not
+# yours, and its key checks go through serve.js like everything else.
+client_without_server() {
+  ensure_build
+  local remote=1
+  if node_url_local; then
+    remote=0
+    say "using the node on this computer at $NODE_URL"
+  elif [ "$NODE_URL" = "$PUBLIC_NODE" ]; then
+    say "using Farcaster's public node $NODE_URL, not your own: it sees what you read and post, and may refuse posts"
+  else
+    say "using the node at $NODE_URL, not your own: its host sees what you read and post"
+  fi
+  say "open http://127.0.0.1:$CLIENT_PORT in your browser. Ctrl-C stops the client."
+  OUTPOST_NODE_URL="$NODE_URL" OUTPOST_NODE_REMOTE="$remote" OUTPOST_PORT="$CLIENT_PORT" node "$OUTPOST_DIR/dist/serve.js"
+}
+
 cmd_client() {
   if [ "${1:-}" = "--phone" ]; then
+    [ -z "$NODE_URL" ] || die "--phone serves the client from your own server; it does not work with --public or --node"
     shift
     cmd_phone "$@"
+    return
+  fi
+  if [ -n "$NODE_URL" ]; then
+    client_without_server
     return
   fi
   ensure_build
@@ -683,8 +723,67 @@ cmd_cli() {
   ensure_build
   # Help needs no server.
   case "${1:-}" in ""|-h|--help|help) node "$OUTPOST_DIR/dist/cli.js" --help; return ;; esac
+  if [ -n "$NODE_URL" ]; then
+    OUTPOST_NODE_URL="$NODE_URL" node "$OUTPOST_DIR/dist/cli.js" "$@"
+    return
+  fi
   tunnel_up
   OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" "$@"
+}
+
+# "Approve in the Farcaster app": the app account's custody key is stored on this computer
+# (mode 600) and used by ./outpost client and ./outpost cli login --app. Setting it up looks the
+# account up on your node; status and remove need no server.
+# With --society the key goes to the society node's server instead (mode 600 there; the copy
+# made here on the way is deleted) and members get "Approve in the Farcaster app".
+cmd_app_account() {
+  ensure_build
+  if [ "${1:-}" = "--society" ]; then
+    [ -z "$NODE_URL" ] || die "--society sets up the society node's own server; it does not work with --public or --node"
+    shift
+    app_account_society "$@"
+    return
+  fi
+  case "${1:-}" in
+    status|remove) node "$OUTPOST_DIR/dist/cli.js" app-account "$@" ;;
+    *)
+      if [ -n "$NODE_URL" ]; then
+        OUTPOST_NODE_URL="$NODE_URL" node "$OUTPOST_DIR/dist/cli.js" app-account "$@"
+        return
+      fi
+      tunnel_up
+      OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" app-account "$@"
+      ;;
+  esac
+}
+
+app_account_society() {
+  local host tmp
+  case "${1:-}" in
+    status) society_run "" app-signin-status; return ;;
+    remove|off)
+      host="$(society_host)"
+      society_run "OUTPOST_SOCIETY_HOST='$host' " app-signin-off
+      return
+      ;;
+  esac
+  host="$(society_host)"
+  [ -f "$OUTPOST_DIR/dist/appsignin.js" ] || (cd "$OUTPOST_DIR" && node scripts/build.mjs)
+  tunnel_up
+  mkdir -p "$STATE_DIR"
+  tmp="$(umask 077; mktemp "$STATE_DIR/app-account.XXXXXX")"
+  # shellcheck disable=SC2064 # expand $tmp now: it is gone by the time the trap runs
+  trap "rm -f '$tmp'" EXIT
+  OUTPOST_NODE_URL="http://127.0.0.1:$TUNNEL_PORT" node "$OUTPOST_DIR/dist/cli.js" app-account --out "$tmp" "$@"
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    say "nothing was sent to the server"
+    return
+  fi
+  society_run "" app-signin-account <"$tmp"
+  rm -f "$tmp"
+  society_run "OUTPOST_SOCIETY_HOST='$host' " app-signin-on <"$OUTPOST_DIR/dist/appsignin.js"
+  say "members now see \"Approve in the Farcaster app\". Turn it off (and delete the key there) with: ./outpost app-account --society off"
 }
 
 # ---- society
@@ -1172,12 +1271,30 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
   local cmd="${1:-}"
   [ $# -gt 0 ] && shift
+  case "$cmd" in
+    client|cli|app-account|uninstall)
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --public) NODE_URL="$PUBLIC_NODE"; shift ;;
+          --node) [ $# -ge 2 ] || die "--node needs a URL, for example --node https://node.example:3381"; NODE_URL="$2"; shift 2 ;;
+          --node=*) NODE_URL="${1#--node=}"; shift ;;
+          *) break ;;
+        esac
+      done
+      for a in "$@"; do
+        case "$a" in --public) die "put $a right after ./outpost $cmd, for example: ./outpost $cmd $a ..." ;; esac
+      done
+      [ -n "$NODE_URL" ] || NODE_URL="${OUTPOST_NODE_URL:-}"
+      [ -z "$NODE_URL" ] || check_node_url "$NODE_URL"
+      NODE_URL="${NODE_URL%/}"
+      ;;
+  esac
   case "$cmd" in
     provision) cmd_provision "$@" ;;
     node) cmd_node "$@" ;;
@@ -1186,6 +1303,7 @@ main() {
     members) cmd_members "$@" ;;
     sponsor) cmd_sponsor "$@" ;;
     cli) cmd_cli "$@" ;;
+    app-account) cmd_app_account "$@" ;;
     status) cmd_status "$@" ;;
     shrink) cmd_shrink "$@" ;;
     uninstall) cmd_uninstall "$@" ;;

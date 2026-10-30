@@ -118,12 +118,33 @@ node.
 
 ## What picture hosts learn
 
-With "Show pictures" on (the default), the web client loads profile pictures and image embeds
-straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
+With "Show pictures" on (the default, except with `--public` or `--node`), the web client loads
+profile pictures and image embeds straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
 which of its pictures were shown, so roughly which accounts were on screen. The signature covers
 the URL, not the image, so a host can swap the image without changing the signed profile or cast.
 A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
 is sent. Untick "Show pictures" above the feed to stop these requests.
+
+## Using Farcaster's public node
+
+`./outpost client --public` (and `cli`, `app-account`) uses Farcaster's public node
+`https://snap.farcaster.xyz:3381` instead of your own; `--node <url>` uses any other https node.
+That node is in the host's place above: it cannot post as you or change a message, because the
+client checks every message the same way (`src/core/verify.ts`), and it can do everything listed
+under "What the host can still do". Farcaster sees what you read and post, from your IP address.
+
+- **The second node** for gasless keys is `https://crackle.farcaster.xyz:3381`, another public
+  node on a separate machine (`checkNodeFor` in `src/core/secondnode.ts`). Farcaster runs both,
+  so a fake gasless key would need only Farcaster to lie. It catches one broken or tampered node,
+  not Farcaster itself. The page says so under "What does that change?". Choose another second
+  node in "Node and checks", or `--check-node` on the command line.
+- **Onchain keys** are still checked on Optimism, as before.
+- **Your browser** still talks only to `./outpost client` on 127.0.0.1. It forwards `/v1/*` to
+  the node, `/outpost/check/v1/*` (GET only) to the second node and `/outpost/optimism` (POST
+  only, read calls such as `eth_call`) to the Optimism RPC (`src/server/serve.ts`, tests in `test/remote-node.test.ts`).
+- **No server** is involved: no SSH, no provider (`test/providers.sh` checks with fakes).
+- **Posting** goes to the public node like any other submit. It may refuse it; that was not
+  tested before release.
 
 ## What a society vote proves
 
@@ -186,6 +207,44 @@ The optional sponsor (`src/server/sponsor.ts` and `sponsor-service.ts`, tests in
   member, ever, and 20 a day in all, unless the host changes them.
 - The wallet's key lives on the server. Whoever controls the server controls the ETH in it, and
   nothing else.
+
+## Approve in the Farcaster app
+
+For accounts made in the Farcaster app (`src/core/appsignin.ts`, `src/server/appsignin-service.ts`,
+tests in `test/appsignin.test.ts`, `scripts/e2e-phase1.ts` on a devnet):
+
+- **The one extra host.** The approval link comes from Farcaster's endpoint
+  `https://api.farcaster.xyz` (`POST /v2/signed-key-requests`, then
+  `GET /v2/signed-key-request?token=`), with no API key. Only the Outpost server
+  (`./outpost client`), the society node's sign-in service, or the CLI (`login --app`) calls it.
+  The web page calls only its own origin, or the society node. Farcaster learns the new public
+  key, the app account's FID and, once you approve, your FID.
+- **What gets added.** An onchain key with full access and no expiry, added by the Farcaster app
+  when you approve. Outpost cannot revoke it: only the account's owner can, in the Farcaster app
+  (Settings, then Advanced, then Manage connected apps). The page says this before it shows the
+  QR code, and the key panel labels such a key.
+- **The new key's private half** is made in the browser (or the CLI) and stays there. Only the
+  public half goes to the server.
+- **The app account's custody key** is entered by its owner in a hidden prompt
+  (`./outpost app-account`) and stored mode 600: on the owner's computer, or with `--society`
+  only on the society node's server (`$DIR/appsignin/account.json`; `--society off` deletes it).
+  It is never sent to a browser, and no response or log carries it or the signature made with
+  it (checked in `test/appsignin.test.ts`). Whoever can read that file owns the app account, so
+  it should be an account made for this.
+- **Who may ask.** `./outpost client` takes a request only from its own page (the browser's
+  `Origin`), so another website cannot make it sign. A society node takes requests only with a
+  member's token, from the published client origins. Only request tokens the server handed out
+  can be polled.
+- **Before the key is used**, the client waits until the node lists it as an onchain key
+  requested by that app account (`/v1/signer`), and saves it only then.
+
+What a society host can still do here: the host's sign-in service could ask Farcaster to add a
+key the host made instead of the one your browser made. The request token is opaque to the page,
+so it cannot see which key you are approving; the Farcaster app shows the app asking. Your
+browser then never sees its own key listed and says so after 5 minutes, and the host's key would
+be on your account with full access until you remove it in the Farcaster app. Use this route only
+on a society node whose host you trust, or with your own `./outpost client`, where the server is
+your own computer.
 
 ## Running a society node
 

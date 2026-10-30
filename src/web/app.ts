@@ -3,7 +3,7 @@
 // By default the page and the node share an origin: `./outpost client` serves this page and
 // forwards /v1/* to the node, so no node port has to be opened to the internet.
 
-import { zeroAddress, type EIP1193Provider } from "viem";
+import { bytesToHex, zeroAddress, type EIP1193Provider } from "viem";
 import { optimism } from "viem/chains";
 import { FarcasterNetwork } from "@farcaster/core";
 import {
@@ -63,8 +63,23 @@ import {
   type Custody,
   type FeedItem,
   type HexString,
+  type Profile,
+  extractMentions,
+  mapLimit,
+  mentionQuery,
+  notificationsFor,
+  notificationText,
+  seenUpTo,
+  unreadCount,
+  generatePrivateKey,
+  publicKeyOf,
+  SignInClient,
+  requestFidOf,
+  waitFor,
+  type Notification,
 } from "../core/index.js";
 import { httpsUrl, initial, isImageEmbed } from "./media.js";
+import { encode as qrEncode } from "uqr";
 
 const KEY_STORAGE = "outpost.appkey";
 const CHARTER_STORAGE = "outpost.charter";
@@ -74,6 +89,8 @@ const RPC_STORAGE = "outpost.rpc";
 const CHECKNODE_STORAGE = "outpost.checknode";
 const PICTURES_STORAGE = "outpost.pictures";
 const APPROVALS_STORAGE = "outpost.approvals";
+// Per FID: the time up to which notifications were marked read.
+const seenStorage = (fid: number) => `outpost.notifs.seen.${fid}`;
 
 // Set by scripts/build.mjs: the git commit this bundle was built from.
 declare const __OUTPOST_COMMIT__: string;
@@ -158,22 +175,38 @@ try {
   inviteError = `Invite link not used: ${errText(e)}`;
 }
 const society = store<Society>(SOCIETY_STORAGE);
+// What the local server says about itself. A static host (GitHub Pages, Caddy for phones) has no
+// such file: mainnet, your own node.
+type ServerConfig = { network?: string; checkNode?: string; node?: RemoteNode };
+// ./outpost client --public (or --node <url>): this page's origin forwards to a node that is not
+// yours. Reads and writes still go only to this origin, and so do the key checks, which the local
+// server forwards to the second node and Optimism.
+type RemoteNode = { url: string; farcaster: boolean; check: string; rpc: string };
+const serverConfig: ServerConfig = await fetch("/outpost-config.json")
+  .then((r) => (r.ok ? (r.json() as Promise<ServerConfig>) : {}))
+  .catch(() => ({}));
+const remote = society ? undefined : serverConfig.node;
 if (invite && invite.node === society?.node && invite.token === society.token) invite = undefined; // already in use
 // With no node of your own, Farcaster's public node can be read, never written to: a page may only
 // send it plain GETs (no token, no POST), and no app key is loaded, so no button that writes is shown.
 // A society node, once chosen, comes first.
-const publicNode = !society && store<boolean>(PUBLIC_STORAGE) === true;
-const source = society ? "the society node" : publicNode ? "Farcaster's public node" : "your node";
+const publicNode = !society && !remote && store<boolean>(PUBLIC_STORAGE) === true;
+const remoteName = remote ? (remote.farcaster ? "Farcaster's public node" : `the node at ${new URL(remote.url).host}`) : "";
+const source = society ? "the society node" : remote ? remoteName : publicNode ? "Farcaster's public node" : "your node";
 // An invite opened in this tab while the page is open only changes the fragment: start over to read it.
 addEventListener("hashchange", () => {
   if (/(^#|&)(node|token)=/.test(location.hash)) location.reload();
 });
 // Key and custody checks read Optimism through this RPC, never through the node. "" turns them off.
-const rpc = store<string>(RPC_STORAGE) ?? DEFAULT_OPTIMISM_RPC;
+const RPC_VIA_SERVER = `${location.origin}/outpost/optimism`;
+const CHECK_VIA_SERVER = `${location.origin}/outpost/check`;
+const rpc = store<string>(RPC_STORAGE) ?? (remote ? (remote.rpc && RPC_VIA_SERVER) : DEFAULT_OPTIMISM_RPC);
 const chain = rpc ? new Optimism(rpc) : undefined;
 // Gasless keys have no onchain record, so a second, independent node is asked. "" turns it off;
 // a second node on the same origin as the node being read is skipped.
-const checkUrl = store<string>(CHECKNODE_STORAGE) ?? DEFAULT_CHECK_NODE;
+const checkUrl = store<string>(CHECKNODE_STORAGE) ?? (remote ? (remote.check && CHECK_VIA_SERVER) : DEFAULT_CHECK_NODE);
+// The node behind it, for what the page says.
+const checkName = remote && checkUrl === CHECK_VIA_SERVER ? remote.check : checkUrl;
 const readUrl = society?.node ?? (publicNode ? DEFAULT_CHECK_NODE : location.origin);
 const second = checkUrl ? secondNode(checkUrl, readUrl) : undefined;
 const verifier = new Verifier(chain, second);
@@ -221,13 +254,14 @@ const approvals = approvalCache(
 let draft: Array<Change & { label: string }> = [];
 const names = new Map<number, string>();
 // Profile pictures and image embeds load from their own hosts, not from the node.
-let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
+// Off by default on a node that is not yours, so the page then loads nothing but 127.0.0.1.
+let pictures = store<boolean>(PICTURES_STORAGE) ?? !remote;
 
 // ---- node status
 
 async function checkNode() {
   const pill = $("node-status");
-  const which = society ? `society node ${new URL(society.node).host}` : publicNode ? "public node, read-only," : "node";
+  const which = society ? `society node ${new URL(society.node).host}` : remote ? (remote.farcaster ? "public node" : `node ${new URL(remote.url).host}`) : publicNode ? "public node, read-only," : "node";
   try {
     const info = await hub.info();
     const { synced, maxDelay } = syncState(info);
@@ -279,7 +313,7 @@ async function showUnverified() {
   verifier.showUnverified = true;
   verifier.reset();
   feed = new FeedBuilder(hub);
-  await loadFeed();
+  await Promise.all([loadFeed(), refreshNotifs()]);
 }
 
 // ---- node settings
@@ -296,19 +330,24 @@ function wireNodeSettings() {
   });
   $("soc-current").textContent = society
     ? `Using the society node ${society.node}.`
-    : publicNode
+    : remote
+      ? `Using ${remoteName} (${remote.url}) through ./outpost client on this computer. It is not your own node.`
+      : publicNode
       ? `Reading Farcaster's public node ${DEFAULT_CHECK_NODE}, read-only.`
       : `Using your own node (this page's origin, ${location.origin}).`;
-  $<HTMLInputElement>("rpc-url").value = rpc;
-  $<HTMLInputElement>("check-node").value = checkUrl;
+  $<HTMLInputElement>("rpc-url").value = remote && rpc === RPC_VIA_SERVER ? remote.rpc : rpc;
+  $<HTMLInputElement>("check-node").value = checkName;
+  if (remote) $<HTMLInputElement>("check-node").placeholder = remote.check || "https://<node>:3381";
   $("check-note").textContent = !checkUrl
     ? 'The second-node check is off: casts signed with gasless keys say "signer not verified".'
     : !second
       ? "The second node is the node you read from, so the gasless-key check is skipped. Choose a different node."
-      : `Gasless keys are checked with ${checkUrl}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
+      : `Gasless keys are checked with ${checkName}${checkName === checkUrl ? "" : ", through ./outpost client"}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
   $("node-note").textContent = society
     ? `Reads and writes go to the society node ${society.node}.`
-    : publicNode
+    : remote
+      ? `Reads and writes go to ${remoteName} ${remote.url}, through ./outpost client on this computer.`
+      : publicNode
       ? `Reads go to Farcaster's public node ${DEFAULT_CHECK_NODE}; nothing is written.`
       : "Reads and writes go only to your own node.";
   $("soc-save").addEventListener("click", () =>
@@ -363,15 +402,17 @@ function askToJoin(inv: Society): Promise<void> {
 
 // ---- connect
 
-type ConnectStep = "choose" | "app" | "create" | "phrase" | "confirm";
+type ConnectStep = "choose" | "app" | "approve" | "create" | "phrase" | "confirm";
 
 function showConnectStep(step: ConnectStep) {
+  if (step !== "approve") stopApproval();
   $("app-box").hidden = step !== "app";
+  $("approve-box").hidden = step !== "approve";
   $("create-box").hidden = step !== "create";
   $("phrase-box").hidden = step !== "phrase";
   $("confirm-box").hidden = step !== "confirm";
   $("connect-choices").hidden = step === "confirm";
-  for (const [id, s] of [["new-account", "create"], ["app-user", "app"], ["use-phrase", "phrase"]] as const) {
+  for (const [id, s] of [["new-account", "create"], ["app-user", "app"], ["use-phrase", "phrase"], ["use-app", "approve"]] as const) {
     $(id).setAttribute("aria-expanded", String(step === s));
   }
 }
@@ -404,6 +445,141 @@ async function authorize(custody: Custody, account: AccountInfo) {
   say(confirmed ? `App key added for FID ${k.fid}. Your node shows it as active.` : `App key sent for FID ${k.fid}; your node does not show it yet. Check the key panel in a minute.`);
   renderAccount();
   await loadFeed(k.fid);
+  void refreshNotifs().catch(() => undefined);
+}
+
+// ---- approve in the Farcaster app (appsignin.ts)
+
+// The page never talks to Farcaster: its own Outpost server, or the society node, signs the
+// request with its app account and fetches the approval link. The new key is made here.
+const signIn = society
+  ? new SignInClient(`${society.node.replace(/\/+$/, "")}/app-signin`, { authorization: `Bearer ${society.token}` })
+  : new SignInClient("/outpost/app-signin");
+let approval: { cancelled: boolean } | undefined;
+
+function stopApproval() {
+  if (approval) approval.cancelled = true;
+  approval = undefined;
+  $("approve-qr-box").hidden = true;
+  $("approve-qr").replaceChildren();
+}
+
+// The QR code as SVG drawn here, dark squares on white, from uqr (MIT, bundled, no requests).
+function qrSvg(text: string): SVGSVGElement {
+  const { data, size } = qrEncode(text, { ecc: "M", border: 2 });
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  svg.setAttribute("aria-hidden", "true");
+  let d = "";
+  data.forEach((row, y) => row.forEach((on, x) => (d += on ? `M${x} ${y}h1v1h-1z` : "")));
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "#000000");
+  svg.append(path);
+  return svg;
+}
+
+async function openApprove() {
+  showConnectStep("approve");
+  const info = $("approve-info");
+  const go = $("approve-go");
+  go.hidden = true;
+  info.textContent = "Checking whether this Outpost can ask the Farcaster app…";
+  const s = await signIn.service();
+  if (!s) {
+    info.textContent = society
+      ? "This society node does not offer approval in the Farcaster app. Ask its host, or use another way to connect."
+      : "This page is not served by an Outpost client server, so it cannot ask the Farcaster app. Run ./outpost client on your computer and open the address it prints.";
+    return;
+  }
+  if (!s.configured) {
+    info.textContent = society
+      ? "This society node has no app account set up, so it cannot ask the Farcaster app yet. Its host sets one up once."
+      : 'This Outpost has no app account yet, so it cannot ask the Farcaster app. Whoever runs it sets one up once, in a terminal: ./outpost app-account (see "Approve in the Farcaster app" in the README). Use an account made for this, never a main account.';
+    return;
+  }
+  const name = await feed.profile(s.fid!).then((p) => (p.username ? ` (@${p.username})` : ""), () => "");
+  info.textContent = `The request comes from the app account FID ${s.fid}${name}, which ${society ? "this society node" : "this Outpost"} holds. ${s.sponsored ? "It offers to pay the onchain fee." : "The Farcaster app shows any onchain fee before you approve; you pay it there."} Your recovery phrase stays in the app.`;
+  go.hidden = false;
+}
+
+async function approveInApp() {
+  stopApproval();
+  const run = { cancelled: false };
+  approval = run;
+  const state = $("approve-state");
+  const priv = generatePrivateKey();
+  const pub = bytesToHex(await publicKeyOf(priv));
+  const req = await signIn.start(pub);
+  if (run.cancelled) return;
+  $("approve-qr").replaceChildren(qrSvg(req.deeplinkUrl));
+  $<HTMLAnchorElement>("approve-link").href = req.deeplinkUrl;
+  $("approve-go").hidden = true;
+  $("approve-qr-box").hidden = false;
+  state.textContent = "Scan this with your phone's camera, then approve in the Farcaster app. Waiting…";
+  $("approve-link").focus();
+  let userFid: number | undefined;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (run.cancelled) return;
+    if (Date.now() / 1000 > req.deadline + 30) throw new Error("The request expired before it was approved. Nothing was added. Try again.");
+    const st = await signIn.state(req.token).catch((e: Error) => ({ state: "error" as const, error: e.message }));
+    if (run.cancelled) return;
+    if (st.state === "expired") throw new Error("The request expired before it was approved. Nothing was added. Try again.");
+    if (st.state === "error") state.textContent = `Could not check the request (${"error" in st ? st.error : ""}). Trying again…`;
+    else if (st.state === "pending") state.textContent = "Waiting for you to approve in the Farcaster app…";
+    else if (st.state === "approved") state.textContent = "Approved. Waiting for the onchain transaction…";
+    else if (st.state === "completed" && "userFid" in st && st.userFid) {
+      userFid = st.userFid;
+      break;
+    }
+  }
+  state.textContent = `Added onchain for FID ${userFid}. Waiting for ${source} to show the key…`;
+  const seen = await waitFor(async () => (run.cancelled ? true : hub.signer(userFid!, pub)), { timeoutMs: 5 * 60_000, intervalMs: 3000 });
+  if (run.cancelled) return;
+  if (!seen || seen === true) {
+    throw new Error(
+      `The Farcaster app reports a key as added, but ${source} does not list the key this page made, after 5 minutes. Nothing was saved. If the node is just slow, try again later. If not, a different key may have been added: remove the newest connected app in the Farcaster app (Settings, then Advanced, then Manage connected apps).`,
+    );
+  }
+  if (seen.source !== "SIGNER_SOURCE_ONCHAIN" || requestFidOf(seen) !== req.requestFid) {
+    throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} lists the key, but not as the onchain key this request asked for. Nothing was saved.`);
+  }
+  const k: AppKey = { fid: userFid!, privateKey: bytesToHex(priv), publicKey: pub, requestFid: req.requestFid, scopes: [], ttl: 0, network, onchain: true };
+  store(KEY_STORAGE, k);
+  key = k;
+  verifier.trust(k.fid, k.publicKey);
+  approval = undefined;
+  $("approve-qr-box").hidden = true;
+  say(`Signed in as FID ${k.fid} with a key approved in the Farcaster app.`);
+  renderAccount();
+  await loadFeed(k.fid);
+  void refreshNotifs().catch(() => undefined);
+}
+
+function wireApprove() {
+  $("use-app").addEventListener("click", () => void openApprove().catch((e) => say(errText(e), true)));
+  $("app-to-approve").addEventListener("click", () => void openApprove().catch((e) => say(errText(e), true)));
+  $("approve-go").addEventListener("click", (e) =>
+    busy(e.currentTarget as HTMLButtonElement, "Asking…", async () => {
+      try {
+        await approveInApp();
+      } catch (err) {
+        $("approve-state").textContent = errText(err);
+        $("approve-qr-box").hidden = true;
+        $("approve-go").hidden = false;
+        approval = undefined;
+        throw err;
+      }
+    }),
+  );
+  $("approve-cancel").addEventListener("click", () => {
+    stopApproval();
+    $("approve-go").hidden = false;
+    say("Approval cancelled. Nothing was saved.");
+  });
 }
 
 // ---- create an account (paid by the society's sponsor)
@@ -538,6 +714,7 @@ function wireCreate() {
 
 function wireConnect() {
   wireCreate();
+  wireApprove();
   $("use-wallet").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Waiting for wallet…", async () => {
       const eth = walletProvider();
@@ -580,19 +757,31 @@ async function renderAccount() {
   $("connect").hidden = logged || publicNode;
   $("compose").hidden = !logged;
   $("key").hidden = !logged;
+  $("notifs").hidden = !logged;
   $("who").textContent = key ? `FID ${key.fid}` : "";
+  if (!key) notifs = [];
+  renderUnread();
   if (!key) {
     showConnectStep("choose");
     return;
   }
   $("k-fid").textContent = String(key.fid);
   $("k-pub").textContent = key.publicKey;
+  $("k-kind").textContent = key.onchain
+    ? "Onchain key, approved in the Farcaster app: full access, no expiry. Outpost cannot revoke it."
+    : "Outpost's own app key: cast, react and follow only. Expires 30 days after last use.";
+  $("k-note").textContent = key.onchain
+    ? "The private part stays in this browser. To remove the key from your account, use the Farcaster app: Settings, then Advanced, then Manage connected apps. The button below only forgets it here."
+    : "The private part stays in this browser. Revoking needs no recovery phrase: the key signs its own removal.";
+  $("revoke").textContent = key.onchain ? "Forget this key in this browser" : "Revoke this key (uninstall)";
   $("k-status").textContent = "checking…";
   try {
     const s = await hub.signer(key.fid, key.publicKey);
     $("k-status").textContent = s
-      ? `active${s.expiresAt ? `, expires ${new Date(s.expiresAt * 1000).toLocaleDateString()} unless used` : ""}`
-      : "not active (revoked or expired). Revoke to remove it from this browser.";
+      ? `active${s.expiresAt ? `, expires ${new Date(s.expiresAt * 1000).toLocaleDateString()} unless used` : key.onchain ? ", no expiry" : ""}`
+      : key.onchain
+        ? "not active (removed in the Farcaster app). Forget it to sign in again."
+        : "not active (revoked or expired). Revoke to remove it from this browser.";
     myFollowing = new Set(await followingOf(hub, key.fid));
   } catch (e) {
     $("k-status").textContent = `unknown (${errText(e)})`;
@@ -603,6 +792,16 @@ function wireKey() {
   $("revoke").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Revoking…", async () => {
       if (!key) return;
+      if (key.onchain) {
+        // An onchain key can only be removed by the account's owner, in the Farcaster app.
+        if (!confirm("Forget this key in this browser? It stays on your account until you remove it in the Farcaster app: Settings, then Advanced, then Manage connected apps.")) return;
+        store(KEY_STORAGE, null);
+        key = undefined;
+        say("Forgot the key in this browser. To remove it from your account, use the Farcaster app: Settings, then Advanced, then Manage connected apps.");
+        renderAccount();
+        renderFeed();
+        return;
+      }
       if (!confirm("Revoke this app key? This client will no longer be able to post for you.")) return;
       // Same rule as `./outpost cli uninstall`: the stored key is the only way to revoke it without
       // the recovery phrase, and a node that is behind says "not found" for a live key.
@@ -635,14 +834,168 @@ function setReply(target?: { fid: number; hash: HexString; name: string }) {
   }
 }
 
+// ---- @mentions in the composer
+
+// Signed profiles seen so far (feed authors, accounts you follow), for the suggestions.
+const people = new Map<number, Profile>();
+// Names picked from the suggestions. Only these become mentions when posting (mentions.ts).
+let picks = new Map<string, number>();
+let suggestions: Profile[] = [];
+let activeSuggestion = -1;
+let followedProfiles: Promise<void> | undefined;
+let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
+function remember(p: Profile | undefined) {
+  if (p?.username) people.set(p.fid, p);
+}
+
+// Profiles of up to 300 accounts you follow, read once, the first time you type "@".
+function loadFollowedProfiles(): Promise<void> {
+  if (!myFollowing.size) return Promise.resolve(); // not read yet: try again on the next "@"
+  followedProfiles ??= mapLimit([...myFollowing].filter((f) => !people.has(f)).slice(0, 300), 8, (f) =>
+    feed.profile(f).then(remember, () => undefined),
+  ).then(() => undefined);
+  return followedProfiles;
+}
+
+function closeSuggestions() {
+  suggestions = [];
+  activeSuggestion = -1;
+  const list = $("mention-list");
+  list.hidden = true;
+  list.replaceChildren();
+  const text = $("text");
+  text.setAttribute("aria-expanded", "false");
+  text.removeAttribute("aria-activedescendant");
+}
+
+function renderSuggestions() {
+  const list = $("mention-list");
+  const text = $("text");
+  if (!suggestions.length) return closeSuggestions();
+  list.replaceChildren(
+    ...suggestions.map((p, i) =>
+      h(
+        "li",
+        {
+          id: `mention-${i}`,
+          role: "option",
+          "aria-selected": String(i === activeSuggestion),
+          // mousedown, not click: the textarea keeps focus and its cursor.
+          onmousedown: (e: Event) => {
+            e.preventDefault();
+            pickSuggestion(i);
+          },
+        },
+        h("span", { class: "mn" }, `@${p.username}`),
+        p.displayName ? h("span", { class: "md" }, p.displayName) : null,
+        myFollowing.has(p.fid) ? h("span", { class: "md" }, "you follow") : null,
+      ),
+    ),
+  );
+  list.hidden = false;
+  text.setAttribute("aria-expanded", "true");
+  if (activeSuggestion >= 0) text.setAttribute("aria-activedescendant", `mention-${activeSuggestion}`);
+  else text.removeAttribute("aria-activedescendant");
+  $("mention-note").textContent = `${suggestions.length} ${suggestions.length === 1 ? "person" : "people"} to mention. Up and down arrows to choose, Enter to pick, Escape to close.`;
+}
+
+function matches(query: string): Profile[] {
+  const q = query.toLowerCase();
+  const rank = (p: Profile) => (myFollowing.has(p.fid) ? 0 : 2) + (p.username!.toLowerCase().startsWith(q) ? 0 : 1);
+  return [...people.values()]
+    .filter((p) => p.username!.toLowerCase().startsWith(q) || (q && p.displayName?.toLowerCase().includes(q)))
+    .sort((a, b) => rank(a) - rank(b) || a.username!.localeCompare(b.username!))
+    .slice(0, 6);
+}
+
+// A full username nobody here has loaded is looked up on the node, and kept only if the account's
+// own signed profile carries that name.
+async function lookUp(query: string) {
+  const fid = await hub.fidByUsername(query).catch(() => undefined);
+  if (!fid) return;
+  const p = await feed.profile(fid).catch(() => undefined);
+  if (p?.username?.toLowerCase() !== query.toLowerCase()) return;
+  remember(p);
+  const now = mentionQuery($<HTMLTextAreaElement>("text").value, $<HTMLTextAreaElement>("text").selectionStart);
+  if (now?.query.toLowerCase() === query.toLowerCase()) {
+    suggestions = matches(query);
+    activeSuggestion = suggestions.length ? 0 : -1;
+    renderSuggestions();
+  }
+}
+
+function suggest() {
+  const text = $<HTMLTextAreaElement>("text");
+  const q = mentionQuery(text.value, text.selectionStart);
+  clearTimeout(lookupTimer);
+  if (!q || text.selectionStart !== text.selectionEnd) return closeSuggestions();
+  void loadFollowedProfiles().then(() => {
+    const again = mentionQuery(text.value, text.selectionStart);
+    if (again?.query === q.query && !suggestions.length && matches(q.query).length) {
+      suggestions = matches(q.query);
+      activeSuggestion = 0;
+      renderSuggestions();
+    }
+  });
+  suggestions = matches(q.query);
+  activeSuggestion = suggestions.length ? 0 : -1;
+  renderSuggestions();
+  if (!suggestions.some((p) => p.username!.toLowerCase() === q.query.toLowerCase()) && q.query.length >= 2) {
+    lookupTimer = setTimeout(() => void lookUp(q.query), 300);
+  }
+}
+
+function pickSuggestion(i: number) {
+  const p = suggestions[i];
+  const text = $<HTMLTextAreaElement>("text");
+  const q = mentionQuery(text.value, text.selectionStart);
+  if (!p?.username || !q) return closeSuggestions();
+  const insert = `@${p.username} `;
+  text.value = text.value.slice(0, q.start) + insert + text.value.slice(text.selectionStart);
+  const at = q.start + insert.length;
+  text.setSelectionRange(at, at);
+  picks.set(p.username.toLowerCase(), p.fid);
+  closeSuggestions();
+  $("mention-note").textContent = `Mentioning @${p.username}.`;
+  text.dispatchEvent(new Event("input"));
+  text.focus();
+}
+
+function wireMentions() {
+  const text = $<HTMLTextAreaElement>("text");
+  text.addEventListener("input", suggest);
+  text.addEventListener("click", suggest);
+  text.addEventListener("blur", () => setTimeout(closeSuggestions, 150));
+  text.addEventListener("keydown", (e) => {
+    if ($("mention-list").hidden) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = suggestions.length;
+      activeSuggestion = (activeSuggestion + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      renderSuggestions();
+      document.getElementById(`mention-${activeSuggestion}`)?.scrollIntoView({ block: "nearest" });
+    } else if ((e.key === "Enter" || e.key === "Tab") && activeSuggestion >= 0) {
+      e.preventDefault();
+      pickSuggestion(activeSuggestion);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSuggestions();
+    }
+  });
+}
+
 function wireCompose() {
+  wireMentions();
   const text = $<HTMLTextAreaElement>("text");
   text.addEventListener("input", () => ($("count").textContent = `${new TextEncoder().encode(text.value).length} / 1024`));
   $("post").addEventListener("click", (e) =>
     busy(e.currentTarget as HTMLButtonElement, "Posting…", async () => {
       if (!key) return;
-      const r = await cast(hub, key, { text: text.value, replyTo });
+      const m = extractMentions(text.value, [...picks].map(([name, fid]) => ({ name, fid })));
+      const r = await cast(hub, key, { text: m.text, replyTo, ...(m.mentions.length ? { mentions: m.mentions, mentionsPositions: m.mentionsPositions } : {}) });
       text.value = "";
+      picks = new Map();
       $("count").textContent = "0 / 1024";
       setReply();
       say(r.confirmed ? `Cast ${r.hash.slice(0, 10)} is on your node.` : `Cast ${r.hash.slice(0, 10)} was accepted for relay; not visible yet.`);
@@ -747,13 +1100,13 @@ function keyTag(it: FeedItem): HTMLSpanElement | null {
   const k = it.app.keyCheck;
   if (k === "onchain" || k === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()) return null;
   if (k === "confirmed") {
-    return h("span", { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` }, "signer confirmed by second node");
+    return h("span", { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkName}) lists it as this account's key. Faking it would need both nodes to lie.` }, "signer confirmed by second node");
   }
   if (k === "revoked") {
     return h("span", { class: "app-tag", title: "This account's key on Optimism, removed since. What it signed before stays valid on the network; it cannot sign anything new." }, "key revoked since");
   }
   if (k === "unlisted") {
-    return h("span", { class: "key-tag", title: `The second node (${checkUrl}) does not list this key for this account. It was revoked since, or it is not the account's key: the node's API cannot tell which.` }, "key not listed");
+    return h("span", { class: "key-tag", title: `The second node (${checkName}) does not list this key for this account. It was revoked since, or it is not the account's key: the node's API cannot tell which.` }, "key not listed");
   }
   return h(
     "span",
@@ -791,9 +1144,10 @@ function castCard(it: FeedItem): HTMLLIElement {
     }, () => undefined);
   }
   const embeds = it.embeds.filter((u) => /^https?:\/\//.test(u));
+  if (!thread || thread.root.hash !== it.hash) actions.append(h("button", { type: "button", onclick: () => void busy(null, "", () => openThread(target, it.hash)) }, "Thread"));
   return h(
     "li",
-    { class: "cast" },
+    { class: `cast${thread?.focus === it.hash ? " focus" : ""}`, id: `cast-${it.hash}`, tabindex: "-1" },
     avatar(it),
     h(
       "div",
@@ -827,13 +1181,40 @@ function renderFeed() {
       ),
     );
   }
-  $("more").hidden = items.length === 0;
-  if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
+  $("more").hidden = items.length === 0 || !!thread;
+  $("thread-back").hidden = !thread;
+  if (thread) $("feed-title").textContent = `A cast by ${thread.author} and ${shown.length - 1} repl${shown.length === 2 ? "y" : "ies"}, oldest first`;
+  else if (charter) $("feed-title").textContent = `"${charter.name}" society feed, through its lens · ${shown.length} of ${items.length} casts`;
   else if (viewFid) $("feed-title").textContent = `Following feed of FID ${viewFid} · ${shown.length} of ${items.length} casts`;
   else $("feed-title").textContent = "";
 }
 
+// ---- a cast and its replies
+
+let thread: { root: { fid: number; hash: HexString }; focus?: HexString; author: string } | undefined;
+
+async function openThread(root: { fid: number; hash: HexString }, focus?: HexString) {
+  say(`Loading the cast and its replies from ${source}…`);
+  const [cast, replies] = await Promise.all([hub.castById(root.fid, root.hash), hub.repliesTo(root, { pageSize: 100 })]);
+  if (!cast) throw new Error(`${source[0]!.toUpperCase()}${source.slice(1)} does not have that cast, or it did not pass the checks.`);
+  const msgs = [cast, ...replies.items.sort((a, b) => a.data.timestamp - b.data.timestamp)];
+  const loaded = await feed.items(msgs);
+  if (!loaded.length || loaded[0]!.hash !== cast.hash) throw new Error("That cast did not pass the key check, so it is not shown.");
+  const a = loaded[0]!.author;
+  thread = { root, focus: focus ?? root.hash, author: a?.username ? `@${a.username}` : `fid ${root.fid}` };
+  items = loaded;
+  for (const it of items) remember(it.author);
+  chipState.clear();
+  renderFeed();
+  showVerification();
+  say(`Showing a cast and ${items.length - 1} repl${items.length === 2 ? "y" : "ies"}.`);
+  const el = document.getElementById(`cast-${thread.focus}`) ?? $("feed-h");
+  el.scrollIntoView({ block: "center" });
+  el.focus({ preventScroll: true });
+}
+
 async function loadFeed(fid?: number) {
+  thread = undefined;
   if (fid) viewFid = fid;
   const t0 = performance.now();
   if (!charter && !viewFid) return;
@@ -849,12 +1230,133 @@ async function loadFeed(fid?: number) {
       items = await feed.following(viewFid!, { limit: 100, perAuthor });
     }
     appNames = await feed.appNames(items);
+    for (const it of items) remember(it.author);
   } finally {
     list.removeAttribute("aria-busy");
   }
   renderFeed();
   showVerification();
   say(`Loaded ${items.length} cast${items.length === 1 ? "" : "s"} in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+}
+
+// ---- notifications
+
+let notifs: Notification[] = [];
+let notifShown = 10;
+let notifLoading = false;
+
+function lastSeen(): number | undefined {
+  return key ? store<number>(seenStorage(key.fid)) : undefined;
+}
+
+function renderUnread() {
+  const n = unreadCount(notifs, lastSeen());
+  $("notif-pill").hidden = !key;
+  $("notif-count").textContent = `${n} new`;
+  $("notif-pill").setAttribute("aria-label", `Notifications: ${n} new`);
+}
+
+function excerpt(text: string | undefined): string {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  return t.length > 140 ? `${t.slice(0, 139)}…` : t;
+}
+
+function notifItem(n: Notification, seen: number | undefined): HTMLLIElement {
+  const open =
+    n.kind === "follow"
+      ? h("button", { type: "button", onclick: () => void busy(null, "", () => loadFeed(n.actors[0]!.fid)) }, "Show their feed")
+      : h(
+          "button",
+          {
+            type: "button",
+            onclick: () =>
+              void busy(null, "", async () => {
+                // A reply opens under your cast; a mention opens the cast that mentions you.
+                const c = n.cast;
+                if (n.kind === "reply" && c?.parent && "hash" in c.parent) await openThread({ fid: c.parent.fid, hash: c.parent.hash as HexString }, c.hash);
+                else if (c) await openThread({ fid: c.fid, hash: c.hash });
+                else if (n.target) await openThread({ fid: n.target.fid, hash: n.target.hash });
+              }),
+          },
+          "Open",
+        );
+  const about = n.kind === "reply" || n.kind === "mention" ? n.cast?.text : n.target?.text;
+  const unread = n.time > (seen ?? 0);
+  return h(
+    "li",
+    { class: `notif${unread ? " unread" : ""}` },
+    h(
+      "div",
+      { class: "notif-main" },
+      h("span", { class: "notif-what" }, notificationText(n), unread ? h("span", { class: "sr-only" }, " (new)") : null, h("span", { class: "meta" }, ` · ${ago(n.time)}`)),
+      about ? h("p", { class: "notif-excerpt" }, excerpt(about)) : null,
+    ),
+    open,
+  );
+}
+
+function renderNotifs(pending = 0, failed: string[] = []) {
+  const seen = lastSeen();
+  $("notif-list").replaceChildren(...notifs.slice(0, notifShown).map((n) => notifItem(n, seen)));
+  $("notif-more").hidden = notifs.length <= notifShown;
+  const notes: string[] = [];
+  if (pending) notes.push(`Still loading (${pending} of 5 parts left)…`);
+  if (failed.length) notes.push(`${source[0]!.toUpperCase()}${source.slice(1)} did not answer for: ${failed.join(", ")}. Refresh to try again.`);
+  if (!pending && !notifs.length && !failed.length) notes.push("Nothing yet.");
+  $("notif-status").textContent = notes.join(" ");
+  renderUnread();
+}
+
+async function refreshNotifs() {
+  if (!key || notifLoading) return;
+  notifLoading = true;
+  const fid = key.fid;
+  $("notifs").hidden = false;
+  try {
+    const r = await notificationsFor(feed, fid, {
+      onUpdate: (u) => {
+        if (key?.fid !== fid) return;
+        notifs = u.items;
+        renderNotifs(u.pending, u.failed);
+      },
+    });
+    if (key?.fid !== fid) return;
+    notifs = r.items;
+    for (const n of notifs) n.actors.forEach(remember);
+    renderNotifs(0, r.failed);
+    showVerification();
+  } finally {
+    notifLoading = false;
+  }
+}
+
+function wireNotifs() {
+  $("notif-refresh").addEventListener("click", (e) => busy(e.currentTarget as HTMLButtonElement, "Refreshing…", refreshNotifs));
+  $("notif-read").addEventListener("click", () => {
+    if (!key) return;
+    store(seenStorage(key.fid), seenUpTo(notifs));
+    renderNotifs();
+    say("All notifications marked read.");
+  });
+  $("notif-more").addEventListener("click", () => {
+    notifShown += 20;
+    renderNotifs();
+  });
+  $("notif-pill").addEventListener("click", () => setTimeout(() => $("notifs-h").focus(), 0));
+  $("thread-back").addEventListener("click", () =>
+    busy(null, "", async () => {
+      thread = undefined;
+      if (charter || viewFid) await loadFeed();
+      else {
+        items = [];
+        renderFeed();
+      }
+    }),
+  );
+  // A light poll while the page is visible; a society node rate-limits each member.
+  setInterval(() => {
+    if (document.visibilityState === "visible") void refreshNotifs().catch(() => undefined);
+  }, 120_000);
 }
 
 function showPicturesNote() {
@@ -876,7 +1378,7 @@ function wireFeed() {
     void busy(null, "", async () => {
       const v = $<HTMLInputElement>("view").value.trim();
       const fid = /^\d+$/.test(v) ? Number(v) : await hub.fidByUsername(v);
-      if (!fid) throw new Error(`No FID found for "${v}". Plain usernames only; .eth names need an Ethereum RPC on the node.`);
+      if (!fid) throw new Error(`No FID found for "${v}" on ${source}.`);
       perAuthor = 5;
       if (charter) leaveCharter();
       await loadFeed(fid);
@@ -1263,11 +1765,24 @@ function wireCharter() {
 // ---- start
 
 async function main() {
-  try {
-    const cfg = (await (await fetch("/outpost-config.json")).json()) as { network?: string };
-    if (cfg.network === "devnet") network = FarcasterNetwork.DEVNET;
-  } catch {
-    // Served without Outpost's server (e.g. Caddy for phones): mainnet.
+  if (serverConfig.network === "devnet") {
+    network = FarcasterNetwork.DEVNET;
+    // Optimism mainnet and Farcaster's public node know nothing of devnet keys. Unless chosen
+    // under "Node and checks", key checks use the devnet's own second node, or are off.
+    let changed = false;
+    if (store<string>(RPC_STORAGE) === undefined) changed = store(RPC_STORAGE, "") === "" || changed;
+    if (store<string>(CHECKNODE_STORAGE) === undefined) changed = store(CHECKNODE_STORAGE, serverConfig.checkNode ?? "") !== undefined || changed;
+    if (changed) return location.reload();
+    // A devnet usually has no second node this page may reach (it allows https only), so its
+    // gasless keys cannot be checked: show what they signed, marked "signer not verified".
+    if (!second) verifier.showUnverified = true;
+  }
+  if (remote) {
+    $("remote-name").textContent = remote.farcaster ? "Farcaster's public node" : `the node at ${new URL(remote.url).host}`;
+    $("remote-check").textContent = checkName
+      ? `Casts signed with gasless keys are checked against a second node, ${new URL(checkName).host}.${remote.farcaster && checkName === remote.check ? " Farcaster runs that one too, so it catches one node being wrong, not Farcaster itself." : ""}`
+      : 'The second-node check is off: casts signed with gasless keys say "signer not verified".';
+    $("remote").hidden = false;
   }
   $("build").replaceChildren(
     __OUTPOST_COMMIT__ === "unknown"
@@ -1281,12 +1796,14 @@ async function main() {
   wireFeed();
   wireCharter();
   wireVotes();
+  wireNotifs();
   await renderAccount();
   if (invite) await askToJoin(invite);
   if (await checkNode()) {
     const start = key?.fid ?? (params.get("fid") ? Number(params.get("fid")) : undefined);
     if (savedLog) await showCharter(savedLog, "saved in this browser", true).catch((e) => say(errText(e), true));
     else if (start) await loadFeed(start).catch((e) => say(errText(e), true));
+    if (key) void refreshNotifs().catch((e) => say(errText(e), true));
     else if (publicNode) say('Enter an FID or username to read a feed. This is read-only: to post, run your own node or join a society (see "Node and checks").');
     else say('Enter an FID or username to read a feed. To post, see "Post from Outpost" below.');
   }

@@ -13,6 +13,16 @@ import type { KeyLister, KeyScopes } from "./verify.js";
 
 // Farcaster's public read node: plain GETs work from any page (Access-Control-Allow-Origin: *).
 export const DEFAULT_CHECK_NODE = "https://snap.farcaster.xyz:3381";
+// Another public node Farcaster runs, on a separate machine. Used as the second node when the node
+// being read is snap.farcaster.xyz (./outpost client --public): same operator, so it catches one
+// node being wrong, not Farcaster itself.
+export const OTHER_PUBLIC_NODE = "https://crackle.farcaster.xyz:3381";
+
+// The default second node for a node being read: Farcaster's public node, or, when that is the
+// node being read, its other public node.
+export function checkNodeFor(readingFrom: string): string {
+  return new URL(readingFrom).origin === new URL(DEFAULT_CHECK_NODE).origin ? OTHER_PUBLIC_NODE : DEFAULT_CHECK_NODE;
+}
 
 export class SecondNode implements KeyLister {
   private byFid = new Map<number, Promise<Map<string, KeyScopes>>>();
@@ -49,8 +59,10 @@ export class SecondNode implements KeyLister {
   }
 }
 
-// Undefined when the second node is the node being read: a node cannot second itself.
+// Undefined when the second node is the node being read: a node cannot second itself. Compared by
+// base URL, so ./outpost client can forward one path to the node and another to the second node.
 export function secondNode(url: string, readingFrom: string, fetchImpl?: typeof fetch): SecondNode | undefined {
-  if (new URL(url).origin === new URL(readingFrom).origin) return undefined;
+  const base = (u: string) => new URL(u).href.replace(/\/+$/, "");
+  if (base(url) === base(readingFrom)) return undefined;
   return new SecondNode(new Hub({ url, fetch: fetchImpl, timeoutMs: 10_000 }));
 }
