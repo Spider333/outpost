@@ -1287,6 +1287,9 @@ main() {
           *) break ;;
         esac
       done
+      for a in "$@"; do
+        case "$a" in --public) die "put $a right after ./outpost $cmd, for example: ./outpost $cmd $a ..." ;; esac
+      done
       [ -n "$NODE_URL" ] || NODE_URL="${OUTPOST_NODE_URL:-}"
       [ -z "$NODE_URL" ] || check_node_url "$NODE_URL"
       NODE_URL="${NODE_URL%/}"
