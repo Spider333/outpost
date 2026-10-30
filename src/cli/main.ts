@@ -254,7 +254,7 @@ const APP_WARNING = (where: string, society: boolean) => `
   - Its custody key is saved ${where} (mode 600).
     Anyone who can read ${society ? "that server's" : "your"} files can take that account.
   - The key is used there only to sign key requests. It is never sent to a browser,
-    to your node, or to Farcaster.
+    to the node, or to Farcaster.
 `;
 
 async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean; out?: string }, chain?: Optimism) {

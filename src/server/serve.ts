@@ -109,6 +109,44 @@ const signIn = signInHandler({
   refuse: sameOrigin,
 });
 
+// Forwards one JSON-RPC call (or a batch) that only reads, such as eth_call; anything that sends
+// a transaction is refused.
+const READ_METHODS = new Set(["eth_call", "eth_chainId", "eth_blockNumber", "eth_getBlockByNumber", "eth_getCode", "eth_getBalance", "eth_getTransactionCount", "eth_getTransactionReceipt", "net_version"]);
+async function readOnlyRpc(req: IncomingMessage, res: ServerResponse, base: URL) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req as AsyncIterable<Buffer>) {
+    size += c.length;
+    if (size > 65536) {
+      res.writeHead(413, { "content-type": "application/json" }).end(JSON.stringify({ error: "request too large" }));
+      return;
+    }
+    chunks.push(c);
+  }
+  const body = Buffer.concat(chunks).toString("utf8");
+  let calls: unknown;
+  try {
+    calls = JSON.parse(body);
+  } catch {
+    calls = undefined;
+  }
+  const list = Array.isArray(calls) ? calls : [calls];
+  if (!list.length || !list.every((c) => typeof c === "object" && c !== null && READ_METHODS.has((c as { method?: unknown }).method as string))) {
+    res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "only read calls are forwarded to Optimism" }));
+    return;
+  }
+  const up = (base.protocol === "https:" ? httpsRequest : httpRequest)(base, { method: "POST", headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }, timeout: 30_000 }, (r) => {
+    res.writeHead(r.statusCode ?? 502, { "content-type": r.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
+    r.pipe(res);
+  });
+  up.on("timeout", () => up.destroy(new Error("Optimism RPC did not answer in 30 s")));
+  up.on("error", (e) => {
+    if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "cannot reach Optimism RPC", error_detail: `${base.origin}: ${e.message}` }));
+  });
+  up.end(body);
+}
+
 function config() {
   if (remote) return { network, node: { url: node.href.replace(/\/+$/, ""), farcaster: node.origin === new URL(DEFAULT_CHECK_NODE).origin, check: checkNode?.origin ?? "", rpc: rpc?.href ?? "" } };
   return network === "devnet" ? { network, checkNode: process.env.OUTPOST_CHECK_NODE ?? "" } : { network };
@@ -120,9 +158,9 @@ const server = createServer((req, res) => {
   else if (req.url === "/outpost-config.json") {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(config()));
   } else if (req.url?.startsWith("/v1/")) proxy(req, res);
-  // The second node is only read; the RPC only answers JSON-RPC calls.
+  // The second node is only read, and so is Optimism.
   else if (checkNode && req.method === "GET" && req.url?.startsWith(`${CHECK}/v1/`)) proxy(req, res, checkNode, req.url.slice(CHECK.length), undefined);
-  else if (rpc && req.method === "POST" && path === RPC) proxy(req, res, rpc, "", undefined);
+  else if (rpc && req.method === "POST" && path === RPC) void readOnlyRpc(req, res, rpc);
   else if (req.method === "GET" || req.method === "HEAD") void serveStatic(req, res);
   else res.writeHead(405).end();
 });

@@ -51,8 +51,13 @@ test("./outpost client --public: the page learns the node is not yours, and key 
     assert.deepEqual(cfg, { network: "mainnet", node: { url: node.url, farcaster: false, check: check.url, rpc: `${rpc.url}/` } });
     assert.deepEqual(await (await fetch(`${c.url}/v1/info?x=1`)).json(), { name: "node", method: "GET", path: "/v1/info?x=1", body: "" });
     assert.deepEqual(await (await fetch(`${c.url}/outpost/check/v1/signersByFid?fid=3`)).json(), { name: "check", method: "GET", path: "/v1/signersByFid?fid=3", body: "" });
-    const call = await fetch(`${c.url}/outpost/optimism`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    assert.deepEqual(await call.json(), { name: "rpc", method: "POST", path: "/", body: "{}" });
+    const read = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [] });
+    const call = await fetch(`${c.url}/outpost/optimism`, { method: "POST", headers: { "content-type": "application/json" }, body: read });
+    assert.deepEqual(await call.json(), { name: "rpc", method: "POST", path: "/", body: read });
+    // Optimism is only read: a transaction is not forwarded.
+    const send = JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "eth_call", params: [] }, { jsonrpc: "2.0", id: 2, method: "eth_sendRawTransaction", params: ["0x00"] }]);
+    assert.equal((await fetch(`${c.url}/outpost/optimism`, { method: "POST", body: send })).status, 403);
+    assert.equal((await fetch(`${c.url}/outpost/optimism`, { method: "POST", body: "{}" })).status, 403);
     // The second node is only read, and nothing else leaves through these paths.
     assert.notEqual((await fetch(`${c.url}/outpost/check/v1/submitMessage`, { method: "POST", body: "x" })).status, 200);
     assert.notEqual((await fetch(`${c.url}/outpost/check/other`)).status, 200);

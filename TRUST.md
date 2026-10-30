@@ -118,8 +118,8 @@ node.
 
 ## What picture hosts learn
 
-With "Show pictures" on (the default), the web client loads profile pictures and image embeds
-straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
+With "Show pictures" on (the default, except with `--public` or `--node`), the web client loads
+profile pictures and image embeds straight from the URLs in signed profiles and casts. Each host learns the reader's IP address and
 which of its pictures were shown, so roughly which accounts were on screen. The signature covers
 the URL, not the image, so a host can swap the image without changing the signed profile or cast.
 A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
@@ -141,7 +141,7 @@ under "What the host can still do". Farcaster sees what you read and post, from 
 - **Onchain keys** are still checked on Optimism, as before.
 - **Your browser** still talks only to `./outpost client` on 127.0.0.1. It forwards `/v1/*` to
   the node, `/outpost/check/v1/*` (GET only) to the second node and `/outpost/optimism` (POST
-  only) to the Optimism RPC (`src/server/serve.ts`, tests in `test/remote-node.test.ts`).
+  only, read calls such as `eth_call`) to the Optimism RPC (`src/server/serve.ts`, tests in `test/remote-node.test.ts`).
 - **No server** is involved: no SSH, no provider (`test/providers.sh` checks with fakes).
 - **Posting** goes to the public node like any other submit. It may refuse it; that was not
   tested before release.

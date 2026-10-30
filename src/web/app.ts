@@ -254,7 +254,8 @@ const approvals = approvalCache(
 let draft: Array<Change & { label: string }> = [];
 const names = new Map<number, string>();
 // Profile pictures and image embeds load from their own hosts, not from the node.
-let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
+// Off by default on a node that is not yours, so the page then loads nothing but 127.0.0.1.
+let pictures = store<boolean>(PICTURES_STORAGE) ?? !remote;
 
 // ---- node status
 
@@ -336,6 +337,7 @@ function wireNodeSettings() {
       : `Using your own node (this page's origin, ${location.origin}).`;
   $<HTMLInputElement>("rpc-url").value = remote && rpc === RPC_VIA_SERVER ? remote.rpc : rpc;
   $<HTMLInputElement>("check-node").value = checkName;
+  if (remote) $<HTMLInputElement>("check-node").placeholder = remote.check || "https://<node>:3381";
   $("check-note").textContent = !checkUrl
     ? 'The second-node check is off: casts signed with gasless keys say "signer not verified".'
     : !second
