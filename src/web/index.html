@@ -21,6 +21,13 @@
   </header>
 
   <main>
+    <section id="remote" class="remote" hidden aria-label="Which node">
+      <p class="small">Using <strong id="remote-name">another node</strong>, not your own.</p>
+      <details class="why">
+        <summary>What does that change?</summary>
+        <p>That node sees what you read and post. It can withhold or delay messages, or refuse your posts. It cannot post as you or change a message: this page checks every message itself. <span id="remote-check"></span> To stop depending on it, run your own node with <code>./outpost provision</code>.</p>
+      </details>
+    </section>
     <p id="status" class="status" role="status" aria-live="polite"></p>
     <p id="verify-status" class="muted small verify" aria-live="polite"></p>
 

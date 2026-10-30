@@ -34,6 +34,8 @@ import {
   checkNodeUrl,
   checkToken,
   DEFAULT_CHECK_NODE,
+  checkNodeFor,
+  OTHER_PUBLIC_NODE,
   DEFAULT_OPTIMISM_RPC,
   Optimism,
   secondNode,
@@ -134,7 +136,8 @@ options:
   --rpc <url>         Optimism RPC for key and custody checks (default $OUTPOST_OPTIMISM_RPC or
                       ${DEFAULT_OPTIMISM_RPC}; "off" skips them)
   --check-node <url>  second node asked about gasless app keys, which have no onchain record
-                      (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}; "off" skips it)
+                      (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}, or ${OTHER_PUBLIC_NODE}
+                      when reading ${DEFAULT_CHECK_NODE}; "off" skips it)
   --show-unverified   also show casts whose signing key could not be checked (marked); by
                       default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
@@ -153,7 +156,7 @@ function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "ch
   const auth = tokenFile
     ? { url: checkNodeUrl(url), token: checkToken(readFileSync(tokenFile, "utf8")) }
     : { url, username: process.env.OUTPOST_NODE_USER, password: process.env.OUTPOST_NODE_PASSWORD };
-  const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? DEFAULT_CHECK_NODE;
+  const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? checkNodeFor(auth.url);
   const second = check === "off" ? undefined : secondNode(checkNodeUrl(check), auth.url);
   if (check !== "off" && !second) console.error("note: the second node is the node being read, so gasless keys are not checked");
   const verifier = new Verifier(chain, second);

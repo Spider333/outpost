@@ -109,6 +109,8 @@ h1, h2, h3 { text-wrap: balance; }
 .verify { margin: 2px 0 0; overflow-wrap: anywhere; }
 .verify:empty { display: none; }
 .verify button { min-height: 32px; padding: 2px 10px; font-size: 12px; margin-left: 4px; }
+.remote { margin: 12px 0 0; padding: 6px 12px; border-left: 2px solid var(--warn); }
+.remote > p { margin: 0; }
 #verify-status.bad { color: var(--bad); }
 #verify-status.warn { color: var(--warn); }
 

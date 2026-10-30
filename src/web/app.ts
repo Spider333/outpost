@@ -175,22 +175,38 @@ try {
   inviteError = `Invite link not used: ${errText(e)}`;
 }
 const society = store<Society>(SOCIETY_STORAGE);
+// What the local server says about itself. A static host (GitHub Pages, Caddy for phones) has no
+// such file: mainnet, your own node.
+type ServerConfig = { network?: string; checkNode?: string; node?: RemoteNode };
+// ./outpost client --public (or --node <url>): this page's origin forwards to a node that is not
+// yours. Reads and writes still go only to this origin, and so do the key checks, which the local
+// server forwards to the second node and Optimism.
+type RemoteNode = { url: string; farcaster: boolean; check: string; rpc: string };
+const serverConfig: ServerConfig = await fetch("/outpost-config.json")
+  .then((r) => (r.ok ? (r.json() as Promise<ServerConfig>) : {}))
+  .catch(() => ({}));
+const remote = society ? undefined : serverConfig.node;
 if (invite && invite.node === society?.node && invite.token === society.token) invite = undefined; // already in use
 // With no node of your own, Farcaster's public node can be read, never written to: a page may only
 // send it plain GETs (no token, no POST), and no app key is loaded, so no button that writes is shown.
 // A society node, once chosen, comes first.
-const publicNode = !society && store<boolean>(PUBLIC_STORAGE) === true;
-const source = society ? "the society node" : publicNode ? "Farcaster's public node" : "your node";
+const publicNode = !society && !remote && store<boolean>(PUBLIC_STORAGE) === true;
+const remoteName = remote ? (remote.farcaster ? "Farcaster's public node" : `the node at ${new URL(remote.url).host}`) : "";
+const source = society ? "the society node" : remote ? remoteName : publicNode ? "Farcaster's public node" : "your node";
 // An invite opened in this tab while the page is open only changes the fragment: start over to read it.
 addEventListener("hashchange", () => {
   if (/(^#|&)(node|token)=/.test(location.hash)) location.reload();
 });
 // Key and custody checks read Optimism through this RPC, never through the node. "" turns them off.
-const rpc = store<string>(RPC_STORAGE) ?? DEFAULT_OPTIMISM_RPC;
+const RPC_VIA_SERVER = `${location.origin}/outpost/optimism`;
+const CHECK_VIA_SERVER = `${location.origin}/outpost/check`;
+const rpc = store<string>(RPC_STORAGE) ?? (remote ? (remote.rpc && RPC_VIA_SERVER) : DEFAULT_OPTIMISM_RPC);
 const chain = rpc ? new Optimism(rpc) : undefined;
 // Gasless keys have no onchain record, so a second, independent node is asked. "" turns it off;
 // a second node on the same origin as the node being read is skipped.
-const checkUrl = store<string>(CHECKNODE_STORAGE) ?? DEFAULT_CHECK_NODE;
+const checkUrl = store<string>(CHECKNODE_STORAGE) ?? (remote ? (remote.check && CHECK_VIA_SERVER) : DEFAULT_CHECK_NODE);
+// The node behind it, for what the page says.
+const checkName = remote && checkUrl === CHECK_VIA_SERVER ? remote.check : checkUrl;
 const readUrl = society?.node ?? (publicNode ? DEFAULT_CHECK_NODE : location.origin);
 const second = checkUrl ? secondNode(checkUrl, readUrl) : undefined;
 const verifier = new Verifier(chain, second);
@@ -244,7 +260,7 @@ let pictures = store<boolean>(PICTURES_STORAGE) ?? true;
 
 async function checkNode() {
   const pill = $("node-status");
-  const which = society ? `society node ${new URL(society.node).host}` : publicNode ? "public node, read-only," : "node";
+  const which = society ? `society node ${new URL(society.node).host}` : remote ? (remote.farcaster ? "public node" : `node ${new URL(remote.url).host}`) : publicNode ? "public node, read-only," : "node";
   try {
     const info = await hub.info();
     const { synced, maxDelay } = syncState(info);
@@ -313,19 +329,23 @@ function wireNodeSettings() {
   });
   $("soc-current").textContent = society
     ? `Using the society node ${society.node}.`
-    : publicNode
+    : remote
+      ? `Using ${remoteName} (${remote.url}) through ./outpost client on this computer. It is not your own node.`
+      : publicNode
       ? `Reading Farcaster's public node ${DEFAULT_CHECK_NODE}, read-only.`
       : `Using your own node (this page's origin, ${location.origin}).`;
-  $<HTMLInputElement>("rpc-url").value = rpc;
-  $<HTMLInputElement>("check-node").value = checkUrl;
+  $<HTMLInputElement>("rpc-url").value = remote && rpc === RPC_VIA_SERVER ? remote.rpc : rpc;
+  $<HTMLInputElement>("check-node").value = checkName;
   $("check-note").textContent = !checkUrl
     ? 'The second-node check is off: casts signed with gasless keys say "signer not verified".'
     : !second
       ? "The second node is the node you read from, so the gasless-key check is skipped. Choose a different node."
-      : `Gasless keys are checked with ${checkUrl}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
+      : `Gasless keys are checked with ${checkName}${checkName === checkUrl ? "" : ", through ./outpost client"}. It learns which accounts you look at (one request per account), not which casts you read. A fake cast now needs both nodes to lie.`;
   $("node-note").textContent = society
     ? `Reads and writes go to the society node ${society.node}.`
-    : publicNode
+    : remote
+      ? `Reads and writes go to ${remoteName} ${remote.url}, through ./outpost client on this computer.`
+      : publicNode
       ? `Reads go to Farcaster's public node ${DEFAULT_CHECK_NODE}; nothing is written.`
       : "Reads and writes go only to your own node.";
   $("soc-save").addEventListener("click", () =>
@@ -1078,13 +1098,13 @@ function keyTag(it: FeedItem): HTMLSpanElement | null {
   const k = it.app.keyCheck;
   if (k === "onchain" || k === "own" || it.signer.toLowerCase() === key?.publicKey.toLowerCase()) return null;
   if (k === "confirmed") {
-    return h("span", { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkUrl}) lists it as this account's key. Faking it would need both nodes to lie.` }, "signer confirmed by second node");
+    return h("span", { class: "app-tag", title: `A gasless key: no onchain record, but the second node (${checkName}) lists it as this account's key. Faking it would need both nodes to lie.` }, "signer confirmed by second node");
   }
   if (k === "revoked") {
     return h("span", { class: "app-tag", title: "This account's key on Optimism, removed since. What it signed before stays valid on the network; it cannot sign anything new." }, "key revoked since");
   }
   if (k === "unlisted") {
-    return h("span", { class: "key-tag", title: `The second node (${checkUrl}) does not list this key for this account. It was revoked since, or it is not the account's key: the node's API cannot tell which.` }, "key not listed");
+    return h("span", { class: "key-tag", title: `The second node (${checkName}) does not list this key for this account. It was revoked since, or it is not the account's key: the node's API cannot tell which.` }, "key not listed");
   }
   return h(
     "span",
@@ -1743,22 +1763,24 @@ function wireCharter() {
 // ---- start
 
 async function main() {
-  try {
-    const cfg = (await (await fetch("/outpost-config.json")).json()) as { network?: string; checkNode?: string };
-    if (cfg.network === "devnet") {
-      network = FarcasterNetwork.DEVNET;
-      // Optimism mainnet and Farcaster's public node know nothing of devnet keys. Unless chosen
-      // under "Node and checks", key checks use the devnet's own second node, or are off.
-      let changed = false;
-      if (store<string>(RPC_STORAGE) === undefined) changed = store(RPC_STORAGE, "") === "" || changed;
-      if (store<string>(CHECKNODE_STORAGE) === undefined) changed = store(CHECKNODE_STORAGE, cfg.checkNode ?? "") !== undefined || changed;
-      if (changed) return location.reload();
-      // A devnet usually has no second node this page may reach (it allows https only), so its
-      // gasless keys cannot be checked: show what they signed, marked "signer not verified".
-      if (!second) verifier.showUnverified = true;
-    }
-  } catch {
-    // Served without Outpost's server (e.g. Caddy for phones): mainnet.
+  if (serverConfig.network === "devnet") {
+    network = FarcasterNetwork.DEVNET;
+    // Optimism mainnet and Farcaster's public node know nothing of devnet keys. Unless chosen
+    // under "Node and checks", key checks use the devnet's own second node, or are off.
+    let changed = false;
+    if (store<string>(RPC_STORAGE) === undefined) changed = store(RPC_STORAGE, "") === "" || changed;
+    if (store<string>(CHECKNODE_STORAGE) === undefined) changed = store(CHECKNODE_STORAGE, serverConfig.checkNode ?? "") !== undefined || changed;
+    if (changed) return location.reload();
+    // A devnet usually has no second node this page may reach (it allows https only), so its
+    // gasless keys cannot be checked: show what they signed, marked "signer not verified".
+    if (!second) verifier.showUnverified = true;
+  }
+  if (remote) {
+    $("remote-name").textContent = remote.farcaster ? "Farcaster's public node" : `the node at ${new URL(remote.url).host}`;
+    $("remote-check").textContent = checkName
+      ? `Casts signed with gasless keys are checked against a second node, ${new URL(checkName).host}.${remote.farcaster && checkName === remote.check ? " Farcaster runs that one too, so it catches one node being wrong, not Farcaster itself." : ""}`
+      : 'The second-node check is off: casts signed with gasless keys say "signer not verified".';
+    $("remote").hidden = false;
   }
   $("build").replaceChildren(
     __OUTPOST_COMMIT__ === "unknown"

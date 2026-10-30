@@ -373,4 +373,32 @@ echo "ok: provision without a terminal asks for --yes"
 out="$(OUTPOST_HOME="$WORK/no-key" "$ROOT/outpost" uninstall 2>&1)" || fail "uninstall without a CLI key failed: $out"
 [[ "$out" == *"Revoke this key"* ]] || fail "uninstall without a CLI key does not point to the web client: $out"
 echo "ok: uninstall without a CLI key points to the web client"
+
+# client and cli reach your server through an SSH tunnel. With --public or --node they use no
+# server: no ssh, no provider call, and a node URL that is not https (or this computer) is refused.
+mkdir -p "$WORK/logssh"
+printf '#!/bin/sh\necho "ssh $*" >>"%s/ssh.log"\nexit 255\n' "$WORK" >"$WORK/logssh/ssh"
+chmod +x "$WORK/logssh/ssh"
+for c in cli client; do
+  : >"$WORK/ssh.log"
+  PATH="$WORK/logssh:$PATH" OUTPOST_HOST=203.0.113.7 "$ROOT/outpost" "$c" status >/dev/null 2>&1 && fail "$c: ran with no tunnel"
+  grep -q -- "-L 127.0.0.1:13381:127.0.0.1:3381 root@203.0.113.7" "$WORK/ssh.log" || fail "$c: no SSH tunnel to the server"
+done
+echo "ok: client and cli use the SSH tunnel to your server"
+: >"$WORK/ssh.log"
+: >"$FAKE_STATE/calls.log"
+out="$(PATH="$WORK/logssh:$PATH" "$ROOT/outpost" cli --node http://127.0.0.1:1 status 2>&1)" && fail "cli --node: a closed port answered"
+[[ "$out" == *"cannot reach node at http://127.0.0.1:1"* ]] || fail "cli --node did not use the node given: $out"
+port=$((20000 + RANDOM % 20000))
+PATH="$WORK/logssh:$PATH" OUTPOST_PORT="$port" "$ROOT/outpost" client --public >"$WORK/client.out" 2>&1 &
+client=$!
+for _ in $(seq 50); do grep -q "^client:" "$WORK/client.out" && break; sleep 0.2; done
+cfg="$(curl -fsm 5 "http://127.0.0.1:$port/outpost-config.json" || true)"
+kill "$client" 2>/dev/null; wait "$client" 2>/dev/null || true
+[[ "$cfg" == *'"url":"https://snap.farcaster.xyz:3381","farcaster":true'* ]] || fail "client --public does not tell the page it uses Farcaster's public node: $cfg"
+[ ! -s "$WORK/ssh.log" ] || fail "--public or --node called ssh: $(cat "$WORK/ssh.log")"
+[ ! -s "$FAKE_STATE/calls.log" ] || fail "--public or --node called a provider: $(cat "$FAKE_STATE/calls.log")"
+out="$("$ROOT/outpost" client --node http://example.com:3381 2>&1)" && fail "client took a plain http node URL"
+[[ "$out" == *"must be https"* ]] || fail "no clear message for a plain http node URL: $out"
+echo "ok: --public and --node use no server, and refuse plain http"
 find "$WORK" -type f -delete
