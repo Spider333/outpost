@@ -125,6 +125,27 @@ the URL, not the image, so a host can swap the image without changing the signed
 A picture cannot change a message or post anything. Only https URLs are loaded, and no referrer
 is sent. Untick "Show pictures" above the feed to stop these requests.
 
+## Using Farcaster's public node
+
+`./outpost client --public` (and `cli`, `app-account`) uses Farcaster's public node
+`https://snap.farcaster.xyz:3381` instead of your own; `--node <url>` uses any other https node.
+That node is in the host's place above: it cannot post as you or change a message, because the
+client checks every message the same way (`src/core/verify.ts`), and it can do everything listed
+under "What the host can still do". Farcaster sees what you read and post, from your IP address.
+
+- **The second node** for gasless keys is `https://crackle.farcaster.xyz:3381`, another public
+  node on a separate machine (`checkNodeFor` in `src/core/secondnode.ts`). Farcaster runs both,
+  so a fake gasless key would need only Farcaster to lie. It catches one broken or tampered node,
+  not Farcaster itself. The page says so under "What does that change?". Choose another second
+  node in "Node and checks", or `--check-node` on the command line.
+- **Onchain keys** are still checked on Optimism, as before.
+- **Your browser** still talks only to `./outpost client` on 127.0.0.1. It forwards `/v1/*` to
+  the node, `/outpost/check/v1/*` (GET only) to the second node and `/outpost/optimism` (POST
+  only) to the Optimism RPC (`src/server/serve.ts`, tests in `test/remote-node.test.ts`).
+- **No server** is involved: no SSH, no provider (`test/providers.sh` checks with fakes).
+- **Posting** goes to the public node like any other submit. It may refuse it; that was not
+  tested before release.
+
 ## What a society vote proves
 
 A passed amendment is kept in the charter log with the signed proposal and the signed likes that

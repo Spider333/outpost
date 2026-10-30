@@ -44,6 +44,7 @@ Run one step at a time and check its output before the next.
 | Step | Command | Done when it prints | If not |
 |---|---|---|---|
 | 0. Check | `doctl account get` (or `hcloud server list`), `node --version` | doctl: the account e-mail. hcloud: a server list, empty is fine. Node 20 or newer | the person logs in to the provider CLI themselves |
+| 0b. No server (instead of 1 and 2) | `./outpost client --public`; for "Approve in the Farcaster app", the person runs `./outpost app-account --public` first | `using Farcaster's public node`, then `open http://127.0.0.1:8381 in your browser` | costs nothing. Tell the person the node is Farcaster's, not theirs: it sees what they read and post, and may refuse posts. Clean up is `./outpost uninstall --public` (or the app's connected apps) only; there is nothing to destroy |
 | 1. Server | `./outpost provision --watchdog 24 --yes` | `next: ./outpost node` | `422 failed to create volume: invalid size specified`: the DigitalOcean account is limited to smaller volumes. Nothing billable was made. Offer `--provider hetzner` (not yet tested on a real server; say so), or `OUTPOST_HOST=<ip> ./outpost node` on a server they already have |
 | 2. Node | `./outpost node` | `synced: every shard is within N blocks of the tip`, then `next: ./outpost client` | see below |
 | 3. Client | `./outpost client` | `open http://127.0.0.1:8381 in your browser` | it runs until Ctrl-C, so run it in the background or let the person run it in their own terminal |

@@ -57,6 +57,19 @@ Every command is safe to run twice. `--dry-run` on `provision`, `shrink` and `de
 the exact provider commands without running them. `./outpost status` shows the server and how
 far the node has synced.
 
+Try it without a server: the client can use Farcaster's public node instead of your own, for
+reading and posting. Nothing is rented and no provider login is needed, only Node.js 20:
+
+```
+npm ci && npm run build
+./outpost app-account --public   # only for "Approve in the Farcaster app"; you type the app account's phrase or key
+./outpost client --public        # open http://127.0.0.1:8381
+```
+
+`./outpost cli --public <command>` works the same way, and `--node https://<host>:<port>` (or
+`OUTPOST_NODE_URL`) uses any other node. That node is not yours: it sees what you read and post,
+and Farcaster's public node may refuse posts. See [Limits](#limits).
+
 Only looking? The [hosted client](https://spider333.github.io/outpost/app/) reads through
 Farcaster's public node with no setup: press "Read with the public node". It cannot post there,
 and with only one node it cannot cross-check gasless keys ([TRUST.md](TRUST.md)).
@@ -316,6 +329,8 @@ Environment variables:
 - `OUTPOST_TUNNEL_PORT` (default 13381): the local end of the SSH tunnel to the node.
   Change it if something on your machine already uses that port.
 - `OUTPOST_PORT` (default 8381): where the web client is served.
+- `OUTPOST_NODE_URL=<url>`: like `--node <url>`: `client`, `cli` and `app-account` use that node
+  with no server or tunnel. It must be https, or http on this computer.
 
 To use the client from a phone, `./outpost client --phone` serves it from your server over HTTPS
 (a certificate for `<ip>.sslip.io`, no domain needed) behind a password, and opens 443/tcp.
@@ -359,6 +374,13 @@ To use the client from a phone, `./outpost client --phone` serves it from your s
 - A server made by an older Outpost (before 21 October 2026) started at full size, so its disk
   is too big for the small plan and it cannot shrink. To run small, make a new one.
 - The node costs money for as long as it exists, whether or not you use the client.
+- With `--public` (or `--node`) you use a node that is not yours. It sees what you read and
+  post, can withhold or delay messages, and may refuse posts: writing through Farcaster's public
+  node was not tested before release. It cannot post as you or change a message, since every
+  message is still checked on your computer. Gasless keys are checked against a second public
+  node, `crackle.farcaster.xyz`, which Farcaster also runs: it catches one node being wrong, not
+  Farcaster itself. Optimism checks are unchanged. The page reaches these only through
+  `./outpost client` on 127.0.0.1.
 
 ## Shard 0 did not load
 

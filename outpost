@@ -9,7 +9,7 @@
 # quarter of its price), ./outpost cli <args>, ./outpost uninstall, ./outpost destroy,
 # ./outpost watchdog start|stop|status (deletes a trial server for you),
 # ./outpost app-account [--society] [status|remove] (signs "Approve in the Farcaster app")
-# No server: ./outpost client --public (and cli, app-account) use Farcaster's public node instead
+# No server: ./outpost client --public (and cli, app-account, uninstall) use Farcaster's public node instead
 # of your own; --node <url> (or OUTPOST_NODE_URL=<url>) uses any other node.
 # Society node, used by members from their own browsers: ./outpost society on|off|status,
 # ./outpost members add <name>, ./outpost members remove <name>, ./outpost members list,
@@ -1271,14 +1271,14 @@ cmd_watchdog() {
 }
 
 usage() {
-  sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
   local cmd="${1:-}"
   [ $# -gt 0 ] && shift
   case "$cmd" in
-    client|cli|app-account)
+    client|cli|app-account|uninstall)
       while [ $# -gt 0 ]; do
         case "$1" in
           --public) NODE_URL="$PUBLIC_NODE"; shift ;;
