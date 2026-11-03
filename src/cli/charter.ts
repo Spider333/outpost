@@ -139,8 +139,10 @@ async function changesFrom(hub: Hub, o: CharterOptions): Promise<Change[]> {
 export function verificationNote(hub: Hub): string {
   const v = hub.verifier;
   if (!v?.checked) return "";
-  if (!v.failed && !v.unverified) return v.summary();
-  return `warning: ${v.summary()}${v.unverified && !v.showUnverified ? " Run again with --show-unverified to see them, marked." : ""}`;
+  // Through the tunnel the node is on 127.0.0.1; anything else (--public, a society node) is not yours.
+  const node = /^http:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(hub.url) ? "Your node" : `The node ${hub.url}`;
+  if (!v.failed && !v.unverified) return v.summary(node);
+  return `warning: ${v.summary(node)}${v.unverified && !v.showUnverified ? " Run again with --show-unverified to see them, marked." : ""}`;
 }
 
 export function printCensus(c: Census, names: Map<number, string>) {

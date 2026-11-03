@@ -137,6 +137,35 @@ rm -f "$C/outpost-phone"
 "$ROOT/outpost" destroy --yes >/dev/null
 echo "ok: phone access and society mode keep out of each other's way"
 
+# "Approve in the Farcaster app" on the society node: infra/society.sh with the fake docker. The
+# app account's key arrives on stdin, is stored mode 600, and is deleted again by app-signin-off.
+SOC="$WORK/soc"
+soc() { OUTPOST_SOCIETY_DIR="$SOC" OUTPOST_SOCIETY_HOST=203-0-113-7.sslip.io FAKE_DOCKER_LOGS='app-signin: app account FID 777; 127.0.0.1:3392' \
+  PATH="$ROOT/test/fake-providers/server:$PATH" bash "$ROOT/infra/society.sh" "$@"; }
+rm -f "$C"/*
+soc on <"$ROOT/src/server/gate.ts" >/dev/null
+! soc app-signin-on <"$ROOT/src/server/appsignin.ts" >/dev/null 2>&1 || fail "app-signin-on started without an app account"
+account='{"fid": 777, "custodyKey": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", "address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"}'
+printf '%s\n' "$account" | soc app-signin-account >/dev/null || fail "app-signin-account refused a good account"
+[ -n "$(find "$SOC/appsignin/account.json" -perm 600)" ] || fail "app account file is not mode 600"
+! printf 'not json\n' | soc app-signin-account >/dev/null 2>&1 || fail "app-signin-account took garbage"
+grep -q '"fid": 777' "$SOC/appsignin/account.json" || fail "garbage replaced the stored app account"
+for run in 1 2; do
+  out="$(soc app-signin-on <"$ROOT/src/server/appsignin.ts")" || fail "app-signin-on failed (run $run)"
+  [[ "$out" == *"requests come from FID 777"* ]] || fail "app-signin-on: $out"
+done
+grep -q -- "--network host --read-only --cap-drop ALL --security-opt no-new-privileges" "$C/outpost-appsignin" || fail "sign-in container not locked down"
+grep -q -- "-v $SOC/appsignin/account.json:/appsignin/account.json:ro" "$C/outpost-appsignin" || fail "app account not mounted read-only"
+want="$(printf '{\n\tlog {\n\t\texclude http.log http.handlers http.stdlib tls.handshake\n\t}\n}\n203-0-113-7.sslip.io {\n\thandle /app-signin* {\n\t\treverse_proxy 127.0.0.1:3392\n\t}\n\thandle {\n\t\treverse_proxy 127.0.0.1:3390\n\t}\n\theader -Server\n}')"
+[ "$(cat "$SOC/caddy/Caddyfile")" = "$want" ] || fail "Caddyfile with sign-in is not as expected:
+$(cat "$SOC/caddy/Caddyfile")"
+for run in 1 2; do soc app-signin-off >/dev/null || fail "app-signin-off failed (run $run)"; done
+[ ! -e "$C/outpost-appsignin" ] || fail "app-signin-off left the container running"
+[ ! -e "$SOC/appsignin/account.json" ] || fail "app-signin-off kept the app account's key on the server"
+grep -q "reverse_proxy 127.0.0.1:3392" "$SOC/caddy/Caddyfile" && fail "app-signin-off left the route in the Caddyfile"
+soc off >/dev/null
+echo "ok: society app-signin account (mode 600), on x2, off x2 (key deleted)"
+
 # DigitalOcean answering 503 for volume get and delete: destroy must fail and keep the state,
 # not call the volume gone.
 find "$FAKE_STATE" -type f -delete
@@ -344,4 +373,32 @@ echo "ok: provision without a terminal asks for --yes"
 out="$(OUTPOST_HOME="$WORK/no-key" "$ROOT/outpost" uninstall 2>&1)" || fail "uninstall without a CLI key failed: $out"
 [[ "$out" == *"Revoke this key"* ]] || fail "uninstall without a CLI key does not point to the web client: $out"
 echo "ok: uninstall without a CLI key points to the web client"
+
+# client and cli reach your server through an SSH tunnel. With --public or --node they use no
+# server: no ssh, no provider call, and a node URL that is not https (or this computer) is refused.
+mkdir -p "$WORK/logssh"
+printf '#!/bin/sh\necho "ssh $*" >>"%s/ssh.log"\nexit 255\n' "$WORK" >"$WORK/logssh/ssh"
+chmod +x "$WORK/logssh/ssh"
+for c in cli client; do
+  : >"$WORK/ssh.log"
+  PATH="$WORK/logssh:$PATH" OUTPOST_HOST=203.0.113.7 "$ROOT/outpost" "$c" status >/dev/null 2>&1 && fail "$c: ran with no tunnel"
+  grep -q -- "-L 127.0.0.1:13381:127.0.0.1:3381 root@203.0.113.7" "$WORK/ssh.log" || fail "$c: no SSH tunnel to the server"
+done
+echo "ok: client and cli use the SSH tunnel to your server"
+: >"$WORK/ssh.log"
+: >"$FAKE_STATE/calls.log"
+out="$(PATH="$WORK/logssh:$PATH" "$ROOT/outpost" cli --node http://127.0.0.1:1 status 2>&1)" && fail "cli --node: a closed port answered"
+[[ "$out" == *"cannot reach node at http://127.0.0.1:1"* ]] || fail "cli --node did not use the node given: $out"
+port=$((20000 + RANDOM % 20000))
+PATH="$WORK/logssh:$PATH" OUTPOST_PORT="$port" "$ROOT/outpost" client --public >"$WORK/client.out" 2>&1 &
+client=$!
+for _ in $(seq 50); do grep -q "^client:" "$WORK/client.out" && break; sleep 0.2; done
+cfg="$(curl -fsm 5 "http://127.0.0.1:$port/outpost-config.json" || true)"
+kill "$client" 2>/dev/null; wait "$client" 2>/dev/null || true
+[[ "$cfg" == *'"url":"https://snap.farcaster.xyz:3381","farcaster":true'* ]] || fail "client --public does not tell the page it uses Farcaster's public node: $cfg"
+[ ! -s "$WORK/ssh.log" ] || fail "--public or --node called ssh: $(cat "$WORK/ssh.log")"
+[ ! -s "$FAKE_STATE/calls.log" ] || fail "--public or --node called a provider: $(cat "$FAKE_STATE/calls.log")"
+out="$("$ROOT/outpost" client --node http://example.com:3381 2>&1)" && fail "client took a plain http node URL"
+[[ "$out" == *"must be https"* ]] || fail "no clear message for a plain http node URL: $out"
+echo "ok: --public and --node use no server, and refuse plain http"
 find "$WORK" -type f -delete

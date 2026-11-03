@@ -10,5 +10,7 @@ case "$1" in
     [ -z "$n" ] || { echo "$*"; env | grep '^OUTPOST_GATE_' || true; } > "$C/$n" ;;
   rm) shift; [ "$1" != -f ] || shift; for n in "$@"; do rm -f "$C/$n"; done ;;
   kill|exec) n="${!#}"; [ "$1" = exec ] && n="$2"; [ -e "$C/$n" ] ;;
+  # What a test says the container printed.
+  logs) n="${!#}"; [ -e "$C/$n" ] && printf '%s\n' "${FAKE_DOCKER_LOGS:-}" ;;
   *) echo "fake docker: unhandled $*" >&2; exit 3 ;;
 esac

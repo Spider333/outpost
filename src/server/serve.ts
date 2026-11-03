@@ -8,6 +8,10 @@ import { request as httpsRequest } from "node:https";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadAppAccount } from "../cli/store.js";
+import { sameOrigin, signInHandler } from "./appsignin-service.js";
+import { DEFAULT_OPTIMISM_RPC } from "../core/chain.js";
+import { checkNodeFor, DEFAULT_CHECK_NODE } from "../core/secondnode.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(process.env.OUTPOST_WEB_ROOT ?? join(here, "web"));
@@ -15,6 +19,15 @@ const node = new URL(process.env.OUTPOST_NODE_URL ?? "http://127.0.0.1:3381");
 const nodeAuth = process.env.OUTPOST_NODE_USER ? "Basic " + Buffer.from(`${process.env.OUTPOST_NODE_USER}:${process.env.OUTPOST_NODE_PASSWORD ?? ""}`).toString("base64") : undefined;
 const host = process.env.OUTPOST_BIND ?? "127.0.0.1";
 const port = Number(process.env.OUTPOST_PORT ?? 8381);
+// A node that is not your own (./outpost client --public or --node <url>): Farcaster's public
+// node or someone else's. The page says so, and its key checks go through this server too, so
+// the browser still talks only to 127.0.0.1.
+const remote = process.env.OUTPOST_NODE_REMOTE === "1";
+const optional = (v: string | undefined, fallback: string) => (v === "off" || v === "" ? undefined : new URL(v ?? fallback));
+const checkNode = remote ? optional(process.env.OUTPOST_CHECK_NODE, checkNodeFor(node.href)) : undefined;
+const rpc = remote ? optional(process.env.OUTPOST_OPTIMISM_RPC, DEFAULT_OPTIMISM_RPC) : undefined;
+const CHECK = "/outpost/check";
+const RPC = "/outpost/optimism";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -34,12 +47,13 @@ const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'self'; img-src * data:; style-src 'self'; script-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'none'",
 };
 
-function proxy(req: IncomingMessage, res: ServerResponse) {
-  const target = new URL(req.url ?? "/", node);
+// Forwards the request to base + path; path keeps its query string.
+function proxy(req: IncomingMessage, res: ServerResponse, base = node, path = req.url ?? "/", auth = nodeAuth) {
+  const target = new URL(base.href.replace(/\/+$/, "") + path);
   const headers: Record<string, string> = {};
   if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
   if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
-  if (nodeAuth) headers["authorization"] = nodeAuth;
+  if (auth) headers["authorization"] = auth;
   const send = target.protocol === "https:" ? httpsRequest : httpRequest;
   const up = send(target, { method: req.method, headers, timeout: 30_000 }, (r) => {
     res.writeHead(r.statusCode ?? 502, { "content-type": r.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
@@ -48,7 +62,7 @@ function proxy(req: IncomingMessage, res: ServerResponse) {
   up.on("timeout", () => up.destroy(new Error("node did not answer in 30 s")));
   up.on("error", (e) => {
     if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "cannot reach node", error_detail: `${node.origin}: ${e.message}` }));
+    res.end(JSON.stringify({ error: "cannot reach node", error_detail: `${base.origin}: ${e.message}` }));
   });
   req.pipe(up);
 }
@@ -79,10 +93,74 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
 // Which network this client talks to. Mainnet unless testing against a local devnet.
 const network = process.env.OUTPOST_NETWORK === "devnet" ? "devnet" : "mainnet";
 
+// "Approve in the Farcaster app": the app account (`./outpost app-account`) signs key requests
+// here, and this server, not the page, talks to Farcaster's endpoint. OUTPOST_SIGNIN_API points
+// it at a stand-in for tests.
+const SIGNIN = "/outpost/app-signin";
+const signIn = signInHandler({
+  account: () => {
+    try {
+      return loadAppAccount();
+    } catch {
+      return undefined; // unreadable: as if none was set up
+    }
+  },
+  api: process.env.OUTPOST_SIGNIN_API || undefined,
+  refuse: sameOrigin,
+});
+
+// Forwards one JSON-RPC call (or a batch) that only reads, such as eth_call; anything that sends
+// a transaction is refused.
+const READ_METHODS = new Set(["eth_call", "eth_chainId", "eth_blockNumber", "eth_getBlockByNumber", "eth_getCode", "eth_getBalance", "eth_getTransactionCount", "eth_getTransactionReceipt", "net_version"]);
+async function readOnlyRpc(req: IncomingMessage, res: ServerResponse, base: URL) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req as AsyncIterable<Buffer>) {
+    size += c.length;
+    if (size > 65536) {
+      res.writeHead(413, { "content-type": "application/json" }).end(JSON.stringify({ error: "request too large" }));
+      return;
+    }
+    chunks.push(c);
+  }
+  const body = Buffer.concat(chunks).toString("utf8");
+  let calls: unknown;
+  try {
+    calls = JSON.parse(body);
+  } catch {
+    calls = undefined;
+  }
+  const list = Array.isArray(calls) ? calls : [calls];
+  if (!list.length || !list.every((c) => typeof c === "object" && c !== null && READ_METHODS.has((c as { method?: unknown }).method as string))) {
+    res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "only read calls are forwarded to Optimism" }));
+    return;
+  }
+  const up = (base.protocol === "https:" ? httpsRequest : httpRequest)(base, { method: "POST", headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }, timeout: 30_000 }, (r) => {
+    res.writeHead(r.statusCode ?? 502, { "content-type": r.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
+    r.pipe(res);
+  });
+  up.on("timeout", () => up.destroy(new Error("Optimism RPC did not answer in 30 s")));
+  up.on("error", (e) => {
+    if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "cannot reach Optimism RPC", error_detail: `${base.origin}: ${e.message}` }));
+  });
+  up.end(body);
+}
+
+function config() {
+  if (remote) return { network, node: { url: node.href.replace(/\/+$/, ""), farcaster: node.origin === new URL(DEFAULT_CHECK_NODE).origin, check: checkNode?.origin ?? "", rpc: rpc?.href ?? "" } };
+  return network === "devnet" ? { network, checkNode: process.env.OUTPOST_CHECK_NODE ?? "" } : { network };
+}
+
 const server = createServer((req, res) => {
-  if (req.url === "/outpost-config.json") {
-    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ network }));
+  const path = (req.url ?? "/").split("?")[0]!;
+  if (path === SIGNIN || path.startsWith(`${SIGNIN}/`)) signIn(req, res, path.slice(SIGNIN.length));
+  else if (req.url === "/outpost-config.json") {
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(config()));
   } else if (req.url?.startsWith("/v1/")) proxy(req, res);
+  // The second node is only read, and so is Optimism.
+  else if (checkNode && req.method === "GET" && req.url?.startsWith(`${CHECK}/v1/`)) proxy(req, res, checkNode, req.url.slice(CHECK.length), undefined);
+  else if (rpc && req.method === "POST" && path === RPC) void readOnlyRpc(req, res, rpc);
   else if (req.method === "GET" || req.method === "HEAD") void serveStatic(req, res);
   else res.writeHead(405).end();
 });
@@ -90,5 +168,16 @@ const server = createServer((req, res) => {
 server.listen(port, host, () => {
   console.log(`client: http://${host === "0.0.0.0" ? "localhost" : host}:${port}`);
   console.log(`node:   ${node.origin} (requests to /v1/* are forwarded there)`);
+  if (remote) {
+    console.log(`        this is not your own node: it sees what you read and post, and can withhold or delay messages`);
+    console.log(`second node for gasless keys: ${checkNode?.origin ?? "off"}; Optimism RPC: ${rpc?.origin ?? "off"} (both through this server)`);
+  }
   if (network !== "mainnet") console.log(`network: ${network} (testing only)`);
+  let app;
+  try {
+    app = loadAppAccount();
+  } catch {
+    console.log("app account: the file from ./outpost app-account cannot be read, so the page cannot offer that sign-in");
+  }
+  if (app) console.log(`app account: FID ${app.fid} signs "Approve in the Farcaster app" requests (via ${process.env.OUTPOST_SIGNIN_API || "https://api.farcaster.xyz"})`);
 });

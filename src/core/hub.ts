@@ -250,11 +250,12 @@ export class Hub {
     return evs.at(-1)?.idRegisterEventBody?.to;
   }
 
-  // fname (e.g. "dwr") -> FID. ENS names need an Ethereum RPC on the node, so we only
-  // look up plain fnames here.
+  // Username (an fname such as "dwr", or an ENS name such as "vitalik.eth") -> FID, from the
+  // username proof the node stores. The node's answer is not proof: check it against the
+  // account's signed profile before relying on it.
   async fidByUsername(name: string): Promise<number | undefined> {
     const n = name.trim().replace(/^@/, "").toLowerCase();
-    if (!/^[a-z0-9][a-z0-9-]{0,15}$/.test(n)) return undefined;
+    if (!/^[a-z0-9][a-z0-9-]{0,15}$/.test(n) && !/^[a-z0-9-]+(\.[a-z0-9-]+)*\.eth$/.test(n)) return undefined;
     return this.optional(async () => (await this.request<{ fid: number }>("GET", "/v1/userNameProofByName", { name: n })).fid);
   }
 
@@ -328,6 +329,37 @@ export class Hub {
         const r = m.data.reactionBody;
         return r?.type === "REACTION_TYPE_LIKE" && r.targetCastId?.fid === target.fid && r.targetCastId.hash.toLowerCase() === target.hash.toLowerCase();
       },
+    );
+  }
+
+  recastsByCast(target: { fid: number; hash: HexString }, opts: { pageSize?: number; pageToken?: string } = {}) {
+    return this.paged(
+      "/v1/reactionsByCast",
+      { target_fid: target.fid, target_hash: target.hash, reaction_type: "Recast", pageSize: opts.pageSize, pageToken: opts.pageToken },
+      (m) => {
+        const r = m.data.reactionBody;
+        return r?.type === "REACTION_TYPE_RECAST" && r.targetCastId?.fid === target.fid && r.targetCastId.hash.toLowerCase() === target.hash.toLowerCase();
+      },
+    );
+  }
+
+  // Casts that mention this FID. Read from every shard; each shard's page comes in its own order,
+  // and pageSize is per shard, so callers sort by timestamp.
+  castsByMention(fid: number, opts: { pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
+    return this.paged(
+      "/v1/castsByMention",
+      { fid, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse },
+      (m) => !!m.data.castAddBody?.mentions?.includes(fid),
+    );
+  }
+
+  // Links to this FID (followers, for "follow"). Every shard, unsorted, like castsByMention.
+  linksByTarget(targetFid: number, opts: { linkType?: string; pageSize?: number; pageToken?: string; reverse?: boolean } = {}) {
+    const linkType = opts.linkType ?? "follow";
+    return this.paged(
+      "/v1/linksByTargetFid",
+      { target_fid: targetFid, link_type: linkType, pageSize: opts.pageSize, pageToken: opts.pageToken, reverse: opts.reverse },
+      (m) => m.data.linkBody?.targetFid === targetFid && m.data.linkBody.type === linkType,
     );
   }
 

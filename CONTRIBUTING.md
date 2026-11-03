@@ -39,6 +39,10 @@ These need Docker or a synced node, so CI does not run them.
 
 - `scripts/e2e-devnet.ts`: the whole client flow against a local Snapchain devnet. The commands to
   start and stop the devnet are at the top of the file.
+- `scripts/e2e-phase1.ts`: mentions, notifications and `login --app` against the same devnet,
+  with a stand-in for Farcaster's signed key request endpoint.
+- `test/phase1-demo.ts`: the web client on a fake node, to try mentions, notifications and
+  "Approve in the Farcaster app" by hand (`npm run build` first).
 - `./outpost cli selftest`: signs every message type with throwaway keys and asks your node to
   validate them. It submits nothing.
 - `scripts/live-checks.sh`: reads from a synced mainnet node and saves the output to

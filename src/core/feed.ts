@@ -165,6 +165,11 @@ export class FeedBuilder {
     return this.hydrate(casts, limit, filter, concurrency);
   }
 
+  // Casts read elsewhere (a thread, notifications) as feed items: key checks, authors, mentions.
+  items(casts: HubMessage[], limit = casts.length, concurrency = 24): Promise<FeedItem[]> {
+    return this.hydrate(casts, Math.max(1, limit), undefined, concurrency);
+  }
+
   // Walks the sorted casts, resolving apps, until `limit` casts pass the filter.
   private async hydrate(casts: HubMessage[], limit: number, filter: AppFilter | undefined, concurrency: number): Promise<FeedItem[]> {
     const out: FeedItem[] = [];

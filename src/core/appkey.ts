@@ -42,6 +42,9 @@ export interface AppKey {
   scopes: MessageType[];
   ttl: number;
   network: FarcasterNetwork;
+  // Approved in the Farcaster app (appsignin.ts): an onchain key with full access and no expiry,
+  // which only the account's owner can remove. Outpost cannot revoke it.
+  onchain?: boolean;
 }
 
 export function generatePrivateKey(): Uint8Array {

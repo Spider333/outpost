@@ -4,7 +4,9 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { FarcasterNetwork, MessageData, ViemLocalEip712Signer, type Message } from "@farcaster/core";
-import { privateKeyToAccount } from "viem/accounts";
+import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import { bytesToHex } from "viem";
+import { renderUnicodeCompact } from "uqr";
 import {
   addAppKey,
   buildCast,
@@ -32,10 +34,26 @@ import {
   checkNodeUrl,
   checkToken,
   DEFAULT_CHECK_NODE,
+  checkNodeFor,
+  OTHER_PUBLIC_NODE,
   DEFAULT_OPTIMISM_RPC,
   Optimism,
   secondNode,
   Verifier,
+  resolveMentions,
+  createKeyRequest,
+  CUSTODY_PATH,
+  FARCASTER_API,
+  generatePrivateKey,
+  keyRequestState,
+  publicKeyOf,
+  signKeyRequest,
+  requestFidOf,
+  waitFor,
+  notificationsFor,
+  notificationText,
+  seenUpTo,
+  unreadCount,
   type AppFilter,
   type FeedItem,
   type AppKey,
@@ -44,7 +62,7 @@ import {
 } from "../core/index.js";
 import { askHidden, confirm, printable } from "./prompt.js";
 import { cmdCharter, verificationNote } from "./charter.js";
-import { deleteKey, keyPath, loadKey, saveKey } from "./store.js";
+import { appAccountPath, deleteAppAccount, deleteKey, keyPath, loadAppAccount, loadKey, markNotificationsSeen, notificationsSeen, saveAppAccount, saveKey } from "./store.js";
 
 const WARNING = `
   STOP. Read this before you paste a recovery phrase.
@@ -70,8 +88,19 @@ const USAGE = `usage: ./outpost cli <command> [options]
 
   status                         node sync state
   login                          import a TEST account's phrase, add a gasless app key
+  login --app [--yes]            approve in the Farcaster app instead: prints a QR code and a
+                                 link, waits, saves the key. No phrase. Needs an app account
+                                 on this computer (app-account). The key has full access and
+                                 no expiry; remove it in the Farcaster app
+  app-account [--sponsor]        set up the app account that signs "Approve in the Farcaster
+                                 app" requests for this computer (./outpost client and login
+                                 --app). Asks for its phrase or custody key, hidden. Use an
+                                 account made for this, never a main account
+  app-account status | remove
   whoami                         show the saved app key and its expiry
-  cast <text> [--reply fid:0xhash] [--channel url] [--embed url]
+  cast <text> [--reply fid:0xhash] [--channel url] [--embed url] [--no-mentions]
+                                 each @username becomes a mention (looked up on your node);
+                                 an unknown one stops the cast. --no-mentions posts @ as text
   delete <0xhash>                remove one of your casts
   follow <fid> | unfollow <fid>
   like <fid> <0xhash> | unlike <fid> <0xhash>
@@ -79,6 +108,9 @@ const USAGE = `usage: ./outpost cli <command> [options]
   feed [--fid n] [--channel url] [--include apps] [--exclude apps] [--limit n]
                                  following feed (or a channel) from your node. apps is a
                                  comma list of app FIDs, "self" or "unknown"
+  notifications [--fid n] [--limit n] [--mark-read]
+                                 replies, mentions, likes, recasts and new followers, newest
+                                 first; "*" marks what is new since you last used --mark-read
   charter new <file>             start a charter file
   charter sign <in> <out>        sign it with the society's key ($CHARTER_PRIVATE_KEY or phrase)
   charter verify <file|url>      check the signature and the issuer's custody on your node;
@@ -104,7 +136,8 @@ options:
   --rpc <url>         Optimism RPC for key and custody checks (default $OUTPOST_OPTIMISM_RPC or
                       ${DEFAULT_OPTIMISM_RPC}; "off" skips them)
   --check-node <url>  second node asked about gasless app keys, which have no onchain record
-                      (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}; "off" skips it)
+                      (default $OUTPOST_CHECK_NODE or ${DEFAULT_CHECK_NODE}, or ${OTHER_PUBLIC_NODE}
+                      when reading ${DEFAULT_CHECK_NODE}; "off" skips it)
   --show-unverified   also show casts whose signing key could not be checked (marked); by
                       default they are hidden
   --ttl-days <n>      app key expiry after last use, 1-90 (default 30)
@@ -123,7 +156,7 @@ function hubFromEnv(v: { node?: string; "token-file"?: string; rpc?: string; "ch
   const auth = tokenFile
     ? { url: checkNodeUrl(url), token: checkToken(readFileSync(tokenFile, "utf8")) }
     : { url, username: process.env.OUTPOST_NODE_USER, password: process.env.OUTPOST_NODE_PASSWORD };
-  const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? DEFAULT_CHECK_NODE;
+  const check = v["check-node"] ?? process.env.OUTPOST_CHECK_NODE ?? checkNodeFor(auth.url);
   const second = check === "off" ? undefined : secondNode(checkNodeUrl(check), auth.url);
   if (check !== "off" && !second) console.error("note: the second node is the node being read, so gasless keys are not checked");
   const verifier = new Verifier(chain, second);
@@ -213,10 +246,121 @@ async function cmdLogin(hub: Hub, ttlDays: number, network: FarcasterNetwork, ch
   console.log("Your recovery phrase was not saved anywhere. Revoke this key any time with: ./outpost cli uninstall");
 }
 
+// `where` is this computer's file, or the society node's server.
+const APP_WARNING = (where: string, society: boolean) => `
+  The app account signs every "Approve in the Farcaster app" request made ${society ? "through your society node" : "from this\n  computer"}, and people see its name as the app their posts came from.
+
+  - Use an account made for this. Never your main account.
+  - Its custody key is saved ${where} (mode 600).
+    Anyone who can read ${society ? "that server's" : "your"} files can take that account.
+  - The key is used there only to sign key requests. It is never sent to a browser,
+    to the node, or to Farcaster.
+`;
+
+async function cmdAppAccount(hub: Hub, args: string[], v: { sponsor?: boolean; out?: string }, chain?: Optimism) {
+  const sub = args[0] ?? "setup";
+  // --out: for a society node, `./outpost app-account --society` copies this file to the server
+  // and deletes it here.
+  const existing = v.out ? undefined : loadAppAccount();
+  if (sub === "status") {
+    if (!existing) return console.log(`no app account on this computer. Set one up with: ./outpost app-account`);
+    console.log(`app account: FID ${existing.fid}, custody ${existing.address}${existing.sponsor ? ", sponsors the onchain fee" : ""}`);
+    console.log(`stored in ${appAccountPath()} (mode 600)`);
+    return;
+  }
+  if (sub === "remove") {
+    console.log(deleteAppAccount() ? `deleted ${appAccountPath()}. Restart ./outpost client to stop offering "Approve in the Farcaster app".` : "no app account on this computer; nothing to remove.");
+    console.log("Keys people already approved stay on their accounts; they remove them in the Farcaster app.");
+    return;
+  }
+  if (sub !== "setup") throw new Error("usage: ./outpost app-account [--sponsor] | status | remove");
+  if (existing) {
+    console.log(`An app account (FID ${existing.fid}) is already set up in ${appAccountPath()}.`);
+    console.log("Run `./outpost app-account remove` first to use another one.");
+    return;
+  }
+  console.log(v.out ? APP_WARNING("on the society node's server", true) : APP_WARNING(`on this computer, in ${appAccountPath()}`, false));
+  if (!(await confirm("Is this an account made for this, and do you accept the above?"))) return;
+  let secret = (await askHidden("App account's recovery phrase, or its custody private key (0x...), input hidden: ")).trim();
+  let custodyKey: HexString;
+  if (/^0x[0-9a-fA-F]{64}$/.test(secret)) custodyKey = secret.toLowerCase() as HexString;
+  else {
+    const words = secret.toLowerCase().split(/\s+/);
+    if (![12, 15, 18, 21, 24].includes(words.length)) throw new Error("that is neither a 12 or 24 word phrase nor a 0x custody key");
+    const hd = mnemonicToAccount(words.join(" "), { path: CUSTODY_PATH }).getHdKey().privateKey;
+    if (!hd) throw new Error("could not derive the custody key from that phrase");
+    custodyKey = bytesToHex(hd);
+  }
+  secret = ""; // JS strings cannot be wiped; we drop the reference and keep no copy.
+  const address = privateKeyToAccount(custodyKey).address;
+  const account = await resolveAccount(hub, address, chain);
+  console.log(`\ncustody address  ${account.custody}`);
+  console.log(printable(`FID              ${account.fid}`));
+  if (!(await confirm(`Use FID ${account.fid} as this computer's app account?`))) return;
+  const path = saveAppAccount({ fid: account.fid, custodyKey, address, ...(v.sponsor ? { sponsor: true } : {}) }, v.out);
+  if (v.out) return;
+  console.log(`\nsaved to ${path} (mode 600).`);
+  console.log(`./outpost client now offers "Approve in the Farcaster app" (restart it if it is running).`);
+  if (v.sponsor) console.log("Requests also carry a sponsorship: Farcaster pays the onchain fee only for apps it has approved for that.");
+}
+
+// `./outpost cli login --app`: the same flow as the web client's "Approve in the Farcaster app",
+// from the terminal. The key is made here; only its public half goes out.
+async function cmdLoginApp(hub: Hub, network: FarcasterNetwork, yes: boolean) {
+  const existing = loadKey();
+  if (existing) {
+    console.log(`An app key for FID ${existing.fid} is already saved at ${keyPath()}.`);
+    console.log("Run `./outpost cli uninstall` first if you want a new one.");
+    return;
+  }
+  const app = loadAppAccount();
+  if (!app) throw new Error("no app account on this computer, so nothing can sign the request. Its owner sets one up once with: ./outpost app-account (an account made for this, never a main account)");
+  if (!syncState(await hub.info()).synced) throw new Error("your node is still syncing. Run `./outpost cli status` and try again when it says synced: yes.");
+  console.log(`
+  This adds a key with full access and no expiry to your account.
+
+  The Farcaster app adds it onchain. It can do everything your account can do apart
+  from moving it: post, delete, like, follow and change your profile. It never expires,
+  and Outpost cannot revoke it. To remove it, use the Farcaster app: Settings, then
+  Advanced, then Manage connected apps.
+
+  The request comes from the app account FID ${app.fid}. ${app.sponsor ? "It offers to pay the onchain fee." : "The Farcaster app shows any onchain fee before you approve; you pay it there."}
+`);
+  if (!yes && !(await confirm("Continue?"))) return;
+  const api = process.env.OUTPOST_SIGNIN_API || FARCASTER_API;
+  const priv = generatePrivateKey();
+  const pub = bytesToHex(await publicKeyOf(priv));
+  const body = await signKeyRequest(app, pub);
+  const req = await createKeyRequest(body, api);
+  console.log(renderUnicodeCompact(req.deeplinkUrl, { ecc: "M", border: 2 }));
+  console.log(`scan this with your phone's camera, or open this link on it:\n  ${req.deeplinkUrl}\n`);
+  console.log("waiting for you to approve in the Farcaster app (Ctrl-C stops; nothing is saved until then)…");
+  let userFid: number | undefined;
+  let last = "";
+  while (!userFid) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (Date.now() / 1000 > body.deadline) throw new Error("the request expired before it was approved. Nothing was added or saved. Run it again.");
+    const st = await keyRequestState(req.token, api).catch(() => undefined);
+    if (st && st.state !== last) {
+      last = st.state;
+      if (st.state === "approved") console.log("approved; waiting for the onchain transaction…");
+    }
+    if (st?.state === "completed" && st.userFid) userFid = st.userFid;
+  }
+  console.log(`added onchain for FID ${userFid}; waiting for your node to list the key…`);
+  const s = await waitFor(() => hub.signer(userFid!, pub), { timeoutMs: 5 * 60_000, intervalMs: 3000 });
+  if (!s) throw new Error(`Farcaster reports the key as added, but your node does not list it after 5 minutes. Nothing was saved. Remove the key in the Farcaster app and try again later.`);
+  if (s.source !== "SIGNER_SOURCE_ONCHAIN" || requestFidOf(s) !== app.fid) throw new Error("your node lists the key, but not as the onchain key this request asked for. Nothing was saved.");
+  const path = saveKey({ fid: userFid, privateKey: bytesToHex(priv), publicKey: pub, requestFid: app.fid, scopes: [], ttl: 0, network, onchain: true });
+  console.log(`\nkey ${pub} is live for FID ${userFid}. Saved to ${path} (mode 600).`);
+  console.log("No recovery phrase was used. Remove the key any time in the Farcaster app: Settings, then Advanced, then Manage connected apps.");
+}
+
 async function cmdWhoami(hub: Hub) {
   const key = requireKey();
   const s = await hub.signer(key.fid, key.publicKey);
   console.log(`FID ${key.fid}, app key ${key.publicKey}`);
+  if (key.onchain) console.log("kind: onchain key approved in the Farcaster app (full access, no expiry; remove it in the Farcaster app)");
   if (!s) {
     console.log("status: NOT active on your node (revoked, expired, or not merged yet)");
     return;
@@ -263,11 +407,44 @@ async function cmdFeed(hub: Hub, v: { fid?: string; channel?: string; include?: 
   console.log(verificationNote(hub));
 }
 
+async function cmdNotifications(hub: Hub, v: { fid?: string; limit?: string; "mark-read"?: boolean }) {
+  const fid = v.fid ? parseFid(v.fid) : requireKey().fid;
+  const limit = v.limit ? Number(v.limit) : 30;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("--limit must be 1 to 500");
+  const t0 = Date.now();
+  const r = await notificationsFor(new FeedBuilder(hub), fid);
+  const seen = notificationsSeen(fid);
+  for (const n of r.items.slice(0, limit)) {
+    const about = n.kind === "reply" || n.kind === "mention" ? n.cast : n.target;
+    console.log(printable(`${n.time > (seen ?? 0) ? "*" : " "} ${new Date(n.time).toISOString().slice(0, 16).replace("T", " ")}  ${notificationText(n)}`));
+    if (about) {
+      console.log(`    ${printable(about.text.replace(/\s+/g, " ")).slice(0, 160)}`);
+      console.log(`    ${about.fid}:${about.hash}`);
+    }
+  }
+  const unread = unreadCount(r.items, seen);
+  console.log(`\n${r.items.length} notification${r.items.length === 1 ? "" : "s"} for FID ${fid}, ${unread} new, in ${((Date.now() - t0) / 1000).toFixed(2)} s from ${hub.url}`);
+  if (r.failed.length) console.log(printable(`the node did not answer for: ${r.failed.join(", ")}. Run it again to retry.`));
+  if (v["mark-read"]) {
+    markNotificationsSeen(fid, seenUpTo(r.items));
+    console.log("marked all read");
+  } else if (unread) console.log("mark them read with: ./outpost cli notifications --mark-read");
+  console.log(verificationNote(hub));
+}
+
 async function cmdUninstall(hub: Hub) {
   const key = loadKey();
   if (!key) {
     console.log(`no app key from ./outpost cli login at ${keyPath()}, so nothing to revoke here.`);
     console.log("A key added in the web client lives in that browser: open the client, then 'Your app key' > 'Revoke this key (uninstall)'.");
+    return;
+  }
+  if (key.onchain) {
+    // Only the account's owner can remove an onchain key; this only forgets it here.
+    console.log("this key was approved in the Farcaster app. It is onchain, and Outpost cannot revoke it.");
+    console.log("Remove it in the Farcaster app: Settings, then Advanced, then Manage connected apps.");
+    deleteKey();
+    console.log(`deleted ${keyPath()}`);
     return;
   }
   // The key file is the only way to revoke the key without the recovery phrase, so it is deleted
@@ -340,6 +517,12 @@ async function main(argv: string[]) {
       rpc: { type: "string" },
       "check-node": { type: "string" },
       "show-unverified": { type: "boolean" },
+      "no-mentions": { type: "boolean" },
+      "mark-read": { type: "boolean" },
+      app: { type: "boolean" },
+      yes: { type: "boolean" },
+      sponsor: { type: "boolean" },
+      out: { type: "string" },
       "ttl-days": { type: "string", default: "30" },
       // For testing against a local devnet. Everything real uses mainnet.
       network: { type: "string", default: "mainnet" },
@@ -361,6 +544,12 @@ async function main(argv: string[]) {
     return;
   }
   const { hub, chain } = hubFromEnv(values);
+  const cliNetwork = () => {
+    const nets: Record<string, FarcasterNetwork> = { mainnet: FarcasterNetwork.MAINNET, devnet: FarcasterNetwork.DEVNET };
+    const n = nets[values.network ?? "mainnet"];
+    if (n === undefined) throw new Error("--network must be mainnet or devnet");
+    return n;
+  };
   const reaction = (r: Reaction, add: boolean) => async () => {
     const key = requireKey();
     const target = { fid: parseFid(args[0]), hash: parseHash(args[1]) };
@@ -368,7 +557,10 @@ async function main(argv: string[]) {
   };
   const commands: Record<string, () => Promise<void>> = {
     status: () => cmdStatus(hub),
+    // Devnet accounts are not on Optimism mainnet, so only mainnet looks the FID up there.
+    "app-account": () => cmdAppAccount(hub, args, values, cliNetwork() === FarcasterNetwork.MAINNET ? chain : undefined),
     login: () => {
+      if (values.app) return cmdLoginApp(hub, cliNetwork(), !!values.yes);
       const days = Number(values["ttl-days"]);
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("--ttl-days must be 1 to 90");
       const nets: Record<string, FarcasterNetwork> = { mainnet: FarcasterNetwork.MAINNET, devnet: FarcasterNetwork.DEVNET };
@@ -381,13 +573,15 @@ async function main(argv: string[]) {
     uninstall: () => cmdUninstall(hub),
     selftest: () => cmdSelftest(hub),
     feed: () => cmdFeed(hub, values),
+    notifications: () => cmdNotifications(hub, values),
     charter: () => cmdCharter(hub, args, requireKey, chain, values),
     cast: async () => {
-      const text = args.join(" ");
+      const key = requireKey();
+      const text = values["no-mentions"] ? { text: args.join(" ") } : await resolveMentions(hub, args.join(" "));
       report(
         "cast",
-        await cast(hub, requireKey(), {
-          text,
+        await cast(hub, key, {
+          ...text,
           embeds: values.embed,
           replyTo: values.reply ? parseCastRef(values.reply) : undefined,
           channelUrl: values.channel,

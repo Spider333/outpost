@@ -60,6 +60,17 @@ await build({
   outfile: "dist/sponsor.js",
   logLevel: "warning",
 });
+// "Approve in the Farcaster app" on a society node, one file like the sponsor.
+await build({
+  entryPoints: ["src/server/appsignin.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: ["node20"],
+  outfile: "dist/appsignin.js",
+  alias: { "@faker-js/faker": "./src/web/faker-stub.ts" },
+  logLevel: "warning",
+});
 await copyFile("src/web/index.html", "dist/web/index.html");
 await copyFile("src/web/style.css", "dist/web/style.css");
-console.log("built dist/web, dist/serve.js, dist/cli.js and dist/sponsor.js");
+console.log("built dist/web, dist/serve.js, dist/cli.js, dist/sponsor.js and dist/appsignin.js");
