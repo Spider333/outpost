@@ -102,6 +102,11 @@ the member switch.
   the name. An honest node rejects such a name; a host's node can serve it, so an account the host
   controls can appear as any @name. A name on someone else's account still needs one of that
   account's keys, checked the same way as the key of a cast.
+- **Hand out an older charter.** A charter has no expiry, sequence number or "replaces" field, so
+  an older charter signed by the same issuer still verifies and can be applied: a member removed in
+  a newer version, for example, still appears in an older copy. The only way to invalidate all
+  earlier charters is to move the issuer FID's custody to a new address. Members should load the
+  charter from the issuer's own current link.
 
 ## What the second node learns
 

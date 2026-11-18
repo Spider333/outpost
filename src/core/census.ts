@@ -64,7 +64,7 @@ export async function census(hub: Hub, c: CharterBody, opts: { days?: number; no
   const per = await mapLimit(members, opts.concurrency ?? 16, async (fid) => {
     const { recent, lastCast } = await recentCasts(hub, fid, from, to);
     // Casts signed with a forged key, or (unless asked) a key that could not be checked, are not counted.
-    const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer))).filter((r) => hub.verifier?.admits(r.keyCheck) ?? true);
+    const refs = (await mapLimit(recent, 8, (m) => apps.appOf(fid, m.signer, m.data))).filter((r) => hub.verifier?.admits(r.keyCheck) ?? true);
     return { stats: { fid, casts: refs.length, lastCast }, refs };
   });
 
