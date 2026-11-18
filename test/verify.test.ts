@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CastAddBody, CastType, FarcasterNetwork, makeCastAdd, MessageData, MessageType, NobleEd25519Signer } from "@farcaster/core";
+import { CastAddBody, CastType, FarcasterNetwork, makeCastAdd, makeUserDataAdd, MessageData, MessageType, NobleEd25519Signer, UserDataType } from "@farcaster/core";
 import { blake3 } from "@noble/hashes/blake3";
 import { bytesToHex } from "viem";
 import {
@@ -20,6 +20,7 @@ import {
   type HubSigner,
   type KeyRegistry,
 } from "../src/core/index.js";
+import { FARCASTER_EPOCH_MS } from "../src/core/feed.js";
 
 // Real mainnet messages from Farcaster's public read node, unmodified (see the file's "source").
 const real = JSON.parse(readFileSync(new URL("./fixtures/real-messages.json", import.meta.url), "utf8")).messages as Record<string, HubMessage>;
@@ -258,6 +259,59 @@ test("second node down: unverified and not remembered; a second node on the same
   assert.equal(secondNode("https://node.example:3381", "https://node.example:3381/"), undefined);
   assert.ok(secondNode("https://snap.farcaster.xyz:3381", "https://203-0-113-7.sslip.io") instanceof SecondNode);
   assert.equal(await new Verifier(registry([]), secondNode("https://node.example", "https://node.example")).keyCheck(AUTHOR, k, false), "unverified");
+});
+
+// A second node that lists exactly `signers`, with their scopes and expiry, as signersByFid does.
+function secondWithSigners(signers: HubSigner[]) {
+  const answer = async () => new Response(JSON.stringify({ signers, gaslessSignerCount: signers.length, gaslessSignerLimit: 1000, currentUserNonce: 0 }));
+  return new SecondNode(new Hub({ url: "http://second.test", fetch: answer }));
+}
+
+// Snapchain's JSON for a display name set with `signer`, dated like asNodeJson's casts.
+async function displayNameJson(value: string, signer: NobleEd25519Signer): Promise<HubMessage> {
+  const m = (
+    await makeUserDataAdd({ type: UserDataType.DISPLAY, value }, { fid: AUTHOR, network: FarcasterNetwork.MAINNET, timestamp: real.quote!.data.timestamp + 10 }, signer)
+  )._unsafeUnwrap();
+  return {
+    data: { type: "MESSAGE_TYPE_USER_DATA_ADD", fid: AUTHOR, timestamp: m.data!.timestamp, network: "FARCASTER_NETWORK_MAINNET", userDataBody: { type: "USER_DATA_TYPE_DISPLAY", value } },
+    hash: bytesToHex(m.hash),
+    hashScheme: "HASH_SCHEME_BLAKE3",
+    signature: Buffer.from(m.signature).toString("base64"),
+    signatureScheme: "SIGNATURE_SCHEME_ED25519",
+    signer: bytesToHex(m.signer),
+  };
+}
+
+test("second node: a listed gasless key confirms only a message type in its scopes, signed before it expired", async () => {
+  const [inScope, expired, likesOnly] = [throwaway(), throwaway(), throwaway()];
+  const okCast = await asNodeJson("signed with a key that may cast", inScope);
+  const lateCast = await asNodeJson("signed after the key expired", expired);
+  const outOfScope = await asNodeJson("signed with a key that may only like", likesOnly);
+  const signedAt = FARCASTER_EPOCH_MS / 1000 + okCast.data.timestamp; // Unix seconds, like expiresAt
+  const day = 86_400;
+  const listed = async (k: NobleEd25519Signer, scopes: string[], expiresAt: number): Promise<HubSigner> => ({ ...gasless(AUTHOR, await keyOf(k)), scopes, expiresAt });
+  const signers = [
+    await listed(inScope, ["MESSAGE_TYPE_CAST_ADD", "MESSAGE_TYPE_USER_DATA_ADD"], signedAt + 30 * day),
+    await listed(expired, ["MESSAGE_TYPE_CAST_ADD", "MESSAGE_TYPE_USER_DATA_ADD"], signedAt - day),
+    await listed(likesOnly, ["MESSAGE_TYPE_REACTION_ADD"], signedAt + 30 * day),
+  ];
+  const verifier = new Verifier(registry([]), secondWithSigners(signers));
+  const hub = new Hub({
+    url: "http://node.test",
+    verifier,
+    fetch: fakeNode({
+      casts: [okCast, lateCast, outOfScope],
+      signers,
+      // The last name read wins, so a name the likes-only key signed would replace the real one.
+      userData: [await displayNameJson("Real Name", inScope), await displayNameJson("Set with a likes-only key", likesOnly)],
+    }),
+  });
+  const feed = new FeedBuilder(hub);
+  const items = await feed.fromAuthors([AUTHOR], { limit: 10, perAuthor: 10 });
+  assert.deepEqual(items.map((i) => [i.hash, i.app.keyCheck]), [[okCast.hash, "confirmed"]]);
+  assert.equal((await feed.profile(AUTHOR)).displayName, "Real Name");
+  // Dropped, not held back: an honest second node shows the key may not sign these messages.
+  assert.deepEqual({ signer: verifier.dropped.signer, unverified: verifier.unverified }, { signer: 3, unverified: 0 });
 });
 
 const PHISH = "https://phish.example/claim";

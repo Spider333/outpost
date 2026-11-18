@@ -41,13 +41,16 @@ import type { HexString, HubMessage } from "./hub.js";
 export type DropReason = "altered" | "signature" | "mismatch" | "signer";
 
 // "onchain": the KeyRegistry lists the key for this FID. "confirmed": a second node lists it as
-// one of the FID's active keys. "own": the member's own app key, held by this client.
+// one of the FID's keys, allowed to sign this message (its type and date, secondnode.ts).
+// "own": the member's own app key, held by this client.
 // "revoked": the KeyRegistry lists it as the FID's key, removed since. Since Snapchain engine V14
 // a removed key's earlier messages stay on the network (engine.rs, should_revoke_signer) and
 // later ones are refused, so they are shown, marked. "unverified": not checkable (no RPC or
 // second node, or they failed). "unlisted": a gasless key the second node does not list:
 // revoked since, or never the FID's, and the HTTP API cannot tell which. Both are held back
-// unless the member asks to see them. "false": provably not the FID's key: never shown.
+// unless the member asks to see them. "false": provably not the FID's key, or a key the second
+// node lists that may not sign this message (a type outside its scopes, or dated after it
+// expired): never shown.
 export type KeyCheck = "onchain" | "confirmed" | "own" | "revoked" | "unverified" | "unlisted" | "false";
 
 export interface KeyRegistry {
@@ -61,8 +64,16 @@ export interface KeyScopes {
   scopes: string[];
 }
 
+// A message a key signed: its type name (e.g. "MESSAGE_TYPE_CAST_ADD") and its Farcaster
+// timestamp, both from the signed data.
+export interface KeyUse {
+  type: string;
+  timestamp: number;
+}
+
 export interface KeyLister {
-  listsKey(fid: number, key: HexString): Promise<boolean>;
+  // With `use`: listed, and allowed to sign that message.
+  listsKey(fid: number, key: HexString, use?: KeyUse): Promise<boolean>;
   keyScopes?(fid: number, key: HexString): Promise<KeyScopes | undefined>;
 }
 
@@ -370,9 +381,10 @@ export class Verifier {
     return out;
   }
 
-  // `claimedOnchain`: the node says this is an onchain key. Errors give "unverified" and are
-  // not remembered, so the next look tries again.
-  keyCheck(fid: number, key: HexString, claimedOnchain: boolean): Promise<KeyCheck> {
+  // `claimedOnchain`: the node says this is an onchain key. `use`: the message the key signed; a
+  // key the second node lists is "confirmed" only if it may sign that message, else "false".
+  // Errors give "unverified" and are not remembered, so the next look tries again.
+  keyCheck(fid: number, key: HexString, claimedOnchain: boolean, use?: KeyUse): Promise<KeyCheck> {
     if (this.own.has(`${fid}:${key.toLowerCase()}`)) return Promise.resolve("own");
     const k = `${fid}:${key.toLowerCase()}:${claimedOnchain}`;
     let p = this.keys.get(k);
@@ -381,7 +393,9 @@ export class Verifier {
       p.catch(() => this.keys.delete(k));
       this.keys.set(k, p);
     }
-    return p.catch(() => "unverified" as const);
+    return p
+      .then(async (r) => (r === "confirmed" && use && this.second && !(await this.second.listsKey(fid, key, use)) ? ("false" as const) : r))
+      .catch(() => "unverified" as const);
   }
 
   private async checkKey(fid: number, key: HexString, claimedOnchain: boolean): Promise<KeyCheck> {

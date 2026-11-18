@@ -8,8 +8,9 @@
 // signed; an expired gasless key stays listed (with its expiresAt). So "not listed" means the
 // key was revoked since, or was never the account's: the HTTP API cannot tell which.
 
-import { Hub, liveToken, type HexString } from "./hub.js";
-import type { KeyLister, KeyScopes } from "./verify.js";
+import { FARCASTER_EPOCH_MS } from "./feed.js";
+import { Hub, liveToken, type HexString, type HubSigner } from "./hub.js";
+import type { KeyLister, KeyScopes, KeyUse } from "./verify.js";
 
 // Farcaster's public read node: plain GETs work from any page (Access-Control-Allow-Origin: *).
 export const DEFAULT_CHECK_NODE = "https://snap.farcaster.xyz:3381";
@@ -25,20 +26,20 @@ export function checkNodeFor(readingFrom: string): string {
 }
 
 export class SecondNode implements KeyLister {
-  private byFid = new Map<number, Promise<Map<string, KeyScopes>>>();
+  private byFid = new Map<number, Promise<Map<string, HubSigner>>>();
 
   constructor(readonly hub: Hub) {}
 
-  private keys(fid: number): Promise<Map<string, KeyScopes>> {
+  private keys(fid: number): Promise<Map<string, HubSigner>> {
     let p = this.byFid.get(fid);
     if (!p) {
       p = (async () => {
-        const keys = new Map<string, KeyScopes>();
+        const keys = new Map<string, HubSigner>();
         let pageToken: string | undefined;
         do {
           const page = await this.hub.signersByFidPage(fid, pageToken);
           for (const s of page.signers) {
-            if (s.fid === fid) keys.set(s.key.toLowerCase(), { onchain: s.source === "SIGNER_SOURCE_ONCHAIN", scopes: s.scopes ?? [] });
+            if (s.fid === fid) keys.set(s.key.toLowerCase(), s);
           }
           pageToken = liveToken(page.nextPageToken);
         } while (pageToken);
@@ -50,12 +51,26 @@ export class SecondNode implements KeyLister {
     return p;
   }
 
-  listsKey(fid: number, key: HexString): Promise<boolean> {
-    return this.keys(fid).then((keys) => keys.has(key.toLowerCase()));
+  // With `use`, the key must also be allowed to sign that message. A gasless key signs only the
+  // types its KEY_ADD named (Snapchain refuses the rest: engine.rs, active_key.admits) and only
+  // until it expires (appkey.ts). Its expiresAt moves later each time it is used, so every message
+  // it really signed is dated before the expiresAt listed now. Onchain keys have no scopes. Scopes
+  // or an expiry the node does not list are not checked. The date is the signer's own, so whoever
+  // holds an expired key can still backdate a message; only the node that refused it can tell.
+  listsKey(fid: number, key: HexString, use?: KeyUse): Promise<boolean> {
+    return this.keys(fid).then((keys) => {
+      const s = keys.get(key.toLowerCase());
+      if (!s || !use) return !!s;
+      if (s.source !== "SIGNER_SOURCE_ONCHAIN" && s.scopes && !s.scopes.includes(use.type)) return false;
+      return !s.expiresAt || FARCASTER_EPOCH_MS / 1000 + use.timestamp < s.expiresAt;
+    });
   }
 
   keyScopes(fid: number, key: HexString): Promise<KeyScopes | undefined> {
-    return this.keys(fid).then((keys) => keys.get(key.toLowerCase()));
+    return this.keys(fid).then((keys) => {
+      const s = keys.get(key.toLowerCase());
+      return s && { onchain: s.source === "SIGNER_SOURCE_ONCHAIN", scopes: s.scopes ?? [] };
+    });
   }
 }
 

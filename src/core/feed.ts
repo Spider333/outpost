@@ -120,7 +120,7 @@ export class FeedBuilder {
           const b = m.data.userDataBody;
           if (!b) continue;
           // A name or picture set with a key that is not theirs, or that could not be checked.
-          if (this.hub.verifier && !this.hub.verifier.admits((await this.apps.appOf(fid, m.signer)).keyCheck)) continue;
+          if (this.hub.verifier && !this.hub.verifier.admits((await this.apps.appOf(fid, m.signer, m.data)).keyCheck)) continue;
           if (b.type === "USER_DATA_TYPE_USERNAME") prof.username = b.value;
           else if (b.type === "USER_DATA_TYPE_DISPLAY") prof.displayName = b.value;
           else if (b.type === "USER_DATA_TYPE_PFP") prof.pfp = b.value;
@@ -176,7 +176,7 @@ export class FeedBuilder {
     const msgs: HubMessage[] = [];
     for (let i = 0; i < casts.length && out.length < limit; i += limit) {
       const batch = casts.slice(i, i + limit);
-      const refs = await mapLimit(batch, concurrency, (m) => this.apps.appOf(m.data.fid, m.signer));
+      const refs = await mapLimit(batch, concurrency, (m) => this.apps.appOf(m.data.fid, m.signer, m.data));
       batch.forEach((m, j) => {
         const ref = refs[j]!;
         if (out.length < limit && passesFilter(ref, filter)) {

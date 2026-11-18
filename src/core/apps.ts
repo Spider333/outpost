@@ -7,7 +7,7 @@
 
 import { decodeGaslessSignedKeyRequestMetadata } from "@farcaster/core";
 import { Hub, liveToken, type HexString, type HubSigner } from "./hub.js";
-import { base64ToBytes, type KeyCheck } from "./verify.js";
+import { base64ToBytes, type KeyCheck, type KeyUse } from "./verify.js";
 
 export type AppKind = "app" | "self" | "unknown";
 
@@ -59,11 +59,12 @@ export class AppResolver {
     return p;
   }
 
-  // The app behind a key, plus (with a verifier) whether the key provably belongs to `fid`.
-  async appOf(fid: number, signer: HexString): Promise<AppRef> {
+  // The app behind a key, plus (with a verifier) whether the key provably belongs to `fid` and
+  // may sign `use`, the message it signed.
+  async appOf(fid: number, signer: HexString, use: KeyUse): Promise<AppRef> {
     const ref = await this.fromNode(fid, signer);
     const v = this.hub.verifier;
-    return v ? { ...ref, keyCheck: await v.keyCheck(fid, signer, ref.source === "onchain") } : ref;
+    return v ? { ...ref, keyCheck: await v.keyCheck(fid, signer, ref.source === "onchain", use) } : ref;
   }
 
   private async fromNode(fid: number, signer: HexString): Promise<AppRef> {

@@ -48,7 +48,7 @@ export async function notificationsFor(feed: FeedBuilder, fid: number, opts: Not
 
   // A message counts only if its key passes the same check the feed uses.
   const admitted = async (ms: HubMessage[]): Promise<HubMessage[]> => {
-    const ok = await mapLimit(ms, concurrency, async (m) => !hub.verifier || hub.verifier.admits((await feed.apps.appOf(m.data.fid, m.signer)).keyCheck));
+    const ok = await mapLimit(ms, concurrency, async (m) => !hub.verifier || hub.verifier.admits((await feed.apps.appOf(m.data.fid, m.signer, m.data)).keyCheck));
     return ms.filter((m, i) => ok[i] && m.data.fid !== fid && notFuture(m));
   };
   const profiles = (fids: number[]) => mapLimit(fids, concurrency, (f) => feed.profile(f).catch(() => ({ fid: f }) as Profile));
